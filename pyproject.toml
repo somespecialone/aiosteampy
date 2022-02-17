@@ -1,0 +1,51 @@
+[tool.poetry]
+name = "asyncsteampy"
+version = "0.1.0"
+description = "Simple library to trade and interact with steam market, webapi, guard"
+license = "MIT"
+authors = ["somespecialone <tkachenkodmitriy@yahoo.com>"]
+readme = "README.md"
+homepage = "https://github.com/somespecialone/asyncsteampy/"
+repository = "https://github.com/somespecialone/asyncsteampy/"
+documentation = "https://github.com/somespecialone/asyncsteampy/"
+keywords = ["steam", "trade", "steamguard", "asyncio", "steam-market"]
+classifiers = [
+    "Framework :: AsyncIO",
+    "Intended Audience :: Developers",
+    "Topic :: Software Development :: Libraries",
+    "Topic :: Software Development :: Libraries :: Python Modules",
+    "Operating System :: OS Independent",
+    "Typing :: Typed"
+]
+
+include = ["LICENSE"]
+packages = [{ include = "asyncsteampy" }]
+
+[tool.poetry.dependencies]
+python = "^3.10"
+aiohttp = "^3.8.1"
+beautifulsoup4 = "^4.10.0"
+rsa = "^4.8"
+
+[tool.poetry.dev-dependencies]
+black = "^22.1.0"
+pytest = "^7.0.1"
+pytest-asyncio = "^0.18.1"
+pytest-mock = "^3.7.0"
+pytest-cov = "^3.0.0"
+aiohttp-socks = "^0.7.1"
+
+[tool.black]
+line-length = 120
+target-version = ['py310']
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+
+[tool.coverage.run]
+source = ["asyncsteampy"]
+omit = ["*/__init__.py"]
+
+[build-system]
+requires = ["poetry-core>=1.0.0"]
+build-backend = "poetry.core.masonry.api"

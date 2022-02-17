@@ -1,0 +1,34 @@
+class SevenDaysHoldException(Exception):
+    pass
+
+
+class TooManyRequests(Exception):
+    pass
+
+
+class ApiException(Exception):
+    pass
+
+
+class LoginRequired(Exception):
+    pass
+
+
+class LoginError(Exception):
+    pass
+
+
+class InvalidCredentials(Exception):
+    pass
+
+
+class CaptchaRequired(Exception):
+    pass
+
+
+class ConfirmationExpected(Exception):
+    pass
+
+
+class ChatException(Exception):
+    pass

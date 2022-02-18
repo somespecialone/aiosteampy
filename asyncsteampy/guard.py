@@ -3,14 +3,16 @@ import hmac
 import json
 import struct
 import time
-import os
 
 from hashlib import sha1
+from pathlib import Path
+from typing import Union
 
 
-def load_steam_guard(steam_guard: str) -> dict:
-    if os.path.isfile(steam_guard):
-        with open(steam_guard, "r") as f:
+def load_steam_guard(steam_guard: Union[str, Path]) -> dict:
+    guard_path = Path(str(steam_guard))
+    if guard_path.is_file():
+        with steam_guard.open("r") as f:
             return json.loads(f.read())
     else:
         return json.loads(steam_guard)

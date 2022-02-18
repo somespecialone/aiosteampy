@@ -4,6 +4,15 @@ from asyncsteampy.models import Currency, GameOptions
 
 ITEM_DATA = "M4A1-S | Cyrex (Factory New)"
 
+# env variables
+# TEST_API_KEY
+# TEST_LOGIN
+# TEST_PASSWORD
+# TEST_STEAMID
+# TEST_SHARED_SECRET
+# TEST_IDENTITY_SECRET
+# TEST_PROXY_ADDR = schema://username:password@host:port
+
 CREDENTIALS = {
     "api_key": os.getenv("TEST_API_KEY"),
     "login": os.getenv("TEST_LOGIN"),

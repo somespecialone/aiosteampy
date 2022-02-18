@@ -41,10 +41,13 @@ def credentials() -> Credentials:
 @pytest.fixture(scope="session", autouse=False)
 async def client(credentials) -> SteamClient:
     client = SteamClient(
-        credentials.api_key,
+        credentials.login,
+        credentials.password,
+        credentials.steam_guard,
+        api_key=credentials.api_key,
         session=ClientSession(connector=ProxyConnector.from_url(credentials.proxy_addr), headers=HEADERS),
     )
-    await client.login(credentials.login, credentials.password, credentials.steam_guard)
+    await client.login()
 
     yield client
 

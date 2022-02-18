@@ -1,16 +1,15 @@
 import json
 import decimal
 import urllib.parse as urlparse
-from typing import List, Union, Optional, Literal
-from functools import wraps
+from typing import List, Union, Literal, Optional
+from pathlib import Path
 
 import bs4
 from aiohttp import ClientSession, ClientResponse
 
-from . import guard
 from .chat import SteamChat
 from .confirmation import ConfirmationExecutor
-from .exceptions import SevenDaysHoldException, LoginRequired, ApiException, LoginError
+from .exceptions import SevenDaysHoldException, ApiException, LoginError
 from .login import LoginExecutor, InvalidCredentials
 from .market import SteamMarket
 from .models import Asset, TradeOfferState, SteamUrl, GameOptions
@@ -27,43 +26,32 @@ from .utils import (
     parse_price,
     get_sessionid_from_cookie,
     normalize_params,
+    login_required,
+    define_steam_guard,
 )
-
-
-def login_required(func):
-    @wraps(func)
-    def func_wrapper(self, *args, **kwargs):
-        if not self.was_login_executed:
-            raise LoginRequired("Use login method first")
-        else:
-            return func(self, *args, **kwargs)
-
-    return func_wrapper
 
 
 class SteamClient:
     def __init__(
         self,
-        api_key: str,
-        username: str = None,
-        password: str = None,
-        steam_guard: Optional[Union[str, dict]] = None,
-        session: ClientSession = ClientSession(),
+        username: Optional[str] = None,
+        password: Optional[str] = None,
+        steam_guard: Optional[Union[str, dict, Path]] = None,
+        *,
+        api_key: Optional[str] = None,
+        session: ClientSession = None,
     ) -> None:
         self._api_key = api_key
-        self._session = session
-        self.steam_guard = steam_guard
+        self._session = session or ClientSession()
+        self.steam_guard = define_steam_guard(steam_guard)
         self.was_login_executed = False
         self.username = username
         self._password = password
         self.market = SteamMarket(self._session)
         self.chat = SteamChat(self._session)
 
-    async def login(self, username: str, password: str, steam_guard: Union[str, dict]) -> None:
-        self.steam_guard: dict = guard.load_steam_guard(steam_guard) if isinstance(steam_guard, str) else steam_guard
-        self.username = username
-        self._password = password
-        await LoginExecutor(username, password, self.steam_guard["shared_secret"], self._session).login()
+    async def login(self) -> None:
+        await LoginExecutor(self.username, self._password, self.steam_guard["shared_secret"], self._session).login()
         self.was_login_executed = True
         self.market._set_login_executed(self.steam_guard, get_sessionid_from_cookie(self._session.cookie_jar))
 
@@ -86,7 +74,7 @@ class SteamClient:
             raise InvalidCredentials(
                 "You have to pass username, password and steam_guard" 'parameters when using "with" statement'
             )
-        await self.login(self.username, self._password, self.steam_guard)
+        await self.login()
         return self
 
     async def __aexit__(self, exc_type, exc_val, exc_tb):

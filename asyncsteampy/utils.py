@@ -4,7 +4,9 @@ import copy
 import struct
 import urllib.parse as urlparse
 import re
-from typing import List
+from typing import List, Union, Optional
+from functools import wraps
+from pathlib import Path
 
 import aiohttp
 from multidict import CIMultiDict
@@ -12,6 +14,8 @@ from bs4 import BeautifulSoup
 from bs4.element import Tag
 
 from .models import GameOptions
+from .exceptions import LoginRequired
+from . import guard
 
 
 def text_between(text: str, begin: str, end: str) -> str:
@@ -187,7 +191,9 @@ class Credentials:
         self.api_key = api_key
 
 
-def get_sessionid_from_cookie(cookie_jar: aiohttp.CookieJar) -> str | None:
+def get_sessionid_from_cookie(
+    cookie_jar: Union[aiohttp.CookieJar, aiohttp.cookiejar.AbstractCookieJar]
+) -> Union[str, None]:
     for cookie in cookie_jar:
         if cookie.key == "sessionid":
             return cookie.value
@@ -203,3 +209,24 @@ def normalize_params(params: dict) -> dict:
     )
 
     return normalized_params
+
+
+def login_required(func):
+    @wraps(func)
+    def func_wrapper(self, *args, **kwargs):
+        if not self.was_login_executed:
+            raise LoginRequired("Use login method first")
+        else:
+            return func(self, *args, **kwargs)
+
+    return func_wrapper
+
+
+def define_steam_guard(guard_raw: Optional[Union[str, dict, Path]]) -> Union[dict, None]:
+    steam_guard = None
+    if isinstance(guard_raw, dict):
+        steam_guard = guard_raw
+    elif isinstance(guard_raw, (str, Path)):
+        steam_guard = guard.load_steam_guard(guard_raw)
+
+    return steam_guard

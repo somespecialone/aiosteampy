@@ -1,3 +1,5 @@
+from typing import Union
+
 import bs4
 import re
 import aiohttp
@@ -24,7 +26,7 @@ class SteamChat:
         else:
             return access_token
 
-    async def _api_call(self, endpoint, params, timeout_ignore=False) -> aiohttp.ClientResponse | None:
+    async def _api_call(self, endpoint, params, timeout_ignore=False) -> Union[aiohttp.ClientResponse, None]:
         response = await self._session.post(endpoint, data=params)
         response.raise_for_status()
         await response.read()

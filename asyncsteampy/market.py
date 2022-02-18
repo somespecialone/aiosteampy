@@ -5,7 +5,7 @@ from decimal import Decimal
 from aiohttp import ClientSession
 
 from .confirmation import ConfirmationExecutor
-from .exceptions import ApiException, TooManyRequests, LoginRequired
+from .exceptions import ApiException, TooManyRequests
 from .models import Currency, SteamUrl, GameOptions
 from .utils import (
     text_between,
@@ -13,20 +13,11 @@ from .utils import (
     get_market_listings_from_html,
     merge_items_with_descriptions_from_listing,
     get_market_sell_listings_from_api,
+    login_required,
 )
 
 
 _API_ERROR_MASSAGE = "There was a problem getting the listings. http code: "
-
-
-def login_required(func):
-    def func_wrapper(self, *args, **kwargs):
-        if not self.was_login_executed:
-            raise LoginRequired("Use login method first on SteamClient")
-        else:
-            return func(self, *args, **kwargs)
-
-    return func_wrapper
 
 
 class SteamMarket:

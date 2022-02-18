@@ -45,8 +45,8 @@ async_steam_client = AsyncSteamClient('MY_USERNAME', 'MY_PASSWORD', 'PATH_TO_STE
                                       api_key="API_KEY")
 ```
 
-Instead of passing `str` path or `pathlib.Path` to `steamguard.txxt` file or even json serialized string you can just
-use dict object:
+Instead of passing `str` path or `pathlib.Path` to `steamguard.txt` file or even json serialized string you can just use
+dict object:
 
 ```py
 steamguard = {
@@ -59,7 +59,7 @@ steamguard = {
 ## AsyncIO
 
 All methods that require connection to steam network now have asyncio support (it
-uses [aiohttp]( https://github.com/aio-libs/aiohttp)) and are asynchronous : `client`, `market`, `chat`.
+uses [aiohttp](https://github.com/aio-libs/aiohttp)) and are asynchronous : `client`, `market`, `chat`.
 
 ```py
 from asyncsteampy.client import SteamClient as AsyncSteamClient
@@ -121,6 +121,7 @@ poetry install
 ```
 
 Create env variables listed in [tests/data](tests/data.py) and run `pytest` from project dir:
+
 ```shell
 pytest
 ```

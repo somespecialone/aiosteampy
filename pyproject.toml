@@ -1,6 +1,6 @@
 [tool.poetry]
 name = "asyncsteampy"
-version = "0.1.0"
+version = "0.1.1"
 description = "Simple library to trade and interact with steam market, webapi, guard"
 license = "MIT"
 authors = ["somespecialone <tkachenkodmitriy@yahoo.com>"]
@@ -29,8 +29,8 @@ rsa = "^4.8"
 
 [tool.poetry.dev-dependencies]
 black = "^22.1.0"
-pytest = "^7.0.1"
-pytest-asyncio = "^0.18.1"
+pytest = "^7.1.0"
+pytest-asyncio = "^0.18.2"
 pytest-mock = "^3.7.0"
 pytest-cov = "^3.0.0"
 aiohttp-socks = "^0.7.1"

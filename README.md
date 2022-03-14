@@ -9,7 +9,7 @@
 [![black](https://img.shields.io/badge/code%20style-black-000000.svg)](https://github.com/psf/black)
 [![steam](https://shields.io/badge/steam-1b2838?logo=steam)](https://store.steampowered.com/)
 
-> ### This library is fork of [bukson/steampy](https://github.com/bukson/steampy) ⚠ and created only to provide asynchronous methods and proxies support.
+> ### This library is a soft fork of [bukson/steampy](https://github.com/bukson/steampy) ⚠ and created only to provide asynchronous methods and proxies support.
 > #### Docs, examples you can read from original [README](https://github.com/bukson/steampy#readme). Differences of usage and new features listed below 📖
 > #### Must work with python 3.6 and above like origin, but tested only on `3.10` ⚡
 ---

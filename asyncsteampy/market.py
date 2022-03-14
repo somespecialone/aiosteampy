@@ -1,6 +1,7 @@
 import urllib.parse
 import json
 from decimal import Decimal
+from typing import Union
 
 from aiohttp import ClientSession
 
@@ -148,7 +149,7 @@ class SteamMarket:
     async def buy_item(
         self,
         market_name: str,
-        market_id: str,
+        market_id: Union[str, int],
         price: int,
         fee: int,
         game: GameOptions,
@@ -157,17 +158,17 @@ class SteamMarket:
         data = {
             "sessionid": self._session_id,
             "currency": currency.value,
-            "subtotal": price - fee,
+            "subtotal": price,
             "fee": fee,
-            "total": price,
-            "quantity": "1",
+            "total": price + fee,
+            "quantity": 1,
         }
         headers = {
             "Referer": "%s/market/listings/%s/%s"
             % (SteamUrl.COMMUNITY_URL, game.app_id, urllib.parse.quote(market_name))
         }
         response = await self._session.post(
-            SteamUrl.COMMUNITY_URL + "/market/buylisting/" + market_id, data=data, headers=headers
+            SteamUrl.COMMUNITY_URL + "/market/buylisting/" + str(market_id), data=data, headers=headers
         )
         response_json = await response.json()
         try:

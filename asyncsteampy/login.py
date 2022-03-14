@@ -1,8 +1,11 @@
 import base64
 import time
+from http.cookies import SimpleCookie
+from typing import Dict, Union
+
 import aiohttp
-from yarl import URL
 import rsa
+from yarl import URL
 
 from . import guard
 from .models import SteamUrl
@@ -45,8 +48,15 @@ class LoginExecutor:
         self.session.cookie_jar.update_cookies(**store_cookie)
 
     @staticmethod
-    def _create_session_id_cookie(sessionid: str, domain: str) -> dict:
-        return {"cookies": {"sessionid": sessionid}, "response_url": URL(domain)}
+    def _create_session_id_cookie(sessionid: str, domain: str) -> Dict[str, Union[SimpleCookie, str]]:
+        cookie = SimpleCookie()
+        cookie["sessionid"] = sessionid
+        cookie["sessionid"]["path"] = "/"
+        cookie["sessionid"]["domain"] = domain
+        cookie["sessionid"]["secure"] = True
+        cookie["sessionid"]["SameSite"] = None
+
+        return {"cookies": cookie, "response_url": URL(domain)}
 
     async def _fetch_rsa_params(self, current_number_of_repetitions: int = 0) -> dict:
         maximal_number_of_repetitions = 5

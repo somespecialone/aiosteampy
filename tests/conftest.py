@@ -1,6 +1,7 @@
 import platform
 import asyncio
 from dataclasses import dataclass
+from typing import Dict
 
 import pytest
 from aiohttp import ClientSession
@@ -17,7 +18,7 @@ class Credentials:
     login: str
     password: str
 
-    steam_guard: dict[str, str]
+    steam_guard: Dict[str, str]
 
     proxy_addr: str
 

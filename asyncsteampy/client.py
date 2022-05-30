@@ -113,9 +113,9 @@ class SteamClient:
 
     @login_required
     async def get_partner_inventory(
-        self, partner_steam_id: str, game: GameOptions, merge: bool = True, count: int = 5000
+        self, partner_steam_id: Union[str, int], game: GameOptions, merge: bool = True, count: int = 5000
     ) -> dict:
-        url = "/".join([SteamUrl.COMMUNITY_URL, "inventory", partner_steam_id, game.app_id, game.context_id])
+        url = "/".join([SteamUrl.COMMUNITY_URL, "inventory", str(partner_steam_id), game.app_id, game.context_id])
         params = {"l": "english", "count": count}
         response = await self._session.get(url, params=params)
         response_dict: dict = await response.json()

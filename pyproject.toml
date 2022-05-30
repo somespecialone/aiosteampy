@@ -1,6 +1,6 @@
 [tool.poetry]
 name = "asyncsteampy"
-version = "0.1.1"
+version = "0.1.2"
 description = "Simple library to trade and interact with steam market, webapi, guard"
 license = "MIT"
 authors = ["somespecialone <tkachenkodmitriy@yahoo.com>"]

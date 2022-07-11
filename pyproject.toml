@@ -31,7 +31,7 @@ rsa = "^4.8"
 black = "^22.3.0"
 pytest = "^7.1.2"
 pytest-asyncio = "^0.18.3"
-pytest-mock = "^3.7.0"
+pytest-mock = "^3.8.2"
 pytest-cov = "^3.0.0"
 aiohttp-socks = "^0.7.1"
 

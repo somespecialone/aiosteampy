@@ -18,6 +18,13 @@ jobs:
       - run: poetry install
 
       - name: "Run PyTest with coverage"
+        env:
+         TEST_API_KEY: ${{ secrets.TEST_API_KEY }}
+         TEST_LOGIN: ${{ secrets.TEST_LOGIN }}
+         TEST_PASSWORD: ${{ secrets.TEST_PASSWORD }}
+         TEST_STEAMID: ${{ secrets.TEST_STEAMID }}
+         TEST_SHARED_SECRET: ${{ secrets.TEST_SHARED_SECRET }}
+         TEST_IDENTITY_SECRET: ${{ secrets.TEST_IDENTITY_SECRET }}
         run: poetry run pytest --cov --cov-report=xml
 
       - name: "Upload coverage report to Codecov"

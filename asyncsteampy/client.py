@@ -64,8 +64,8 @@ class SteamClient:
             raise LoginError("Logout unsuccessful")
         self.was_login_executed = False
 
-    async def close(self) -> None:
-        if self.was_login_executed:
+    async def close(self, logout=False) -> None:
+        if logout and self.was_login_executed:
             await self.logout()
         await self._session.close()
 

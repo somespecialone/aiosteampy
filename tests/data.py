@@ -11,7 +11,6 @@ ITEM_DATA = "M4A1-S | Cyrex (Factory New)"
 # TEST_STEAMID
 # TEST_SHARED_SECRET
 # TEST_IDENTITY_SECRET
-# TEST_PROXY_ADDR = schema://username:password@host:port
 
 CREDENTIALS = {
     "api_key": os.getenv("TEST_API_KEY"),
@@ -22,7 +21,6 @@ CREDENTIALS = {
         "shared_secret": os.getenv("TEST_SHARED_SECRET"),
         "identity_secret": os.getenv("TEST_IDENTITY_SECRET"),
     },
-    "proxy_addr": os.getenv("TEST_PROXY_ADDR"),
 }
 
 HEADERS = {

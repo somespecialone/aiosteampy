@@ -70,10 +70,11 @@ await async_steam_client.login()
 buy_order_id = "some_buy_order_id"
 response = await async_steam_client.market.cancel_buy_order(buy_order_id)
 # do other async work
-await async_steam_client.close()
+await async_steam_client.close(logout=True)
 ```
 
-If you end your operations, ⚠️ `keep in mind`, you always need to close your `async_steam_client`. This will do `logout`
+If you end your operations, ⚠️ `keep in mind`, you always need to close your `async_steam_client`. This will
+do `logout` (if `logout=True`)
 and close `aiohttp` [session](https://docs.aiohttp.org/en/stable/client_reference.html#client-session) properly. Also,
 you can `await async_steam_client.logout()` without closing session if you need this for some reason.
 

@@ -4,8 +4,8 @@ from dataclasses import dataclass
 from typing import Dict
 
 import pytest
+import pytest_asyncio
 from aiohttp import ClientSession
-from aiohttp_socks import ProxyConnector
 
 from asyncsteampy.client import SteamClient
 
@@ -20,7 +20,7 @@ class Credentials:
 
     steam_guard: Dict[str, str]
 
-    proxy_addr: str
+    # proxy_addr: str
 
 
 @pytest.fixture(scope="session")
@@ -39,17 +39,17 @@ def credentials() -> Credentials:
     return Credentials(**CREDENTIALS)
 
 
-@pytest.fixture(scope="session", autouse=False)
+@pytest_asyncio.fixture(scope="session", autouse=False)
 async def client(credentials) -> SteamClient:
     client = SteamClient(
         credentials.login,
         credentials.password,
         credentials.steam_guard,
         api_key=credentials.api_key,
-        session=ClientSession(connector=ProxyConnector.from_url(credentials.proxy_addr), headers=HEADERS),
+        session=ClientSession(headers=HEADERS),
     )
     await client.login()
 
     yield client
 
-    await client.close()
+    await client.close(logout=True)

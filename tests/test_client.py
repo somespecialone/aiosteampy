@@ -12,7 +12,7 @@ async def test_is_session_alive(client):
 
 @pytest.mark.asyncio
 async def test_get_my_inventory(client):
-    inventory = client.get_my_inventory(GameOptions.CS)
+    inventory = await client.get_my_inventory(GameOptions.CS)
     assert inventory is not None
 
 

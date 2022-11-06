@@ -1,7 +1,7 @@
 import decimal
 from unittest import TestCase
 
-from asyncsteampy import utils
+from _ import utils
 
 
 class TestUtils(TestCase):

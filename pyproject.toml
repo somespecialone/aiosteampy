@@ -1,13 +1,13 @@
 [tool.poetry]
-name = "asyncsteampy"
-version = "0.1.3"
+name = "aiosteampy"
+version = "0.2.0"
 description = "Simple library to trade and interact with steam market, webapi, guard"
 license = "MIT"
 authors = ["somespecialone <tkachenkodmitriy@yahoo.com>"]
 readme = "README.md"
-homepage = "https://github.com/somespecialone/asyncsteampy/"
-repository = "https://github.com/somespecialone/asyncsteampy/"
-documentation = "https://github.com/somespecialone/asyncsteampy/"
+homepage = "https://github.com/somespecialone/aiosteampy/"
+repository = "https://github.com/somespecialone/aiosteampy/"
+documentation = "https://github.com/somespecialone/aiosteampy/"
 keywords = ["steam", "trade", "steamguard", "asyncio", "steam-market"]
 classifiers = [
     "Framework :: AsyncIO",
@@ -19,7 +19,7 @@ classifiers = [
 ]
 
 include = ["LICENSE"]
-packages = [{ include = "asyncsteampy" }]
+packages = [{ include = "aiosteampy" }]
 
 [tool.poetry.dependencies]
 python = "^3.10"
@@ -27,22 +27,26 @@ aiohttp = "^3.8.3"
 beautifulsoup4 = "^4.10.0"
 rsa = "^4.9"
 
-[tool.poetry.dev-dependencies]
+[tool.poetry.group.dev.dependencies]
+aiodns = "^3.0.0"
+
+[tool.poetry.group.test.dependencies]
 pytest = "^7.2.0"
 pytest-asyncio = "^0.20.1"
-pytest-mock = "^3.10.0"
 pytest-cov = "^4.0.0"
 
-[tool.black]
-line-length = 120
-target-version = ['py310']
+[tool.poetry.group.docs.dependencies]
+
 
 [tool.pytest.ini_options]
 testpaths = ["tests"]
 
 [tool.coverage.run]
-source = ["asyncsteampy"]
+source = ["aiosteampy"]
 omit = ["*/__init__.py"]
+
+[tool.black]
+line-length = 120
 
 [build-system]
 requires = ["poetry-core>=1.0.0"]

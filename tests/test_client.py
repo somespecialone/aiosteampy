@@ -2,7 +2,7 @@ import decimal
 
 import pytest
 
-from asyncsteampy.models import GameOptions
+from _.models import GameOptions
 
 
 @pytest.mark.asyncio

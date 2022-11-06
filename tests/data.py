@@ -1,6 +1,6 @@
 import os
 
-from asyncsteampy.models import Currency, GameOptions
+from _.models import Currency, GameOptions
 
 ITEM_DATA = "M4A1-S | Cyrex (Factory New)"
 

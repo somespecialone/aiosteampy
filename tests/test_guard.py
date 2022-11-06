@@ -1,8 +1,8 @@
 import base64
 from unittest import TestCase
 
-from asyncsteampy import guard
-from asyncsteampy.confirmation import Tag
+from _ import guard
+from _.confirmation import Tag
 
 
 class TestGuard(TestCase):

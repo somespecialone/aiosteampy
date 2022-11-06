@@ -7,7 +7,7 @@ import pytest
 import pytest_asyncio
 from aiohttp import ClientSession
 
-from asyncsteampy.client import SteamClient
+from _.client import SteamClient
 
 from .data import CREDENTIALS, HEADERS
 

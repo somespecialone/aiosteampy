@@ -1,6 +1,7 @@
 from enum import Enum
 from dataclasses import dataclass, field
-from typing import Literal
+from typing import Literal, TypeAlias
+
 
 from yarl import URL
 
@@ -40,6 +41,15 @@ class Game(Enum):
     PUBG = 578080, 2
 
     STEAM = 753, 6  # not actually a game :)
+
+    def __getitem__(self, item: int) -> int:
+        return self._value_ if item == 0 else self._context_id_
+
+    def __iter__(self):  # for unpacking
+        return (v for v in (self._value_, self._context_id_))
+
+
+GameType: TypeAlias = Game | tuple[int, int]
 
 
 class Currency(Enum):
@@ -147,7 +157,7 @@ class ItemTag:
 
 @dataclass(eq=False, slots=True)
 class ItemClass:
-    game: Game
+    game: GameType
 
     name: str
     name_color: str
@@ -195,3 +205,12 @@ class InventoryItem:
         if self.class_.d_id:
             url = STEAM_URL.INSPECT / f"+csgo_econ_action_preview S{self.owner_id}A{self.asset_id}D{self.class_.d_id}"
             self.inspect_link = url
+
+
+# https://github.com/Gobot1234/steam.py/blob/afaa75047ca124dcd226be14c3df28e4cd4dc899/steam/guard.py#L93
+@dataclass(eq=False, slots=True)
+class Confirmation:
+    id: int
+    data_conf_id: int
+    data_key: int
+    trade_id: int

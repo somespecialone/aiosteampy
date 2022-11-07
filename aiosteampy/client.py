@@ -1,21 +1,23 @@
-import base64
-import time
+from time import time as time_time
 from http.cookies import SimpleCookie
 from re import compile
 from urllib.parse import quote
+from base64 import b64encode
 
 from rsa import PublicKey, encrypt
 from aiohttp import ClientSession
 from yarl import URL
 
-from .utils import get_cookie_value_from_session
-
-from .market import MarketMixin
+from .guard import SteamGuardMixin
+from .confirmation import ConfirmationMixin
 from .inventory import InventoryMixin
+from .market import MarketMixin
 
 from .models import STEAM_URL, Currency
-from .exceptions import InvalidCredentials, CaptchaRequired, LoginError, ApiError
-from .utils import gen_two_factor_code
+from .exceptions import CaptchaRequired, LoginError, ApiError
+from .utils import get_cookie_value_from_session
+
+__all__ = ("SteamClient",)
 
 _WALLET_REGEX = compile(r"account/history/\">(?P<cur>\D)?(?P<balance>\d*[.,]?[\d-]*)\s?(?P<cur1>\W|\w+)?\.?</a")
 _API_KEY_REGEX = compile(r"<p>Key: (?P<api_key>[0-9A-F]+)</p>")
@@ -26,9 +28,7 @@ _API_KEY_CHECK_STR = "<h2>Access Denied</h2>"
 _API_KEY_CHECK_STR1 = "You must have a validated email address to create a Steam Web API key"
 
 
-#  TODO Borrow funcs from https://github.com/Gobot1234/steam.py, https://github.com/somespecialone/asyncsteampy
-#  order entity!!!
-class SteamClient(InventoryMixin, MarketMixin):
+class SteamClient(SteamGuardMixin, ConfirmationMixin, InventoryMixin, MarketMixin):
     """ """
 
     __slots__ = (
@@ -41,13 +41,18 @@ class SteamClient(InventoryMixin, MarketMixin):
         "_identity_secret",
         "_api_key",
         "trade_token",
+        "_device_id",
+        "_confirmations",
+        "_inventories",  # do I need states?
+        "_orders",
+        "_tradeoffers",
     )
 
     def __init__(
         self,
         username: str,
         password: str,
-        steamid: int = None,
+        steam_id: int = None,
         *,
         shared_secret: str,
         identity_secret: str,
@@ -55,12 +60,13 @@ class SteamClient(InventoryMixin, MarketMixin):
         trade_token: str = None,
         session: ClientSession = None,
     ):
-        # super().__init__()
+        super().__init__()
+        self._is_logged = False
 
         self.session = session or ClientSession(raise_for_status=True)
         # TODO admit about raise for status and strange behaviour if opposite in docs.
         self.username = username
-        self.steam_id = steamid  # steam id64
+        self.steam_id = steam_id  # steam id64
         self.trade_token = trade_token
 
         self._password = password
@@ -68,7 +74,8 @@ class SteamClient(InventoryMixin, MarketMixin):
         self._identity_secret = identity_secret
         self._api_key = api_key
 
-        self._is_logged = False
+        if steam_id:
+            self._device_id = self._gen_device_id()
 
     @property
     def is_logged(self) -> bool:
@@ -89,10 +96,6 @@ class SteamClient(InventoryMixin, MarketMixin):
     def session_id(self) -> str | None:
         return get_cookie_value_from_session(self.session, STEAM_URL.HELP.host, "sessionid")
 
-    @property
-    def two_factor_code(self) -> str:
-        return gen_two_factor_code(self._shared_secret)
-
     async def _init_data(self):
         if not self._api_key:
             self._api_key = await self._fetch_api_key()
@@ -100,6 +103,7 @@ class SteamClient(InventoryMixin, MarketMixin):
 
         if not self.steam_id:
             self.steam_id = await self._fetch_steamid()
+            self._device_id = self._gen_device_id()
 
         if not self.trade_token:
             self.trade_token = await self._fetch_trade_token()
@@ -185,13 +189,14 @@ class SteamClient(InventoryMixin, MarketMixin):
         for url in resp_json["transfer_urls"]:
             await self.session.post(url, data=resp_json["transfer_parameters"])
 
+        cookie_key = "sessionid"
         for domain in (STEAM_URL.STORE.host, STEAM_URL.COMMUNITY.host):
             cookie = SimpleCookie()
-            cookie["sessionid"] = self.session_id
-            cookie["sessionid"]["path"] = "/"
-            cookie["sessionid"]["domain"] = domain
-            cookie["sessionid"]["secure"] = True
-            cookie["sessionid"]["SameSite"] = None
+            cookie[cookie_key] = self.session_id
+            cookie[cookie_key]["path"] = "/"
+            cookie[cookie_key]["domain"] = domain
+            cookie[cookie_key]["secure"] = True
+            cookie[cookie_key]["SameSite"] = None
 
             self.session.cookie_jar.update_cookies(cookies=cookie, response_url=URL(domain))
 
@@ -202,7 +207,7 @@ class SteamClient(InventoryMixin, MarketMixin):
     async def _do_login(self, rsa_retries: int, two_factor_code="") -> dict[str, ...]:
         public_key, timestamp = await self._fetch_rsa_params(rsa_retries)
         data = {
-            "password": base64.b64encode(encrypt(self._password.encode("utf-8"), public_key)).decode(),
+            "password": b64encode(encrypt(self._password.encode("utf-8"), public_key)).decode(),
             "username": self.username,
             "twofactorcode": two_factor_code,
             "emailauth": "",
@@ -212,38 +217,43 @@ class SteamClient(InventoryMixin, MarketMixin):
             "emailsteamid": "",
             "rsatimestamp": timestamp,
             "remember_login": "true",
-            "donotcache": str(int(time.time() * 1000)),
+            "donotcache": str(int(time_time() * 1000)),
         }
         resp = await self.session.post(STEAM_URL.STORE / "login/dologin", data=data)
-        if not resp.ok:
-            raise LoginError(f"Login response status: [{resp.status}]")  # TODO some more specific
-
         resp_json: dict[str, ...] = await resp.json()
-        if resp_json.get("captcha_needed", False):
-            raise CaptchaRequired("Captcha required")
+        if resp_json.get("captcha_needed"):
+            raise CaptchaRequired
 
         if resp_json["requires_twofactor"]:
             return await self._do_login(rsa_retries, self.two_factor_code)
         elif not resp_json["success"]:
-            raise InvalidCredentials(resp_json["message"])
+            raise LoginError(resp_json["message"], resp_json)
 
         return resp_json
 
     async def _fetch_rsa_params(self, rsa_retries) -> tuple[PublicKey, int]:
+        resp_json = {}
         for _ in range(rsa_retries):
             resp = await self.session.post(STEAM_URL.STORE / "login/getrsakey/", data={"username": self.username})
-            json_reps = await resp.json()
+            resp_json = await resp.json()
             try:
-                rsa_mod = int(json_reps["publickey_mod"], 16)
-                rsa_exp = int(json_reps["publickey_exp"], 16)
-                rsa_timestamp = int(json_reps["timestamp"])
+                rsa_mod = int(resp_json["publickey_mod"], 16)
+                rsa_exp = int(resp_json["publickey_exp"], 16)
+                rsa_timestamp = int(resp_json["timestamp"])
 
                 return PublicKey(rsa_mod, rsa_exp), rsa_timestamp
             except KeyError:
                 pass
 
-        raise LoginError("Could not obtain rsa-key")
+        raise ApiError("Could not obtain rsa-key", resp_json)
 
     async def logout(self) -> None:
         await self.session.post(STEAM_URL.STORE / "login/logout/", data={"sessionid": self.session_id})
         self._is_logged = False
+
+    async def get_notifications_count(self):
+        headers = {"Referer": str(STEAM_URL.COMMUNITY / f"profiles/{self.steam_id}")}
+        resp = await self.session.get(STEAM_URL.COMMUNITY / "actions/GetNotificationCounts", headers=headers)
+        resp_json = await resp.json()
+        # {"notifications":{"4":0,"5":0,"6":0,"8":0,"9":0,"1":0,"2":0,"3":0,"10":0,"11":0}}
+        # TODO decode what this means, check js.

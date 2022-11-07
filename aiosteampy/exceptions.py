@@ -1,14 +1,25 @@
-class InvalidCredentials(Exception):
-    pass
+from typing import TypeAlias
+
+_json_types: TypeAlias = dict[str, ...] | list | str
+
+
+class _BaseExc(Exception):
+    def __init__(self, msg=""):
+        self.msg = msg
+
+
+class ApiError(_BaseExc):
+    """Raises when there is a problem with calling steam web/api methods (mostly due to `success` field),
+    exclude response statuses."""
+
+    def __init__(self, msg: str, resp: _json_types = None):
+        super().__init__(msg)
+        self.resp = resp
 
 
 class CaptchaRequired(Exception):
-    pass
+    """Just when steam requires captcha, simple."""
 
 
-class LoginError(Exception):
-    pass
-
-
-class ApiError(Exception):
+class LoginError(ApiError):
     pass

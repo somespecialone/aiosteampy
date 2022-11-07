@@ -1,60 +1,37 @@
-from typing import overload
+from typing import TYPE_CHECKING
 
-from aiohttp import ClientSession, ClientResponseError
+from aiohttp import ClientResponseError
 
-from .models import STEAM_URL, Game, ItemDescription, ItemTag, ItemClass, InventoryItem
+from .models import STEAM_URL, Game, GameType, ItemDescription, ItemTag, ItemClass, InventoryItem
 from .exceptions import ApiError
+
+if TYPE_CHECKING:
+    from .client import SteamClient
 
 
 class InventoryMixin:
     __slots__ = ()
 
-    session: ClientSession
+    _inventories: dict[str, InventoryItem]  # hash(str((app_id:int, context_id:int)))
+    # TODO maybe I need container class inventory, maybe I don't need this states at all.
 
-    username: str
-    steam_id: int
-    trade_token: str
+    def __init__(self, *args, **kwargs):
+        super().__init__(*args, **kwargs)
+        self._inventories = {}
 
-    _password: str
-    _shared_secret: str
-    _identity_secret: str
-    _api_key: str
+    def get_inventory(self: "SteamClient", game: GameType, *, count=5000):
+        return self.get_user_inventory(self.steam_id, game, count=count)
 
-    @overload
-    async def get_inventory(self, game: Game, *, count=...) -> tuple[InventoryItem, ...]:
-        ...
-
-    @overload
-    async def get_inventory(self, app_id: int, context_id: int, *, count=...) -> tuple[InventoryItem, ...]:
-        ...
-
-    def get_inventory(self, game=None, context_id=None, *, count=5000):
-        app_id = game
-        if type(game) is Game:
-            app_id = game.app_id
-            context_id = game.context_id
-        return self.get_user_inventory(self.steam_id, app_id, context_id, count=count)
-
-    @overload
-    async def get_user_inventory(self, steam_id: int, game: Game, *, count=...) -> tuple[InventoryItem, ...]:
-        ...
-
-    @overload
     async def get_user_inventory(
-        self, steam_id: int, app_id: int, context_id: int, *, count=...
+        self: "SteamClient", steam_id: int, game: GameType, *, count=5000
     ) -> tuple[InventoryItem, ...]:
-        ...
-
-    async def get_user_inventory(self, steam_id, game=None, context_id=None, *, count=5000):
-        app_id = game
-        if type(game) is Game:
-            app_id = game.app_id
-            context_id = game.context_id
-
         inv_url = STEAM_URL.COMMUNITY / f"inventory/{steam_id}/"
-        url = (inv_url / f"{app_id}/{context_id}").with_query({"l": "english", "count": count})
         try:
-            resp = await self.session.get(url, headers={"Referer": str(inv_url)})
+            resp = await self.session.get(
+                inv_url / f"{game[0]}/{game[1]}",
+                params={"l": "english", "count": count},
+                headers={"Referer": str(inv_url)},
+            )
         except ClientResponseError as e:
             if e.status == 403:
                 raise ApiError("User inventory is private.")
@@ -63,7 +40,7 @@ class InventoryMixin:
 
         resp_json: dict[str, list[dict] | int] = await resp.json()
         if not resp_json.get("success"):
-            raise ApiError(f"Can't fetch inventory. Resp: [{resp_json}]")
+            raise ApiError(f"Can't fetch inventory.", resp_json)
 
         return self._parse_items(resp_json, steam_id)
 
@@ -73,11 +50,20 @@ class InventoryMixin:
             if "Inspect" in action["name"]:
                 return int(action["link"].split("%D")[1])
 
+    @staticmethod
+    def _find_game(description_data: dict[str, int], assets: list[dict[str, int | str]]) -> GameType:
+        try:
+            return Game(description_data["appid"])
+        except ValueError:
+            for asset in assets:
+                if asset["classid"] == description_data["classid"]:
+                    return asset["appid"], int(asset["contextid"])
+
     @classmethod
     def _parse_items(cls, data: dict[str, list[dict]], steam_id: int) -> tuple[InventoryItem, ...]:
         classes_map: dict[str, ItemClass] = {
             d_data["classid"]: ItemClass(
-                game=Game(d_data["appid"]),
+                game=cls._find_game(d_data, data["assets"]),
                 name=d_data["name"],
                 name_color=d_data["name_color"],
                 market_name=d_data["market_name"],
@@ -92,7 +78,7 @@ class InventoryMixin:
                 market_buy_country_restriction=d_data.get("market_buy_country_restriction"),
                 market_fee_app=d_data.get("market_fee_app"),
                 market_marketable_restriction=d_data.get("market_marketable_restriction"),
-                d_id=cls._find_d_id(d_data["actions"]),
+                d_id=cls._find_d_id(d_data["actions"]) if "actions" in d_data else None,
                 tags=tuple(
                     ItemTag(
                         category=t_data["category"],
@@ -109,7 +95,7 @@ class InventoryMixin:
                         color=de_data.get("color"),
                     )
                     for de_data in d_data["descriptions"]
-                    if de_data["value"]
+                    if de_data["value"] != " "  # ha, surprise!
                 ),
             )
             for d_data in data["descriptions"]

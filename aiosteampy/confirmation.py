@@ -1,5 +1,7 @@
-from typing import TYPE_CHECKING
 import enum
+from typing import TYPE_CHECKING, Iterable
+from json import loads
+from re import compile
 
 from bs4 import BeautifulSoup
 
@@ -12,6 +14,8 @@ if TYPE_CHECKING:
 INCORRECT_SG_CODES_CHECK = "Steam Guard Mobile Authenticator is providing incorrect Steam Guard codes."
 CONF_URL = STEAM_URL.COMMUNITY / "mobileconf"
 HTML_PARSER = "html.parser"
+
+ITEM_INFO_RE = compile(r"'confiteminfo', (?P<item_info>.+), UserYou")
 
 
 class Tag(enum.Enum):
@@ -34,15 +38,9 @@ class ConfirmationMixin:
     def confirmations(self) -> tuple[Confirmation, ...]:
         return tuple(self._confirmations.values())
 
-    async def send_trade_allow_request(self, trade_offer_id: str) -> dict:
-        confirmations = await self._fetch_confirmations()
-        # TODO find how to determine which confirmation belongs to which order
-        confirmation = await self._select_trade_offer_confirmation(confirmations, trade_offer_id)
-        return await self._send_confirmation(confirmation)
-
     async def confirm_sell_listing(self, asset_id: int) -> dict:
         confs = await self._fetch_confirmations()
-        confirmation = await self._select_sell_listing_confirmation(confs, asset_id)
+        confirmation = await self._select_sell_listing_confirmation(confs.values(), asset_id)
         return await self._send_confirmation(confirmation)
 
     async def _send_confirmation(self: "SteamClient", confirmation: Confirmation) -> dict:
@@ -74,15 +72,8 @@ class ConfirmationMixin:
                     int(conf_data["data-key"]),
                     trade_id,
                 )
-                pass
 
         return self._confirmations
-
-    async def _fetch_confirmation_details_page(self: "SteamClient", confirmation: Confirmation) -> str:
-        params = await self._create_confirmation_query_params("details" + confirmation.id)
-        resp = await self.session.get(CONF_URL / f"details/{confirmation.id}", params=params)
-        resp_json = await resp.json()
-        return resp_json["html"]
 
     async def _create_confirmation_query_params(self: "SteamClient", tag: str) -> dict[str, ...]:
         conf_key, ts = await self._gen_confirmation_key(tag=tag)
@@ -95,34 +86,18 @@ class ConfirmationMixin:
             "tag": tag,
         }
 
-    async def _select_trade_offer_confirmation(
-        self, confirmations: list[Confirmation], trade_offer_id: str
-    ) -> Confirmation:
-        for confirmation in confirmations:
-            confirmation_details_page = await self._fetch_confirmation_details_page(confirmation)
-            confirmation_id = self._get_confirmation_trade_offer_id(confirmation_details_page)
-            if confirmation_id == trade_offer_id:
-                return confirmation
-        # raise ConfirmationExpected
-
-    async def _select_sell_listing_confirmation(self, confirmations: list[Confirmation], asset_id: int) -> Confirmation:
-        for confirmation in confirmations:
-            confirmation_details_page = await self._fetch_confirmation_details_page(confirmation)
-            confirmation_id = self._get_confirmation_sell_listing_id(confirmation_details_page)
+    async def _select_sell_listing_confirmation(self, confs: Iterable[Confirmation], asset_id: int) -> Confirmation:
+        for conf in confs:
+            await self._update_confirmation(conf)
+            confirmation_id = 0
+            # actually, asset id is not enough to guarantee that this is needed one item
             if confirmation_id == str(asset_id):
-                return confirmation
+                return conf
         # raise ConfirmationExpected
 
-    @staticmethod
-    def _get_confirmation_sell_listing_id(confirmation_details_page: str) -> str:
-        soup = BeautifulSoup(confirmation_details_page, "")
-        scr_raw = soup.select("script")[2].string.strip()
-        scr_raw = scr_raw[scr_raw.index("'confiteminfo', ") + 16 :]
-        scr_raw = scr_raw[: scr_raw.index(", UserYou")].replace("\n", "")
-        # return json.loads(scr_raw)["id"]
-
-    @staticmethod
-    def _get_confirmation_trade_offer_id(confirmation_details_page: str) -> str:
-        soup = BeautifulSoup(confirmation_details_page, "")
-        full_offer_id = soup.select(".tradeoffer")[0]["id"]
-        return full_offer_id.split("_")[1]
+    async def _update_confirmation(self: "SteamClient", conf: Confirmation):
+        params = await self._create_confirmation_query_params(conf.tag)
+        resp = await self.session.get(CONF_URL / f"details/{conf.id}", params=params)
+        resp_json = await resp.json()
+        text = resp_json["html"]
+        data: dict[str, ...] = loads(ITEM_INFO_RE.search(text)["item_info"])

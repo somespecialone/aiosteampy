@@ -110,17 +110,23 @@ def async_throttle(seconds: float, *, arg_index: int = None, arg_name: str = Non
     :param arg_index: index of related arg in *args tuple
     :param arg_name: keyname of related arg in **kwargs
     """
+    # mega optimization, prevent arg checks in wrapped func call
+    # I know about PEP8, but this way is much shorter and readable
+    if arg_index is None and arg_name is None:
+        get_key = lambda _, __: None
+    elif arg_index:
+        get_key = lambda a, _: a[arg_index]
+    else:
+        get_key = lambda _, k: k[arg_name]
+
+    ts_map: dict[..., float] = {}
 
     def decorator(f: Callable[..., Coroutine]):
-        ts_map: dict[..., float] = {}
-        # TODO maybe asyncio.lock is better and more accurate solution
-
         @wraps(f)
         async def wrapper(*args, **kwargs):
-            key = args[arg_index] if arg_index is not None else kwargs[arg_name]
-            prev_ts = ts_map[key] if key in ts_map else 0
+            key = get_key(args, kwargs)
             ts = time_time()
-            diff = ts - prev_ts
+            diff = ts - ts_map.get(key, 0)
             if diff < seconds:
                 await asyncio.sleep(diff + 0.01)  # +10ms to ensure that second passed since last call
                 ts_map[key] = time_time()

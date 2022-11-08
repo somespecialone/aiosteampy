@@ -21,7 +21,7 @@ class SteamGuardMixin:
         return gen_two_factor_code(self._shared_secret)
 
     @property
-    def device_id(self: "SteamClient") -> str | None:
+    def device_id(self) -> str | None:
         return self._device_id
 
     @async_throttle(1, arg_name="tag")

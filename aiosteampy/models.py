@@ -2,7 +2,6 @@ from enum import Enum
 from dataclasses import dataclass, field
 from typing import Literal, TypeAlias
 
-
 from yarl import URL
 
 
@@ -55,11 +54,11 @@ GameType: TypeAlias = Game | tuple[int, int]
 class Currency(Enum):
     # https://partner.steamgames.com/doc/store/pricing/currencies
 
-    USD = 1, "$"  # UnitedStates Dollar
-    GBP = 2, "£"  # United Kingdom Pound
-    EURO = 3, "€"  # European Union Euro
+    USD = 1  # UnitedStates Dollar
+    GBP = 2  # United Kingdom Pound
+    EURO = 3  # European Union Euro
     CHF = 4  # Swiss Francs
-    RUB = 5, "pуб"  # Russian Rouble
+    RUB = 5  # Russian Rouble
     PLN = 6  # Polish Złoty
     BRL = 7  # Brazilian Reals
     JPY = 8  # Japanese Yen
@@ -72,7 +71,7 @@ class Currency(Enum):
     VND = 15  # Vietnamese Dong
     KRW = 16  # South KoreanWon
     TRY = 17  # Turkish Lira
-    UAH = 18, "₴"  # Ukrainian Hryvnia
+    UAH = 18  # Ukrainian Hryvnia
     MXN = 19  # Mexican Peso
     CAD = 20  # Canadian Dollars
     AUD = 21  # Australian Dollars
@@ -102,27 +101,6 @@ class Currency(Enum):
     # DKK = 45  # Danish Krone
     # HUF = 46  # Hungarian Forint
     # RON = 47  # Romanian Leu
-
-    _symbol_map: dict[str, "Currency"]
-
-    def __new__(cls, *args, **kwargs):
-        obj = object.__new__(cls)
-        obj._value_ = args[0]
-        return obj
-
-    def __init__(self, _, symbol: str = None):
-        self._symbol_ = symbol
-
-    @property
-    def symbol(self) -> str | None:
-        return self._symbol_
-
-    @classmethod
-    def by_symbol(cls, abbr: str) -> "Currency | None":
-        return cls._symbol_map.get(abbr)
-
-
-Currency._symbol_map = {cur._symbol_: cur for cur in Currency.__members__.values() if cur._symbol_}
 
 
 class TradeOfferState(Enum):
@@ -157,6 +135,7 @@ class ItemTag:
 
 @dataclass(eq=False, slots=True)
 class ItemClass:
+    id: int  # classid
     game: GameType
 
     name: str
@@ -190,6 +169,9 @@ class ItemClass:
     def icon_large_url(self) -> URL | None:
         return (STEAM_URL.STATIC / f"economy/image/{self.icon_large}/330x192") if self.icon_large else None
 
+    def __eq__(self, other: "ItemClass"):
+        return (self.id == other.id) and (self.game[0] == other.game[0]) and (self.game[1] == other.game[1])
+
 
 @dataclass(eq=False, slots=True)
 class InventoryItem:
@@ -206,6 +188,9 @@ class InventoryItem:
             url = STEAM_URL.INSPECT / f"+csgo_econ_action_preview S{self.owner_id}A{self.asset_id}D{self.class_.d_id}"
             self.inspect_link = url
 
+    def __eq__(self, other: "InventoryItem"):
+        return (self.asset_id == other.asset_id) and (self.class_ == other.class_)
+
 
 # https://github.com/Gobot1234/steam.py/blob/afaa75047ca124dcd226be14c3df28e4cd4dc899/steam/guard.py#L93
 @dataclass(eq=False, slots=True)
@@ -213,4 +198,24 @@ class Confirmation:
     id: int
     data_conf_id: int
     data_key: int
-    trade_id: int
+    trade_id: int  # TODO check if this related to tradeoffer id
+    listing_id: int | None = None  # related sell listing id
+
+    # TODO maybe I need order entity and relationship between confirmation and order
+
+    @property
+    def tag(self) -> str:
+        return f"details{self.data_conf_id}"
+
+
+@dataclass(eq=False, slots=True)
+class Notifications:
+    tradeoffers: int = 0  # 1
+    game: int = 0  # 2
+    moderatormessage: int = 0  # 3 ?
+    comment: int = 0  # 4
+    items: int = 0  # 5
+    invites: int = 0  # 6
+    gifts: int = 0  # 8
+    offlinemessages: int = 0  # 9 ?
+    helprequestreply: int = 0  # 10 ?

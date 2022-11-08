@@ -12,13 +12,6 @@ if TYPE_CHECKING:
 class InventoryMixin:
     __slots__ = ()
 
-    _inventories: dict[str, InventoryItem]  # hash(str((app_id:int, context_id:int)))
-    # TODO maybe I need container class inventory, maybe I don't need this states at all.
-
-    def __init__(self, *args, **kwargs):
-        super().__init__(*args, **kwargs)
-        self._inventories = {}
-
     def get_inventory(self: "SteamClient", game: GameType, *, count=5000):
         return self.get_user_inventory(self.steam_id, game, count=count)
 
@@ -30,7 +23,7 @@ class InventoryMixin:
             resp = await self.session.get(
                 inv_url / f"{game[0]}/{game[1]}",
                 params={"l": "english", "count": count},
-                headers={"Referer": str(inv_url)},
+                headers={"Referer": inv_url.human_repr()},
             )
         except ClientResponseError as e:
             if e.status == 403:
@@ -63,6 +56,7 @@ class InventoryMixin:
     def _parse_items(cls, data: dict[str, list[dict]], steam_id: int) -> tuple[InventoryItem, ...]:
         classes_map: dict[str, ItemClass] = {
             d_data["classid"]: ItemClass(
+                id=int(d_data["classid"]),
                 game=cls._find_game(d_data, data["assets"]),
                 name=d_data["name"],
                 name_color=d_data["name_color"],

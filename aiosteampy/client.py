@@ -3,6 +3,7 @@ from http.cookies import SimpleCookie
 from re import compile
 from urllib.parse import quote
 from base64 import b64encode
+from json import loads
 
 from rsa import PublicKey, encrypt
 from aiohttp import ClientSession
@@ -13,16 +14,15 @@ from .confirmation import ConfirmationMixin
 from .inventory import InventoryMixin
 from .market import MarketMixin
 
-from .models import STEAM_URL, Currency
+from .models import STEAM_URL, Currency, Notifications
 from .exceptions import CaptchaRequired, LoginError, ApiError
 from .utils import get_cookie_value_from_session
 
 __all__ = ("SteamClient",)
 
-_WALLET_REGEX = compile(r"account/history/\">(?P<cur>\D)?(?P<balance>\d*[.,]?[\d-]*)\s?(?P<cur1>\W|\w+)?\.?</a")
-_API_KEY_REGEX = compile(r"<p>Key: (?P<api_key>[0-9A-F]+)</p>")
-_STEAM_ID_REGEX = compile(r"Steam ID: (?P<steam_id>\d+)</")
-_TRADE_TOKEN_REGEX = compile(r"\d+&token=(?P<token>.+)\" readonly")
+_API_KEY_RE = compile(r"<p>Key: (?P<api_key>[0-9A-F]+)</p>")
+_WALLET_INFO_RE = compile(r"g_rgWalletInfo = (?P<info>.+);")
+_TRADE_TOKEN_RE = compile(r"\d+&token=(?P<token>.+)\" readonly")
 
 _API_KEY_CHECK_STR = "<h2>Access Denied</h2>"
 _API_KEY_CHECK_STR1 = "You must have a validated email address to create a Steam Web API key"
@@ -43,21 +43,22 @@ class SteamClient(SteamGuardMixin, ConfirmationMixin, InventoryMixin, MarketMixi
         "trade_token",
         "_device_id",
         "_confirmations",
-        "_inventories",  # do I need states?
-        "_orders",
-        "_tradeoffers",
+        "_steam_fee",
+        "_publisher_fee",
     )
 
     def __init__(
         self,
         username: str,
         password: str,
-        steam_id: int = None,
+        steam_id: int,
         *,
         shared_secret: str,
         identity_secret: str,
         api_key: str = None,
         trade_token: str = None,
+        steam_fee=0.05,
+        publisher_fee=0.1,
         session: ClientSession = None,
     ):
         super().__init__()
@@ -73,24 +74,29 @@ class SteamClient(SteamGuardMixin, ConfirmationMixin, InventoryMixin, MarketMixi
         self._shared_secret = shared_secret
         self._identity_secret = identity_secret
         self._api_key = api_key
+        self._steam_fee = steam_fee
+        self._publisher_fee = publisher_fee
 
-        if steam_id:
-            self._device_id = self._gen_device_id()
+        self._device_id = self._gen_device_id()
 
     @property
     def is_logged(self) -> bool:
         return self._is_logged
 
     @property
-    def steam_id32(self) -> int | None:
-        return (self.steam_id & 0xFFFFFFFF) if self.steam_id else None
+    def steam_id32(self) -> int:
+        return self.steam_id & 0xFFFFFFFF
 
     @property
     def trade_url(self) -> URL | None:
-        if self.trade_token and self.steam_id:
+        if self.trade_token:
             return (STEAM_URL.COMMUNITY / "tradeoffer/new/").with_query(
                 {"partner": self.steam_id32, "token": self.trade_token}
             )
+
+    @property
+    def profile_url(self) -> URL:
+        return STEAM_URL.COMMUNITY / f"profiles/{self.steam_id}"
 
     @property
     def session_id(self) -> str | None:
@@ -101,33 +107,34 @@ class SteamClient(SteamGuardMixin, ConfirmationMixin, InventoryMixin, MarketMixi
             self._api_key = await self._fetch_api_key()
             not self._api_key and await self.register_new_api_key()
 
-        if not self.steam_id:
-            self.steam_id = await self._fetch_steamid()
-            self._device_id = self._gen_device_id()
-
         if not self.trade_token:
             self.trade_token = await self._fetch_trade_token()
+            not self.trade_token and await self.register_new_trade_url()
 
-    async def _fetch_steamid(self) -> int:
-        resp = await self.session.get(STEAM_URL.STORE / "account/store_transactions/")
-        resp_text = await resp.text()
-        return int(_STEAM_ID_REGEX.search(resp_text)["steam_id"])
+        # if not self._steam_fee or not self._publisher_fee:
+        #     wallet_info = await self._fetch_wallet_info()
+        #     self._steam_fee = float(wallet_info["wallet_fee_percent"])
+        #     self._publisher_fee = float(wallet_info["wallet_publisher_fee_percent_default"])
 
-    async def get_wallet_balance(self) -> tuple[float, Currency | None]:
+    async def get_wallet_balance(self) -> tuple[float, Currency]:
         """
-        Fetch wallet balance and currency(if possible).
-        :return: tuple of balance and currency
+        Fetch wallet balance and currency.
+        :return: tuple of balance and Currency
         """
-        resp = await self.session.get(STEAM_URL.STORE / "account/store_transactions/")
+        info = await self._fetch_wallet_info()
+        return int(info["wallet_balance"]) / 100, Currency(info["wallet_currency"])
+
+    async def _fetch_wallet_info(self) -> dict[str, str | int]:
+        resp = await self.session.get(self.profile_url / "inventory")
         resp_text = await resp.text()
-        search = _WALLET_REGEX.search(resp_text)
-        return float(search["balance"].replace(",", ".").replace("-", "0")), Currency.by_symbol(
-            search["cur"] or search["cur1"]
-        )
+        info: dict = loads(_WALLET_INFO_RE.search(resp_text)["info"])
+        if not info["success"]:
+            raise ApiError("Failed to fetch wallet info", info)
+        return info
 
     async def register_new_trade_url(self) -> URL:
         """
-        Register new trade url, set token to attr and return.
+        Register new trade url. Save token.
         :return: trade url
         """
         resp = await self.session.post(
@@ -143,7 +150,7 @@ class SteamClient(SteamGuardMixin, ConfirmationMixin, InventoryMixin, MarketMixi
         resp = await self.session.get(STEAM_URL.COMMUNITY / f"profiles/{self.steam_id}/tradeoffers/privacy")
         resp_text = await resp.text()
 
-        search = _TRADE_TOKEN_REGEX.search(resp_text)
+        search = _TRADE_TOKEN_RE.search(resp_text)
         return search["token"] if search else None
 
     async def _fetch_api_key(self) -> str | None:
@@ -154,12 +161,12 @@ class SteamClient(SteamGuardMixin, ConfirmationMixin, InventoryMixin, MarketMixi
         if _API_KEY_CHECK_STR in resp_text or _API_KEY_CHECK_STR1 in resp_text:
             raise ApiError(_API_KEY_CHECK_STR1)
 
-        search = _API_KEY_REGEX.search(resp_text)
+        search = _API_KEY_RE.search(resp_text)
         return search["api_key"] if search else None
 
     async def register_new_api_key(self, domain=STEAM_URL.COMMUNITY.host) -> str:
         """
-        Registers new api key, set it to attr and return.
+        Register new api key ,and save it.
         :param domain: On which domain api key will be registered. Default - steamcommunity
         :return: api key
         """
@@ -174,7 +181,7 @@ class SteamClient(SteamGuardMixin, ConfirmationMixin, InventoryMixin, MarketMixi
         resp = await self.session.post(STEAM_URL.COMMUNITY / "dev/registerkey", data=payload)
         resp_text = await resp.text()
 
-        self._api_key = _API_KEY_REGEX.search(resp_text)["api_key"]
+        self._api_key = _API_KEY_RE.search(resp_text)["api_key"]
         return self._api_key
 
     async def is_session_alive(self) -> bool:
@@ -251,9 +258,9 @@ class SteamClient(SteamGuardMixin, ConfirmationMixin, InventoryMixin, MarketMixi
         await self.session.post(STEAM_URL.STORE / "login/logout/", data={"sessionid": self.session_id})
         self._is_logged = False
 
-    async def get_notifications_count(self):
-        headers = {"Referer": str(STEAM_URL.COMMUNITY / f"profiles/{self.steam_id}")}
+    async def get_notifications_count(self) -> Notifications:
+        headers = {"Referer": self.profile_url.human_repr()}
         resp = await self.session.get(STEAM_URL.COMMUNITY / "actions/GetNotificationCounts", headers=headers)
         resp_json = await resp.json()
-        # {"notifications":{"4":0,"5":0,"6":0,"8":0,"9":0,"1":0,"2":0,"3":0,"10":0,"11":0}}
-        # TODO decode what this means, check js.
+        n = resp_json["notifications"]
+        return Notifications(n["1"], n["2"], n["3"], n["4"], n["5"], n["6"], n["8"], n["9"], n["10"])

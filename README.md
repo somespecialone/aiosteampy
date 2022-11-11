@@ -12,7 +12,7 @@
 [![black](https://img.shields.io/badge/code%20style-black-000000.svg)](https://github.com/psf/black)
 
 > ### Previously this library was a soft fork of [bukson/steampy](https://github.com/bukson/steampy) ⚠ and created only to provide asynchronous methods and proxies support.
-> ### Now it...
+> ### But now ...
 ---
 [![Stand With Ukraine](https://raw.githubusercontent.com/vshymanskyy/StandWithUkraine/main/banner-direct-single.svg)](https://stand-with-ukraine.pp.ua)
 ---
@@ -22,6 +22,7 @@
 - [**Installation**](#installation)
 - [**Proxy support**](#proxy-support)
 - [**Tests**](#tests)
+- [**Links**](#links)
 
 ---
 
@@ -55,19 +56,7 @@ like `aiohttp-socks` you can use [aiohttp-proxy](
 https://github.com/Skactor/aiohttp-proxy) instead.
 
 ```python
-import aiohttp
-from aiohttp_socks import ProxyConnector
 
-from aiosteampy.client import SteamClient as AsyncSteamClient
-
-connector = ProxyConnector.from_url('proxy_type://proxy_url_with_or_no_auth')
-session_with_proxy = aiohttp.ClientSession(connector=connector)
-
-# Finally, pass session object in AsyncSteamClient
-
-async_steam_client = AsyncSteamClient(..., session=session_with_proxy)
-async with AsyncSteamClient(..., session=session_with_proxy) as async_steam_client:
-    ...
 ```
 
 ## Tests
@@ -83,3 +72,9 @@ Create env variables listed in [tests/data](tests/data.py) and run `pytest` from
 ```shell
 pytest
 ```
+
+## Links:
+
+* [Revadike/InternalSteamWebAPI](https://github.com/Revadike/InternalSteamWebAPI)
+* [DoctorMcKay/node-steamcommunity](https://github.com/DoctorMcKay/node-steamcommunity)
+* [Gobot1234/steam.py](https://github.com/Gobot1234/steam.py)

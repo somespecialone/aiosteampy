@@ -6,15 +6,19 @@ from .utils import gen_two_factor_code, generate_confirmation_key, generate_devi
 if TYPE_CHECKING:
     from .client import SteamClient
 
+__all__ = ("SteamGuardMixin",)
+
 
 class SteamGuardMixin:
+    """
+    Mixin with Steam Guard related methods.
+    """
+
     __slots__ = ()
 
-    _device_id: str | None
-
     def __init__(self, *args, **kwargs):
+        self._device_id = self._gen_device_id()
         super().__init__(*args, **kwargs)
-        self._device_id = None
 
     @property
     def two_factor_code(self: "SteamClient") -> str:

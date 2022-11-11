@@ -5,7 +5,7 @@ from time import time as time_time
 from hmac import new as hmac_new
 from hashlib import sha1
 from functools import wraps
-from typing import Callable, Coroutine, overload
+from typing import Callable, overload, ParamSpec, TypeVar
 
 from bs4 import BeautifulSoup
 from aiohttp import ClientSession
@@ -19,6 +19,7 @@ __all__ = (
     "do_session_steam_auth",
     "get_cookie_value_from_session",
     "async_throttle",
+    "create_ident_code",
 )
 
 
@@ -61,10 +62,10 @@ async def do_session_steam_auth(session: ClientSession, auth_url: str | URL):
     """
     Request auth page, find specs of steam openid and log in through steam with passed session.
     """
-    resp = await session.get(auth_url)
-    text = await resp.text()
+    r = await session.get(auth_url)
+    rt = await r.text()
 
-    soup = BeautifulSoup(text, "html.parser")
+    soup = BeautifulSoup(rt, "html.parser")
     form = soup.find(id="openidForm")
     login_data = {
         "action": form.find(id="actionInput").attrs["value"],
@@ -84,6 +85,10 @@ def get_cookie_value_from_session(session: ClientSession, domain: str, field: st
         return session.cookie_jar._cookies[domain][field].value
 
 
+_P = ParamSpec("_P")
+_R = TypeVar("_R")
+
+
 @overload
 def async_throttle(seconds: float, *, arg_index: int):
     ...
@@ -99,19 +104,24 @@ def async_throttle(seconds: float):
     ...
 
 
-def async_throttle(seconds: float, *, arg_index: int = None, arg_name: str = None):
+def async_throttle(
+    seconds: float, *, arg_index: int = None, arg_name: str = None
+) -> Callable[[Callable[_P, _R]], Callable[_P, _R]]:
     """
-    Decorator, `await sleep` before call wrapped async func,
-    when related arg was equal (same hash value) to related arg passed in previous func call.
+    Prevents the decorated function from being called more than once per `seconds`.
+    Throttle (`await asyncio.sleep`) before call wrapped async func,
+    when related arg was equal (same hash value) to related arg passed in previous func call
+    if time between previous and current call lower than `seconds`.
     Related arg must be hashable (can be dict key).
     Wrapped func must be async (return Coroutine).
     Throttle every func call time if related arg has been not specified.
-    :param seconds: seconds to await
-    :param arg_index: index of related arg in *args tuple
-    :param arg_name: keyname of related arg in **kwargs
+
+    :param seconds: seconds during which call frequency has been limited.
+    :param arg_index: index of related arg in *args tuple.
+    :param arg_name: keyname of related arg in **kwargs.
     """
     # mega optimization, prevent arg checks in wrapped func call
-    # I know about PEP8, but this way is much shorter and readable
+    # I know about PEP8: E731, but this way is much shorter and readable
     if arg_index is None and arg_name is None:
         get_key = lambda _, __: None
     elif arg_index:
@@ -121,9 +131,9 @@ def async_throttle(seconds: float, *, arg_index: int = None, arg_name: str = Non
 
     ts_map: dict[..., float] = {}
 
-    def decorator(f: Callable[..., Coroutine]):
+    def decorator(f: Callable[_P, _R]) -> Callable[_P, _R]:
         @wraps(f)
-        async def wrapper(*args, **kwargs):
+        async def wrapper(*args: _P.args, **kwargs: _P.kwargs) -> _R:
             key = get_key(args, kwargs)
             ts = time_time()
             diff = ts - ts_map.get(key, 0)
@@ -138,3 +148,18 @@ def async_throttle(seconds: float, *, arg_index: int = None, arg_name: str = Non
         return wrapper
 
     return decorator
+
+
+def create_ident_code(asset_id: int | str, app_id: int | str, context_id: int | str) -> str:
+    """
+    Create unique ident code for item within whole Steam Economy.
+
+    https://github.com/DoctorMcKay/node-steamcommunity/wiki/CEconItem#id
+
+    :param asset_id: asset id of Steam Economy Item
+    :param app_id: app id of Steam Game
+    :param context_id: context id of Steam Game
+    :return: ident code
+    """
+
+    return f"{asset_id}_{app_id}_{context_id}"

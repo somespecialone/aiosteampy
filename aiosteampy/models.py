@@ -1,8 +1,11 @@
 from enum import Enum
 from dataclasses import dataclass, field
-from typing import Literal, TypeAlias
+from typing import Literal, TypeAlias, ClassVar
+from datetime import datetime
 
 from yarl import URL
+
+from .utils import create_ident_code
 
 
 class STEAM_URL:
@@ -16,22 +19,6 @@ class STEAM_URL:
 
 # https://stackoverflow.com/a/54732120/19419998
 class Game(Enum):
-    def __new__(cls, *args, **kwargs):
-        obj = object.__new__(cls)
-        obj._value_ = args[0]
-        return obj
-
-    def __init__(self, _, context_id):
-        self._context_id_ = context_id
-
-    @property
-    def context_id(self) -> int:
-        return self._context_id_
-
-    @property
-    def app_id(self) -> int:
-        return self._value_
-
     CSGO = 730, 2
     DOTA2 = 570, 2
     H1Z1 = 433850, 2
@@ -41,12 +28,37 @@ class Game(Enum):
 
     STEAM = 753, 6  # not actually a game :)
 
-    def __getitem__(self, item: int) -> int:
-        return self._value_ if item == 0 else self._context_id_
+    _steam_id_map: ClassVar[dict[int, "Game"]]
+
+    def __new__(cls, *args, **kwargs):
+        obj = object.__new__(cls)
+        obj._value_ = args[0]
+        return obj
+
+    def __init__(self, _, context_id):
+        self._context_id_ = context_id
+        self._args_tuple_ = (self._value_, self._context_id_)
+
+    @property
+    def context_id(self) -> int:
+        return self._context_id_
+
+    @property
+    def app_id(self) -> int:
+        return self._value_
+
+    @classmethod
+    def by_steam_id(cls, steam_id: int) -> "Game | None":
+        return cls._steam_id_map.get(steam_id)
+
+    def __getitem__(self, index: int) -> int:
+        return self._args_tuple_[index]
 
     def __iter__(self):  # for unpacking
-        return (v for v in (self._value_, self._context_id_))
+        return iter(self._args_tuple_)
 
+
+Game._steam_id_map = {g.value: g for g in Game.__members__.values()}
 
 GameType: TypeAlias = Game | tuple[int, int]
 
@@ -118,10 +130,16 @@ class TradeOfferState(Enum):
 
 
 @dataclass(eq=False, slots=True)
+class ItemAction:
+    link: str
+    name: str
+
+
+@dataclass(eq=False, slots=True)
 class ItemDescription:
     value: str
     type: Literal["html"] = "html"  # just because
-    color: str | None = None
+    color: str | None = None  # hexadecimal
 
 
 @dataclass(eq=False, slots=True)
@@ -130,25 +148,34 @@ class ItemTag:
     internal_name: str
     localized_category_name: str
     localized_tag_name: str
-    color: str | None = None
+    color: str | None = None  # hexadecimal
 
 
 @dataclass(eq=False, slots=True)
 class ItemClass:
     id: int  # classid
+    instance_id: int
     game: GameType
 
     name: str
-    name_color: str
     market_name: str
     market_hash_name: str
+
     type: str | None
+
+    name_color: str | None  # hexadecimal
+    background_color: str | None
 
     icon: str
     icon_large: str | None
 
+    actions: tuple[ItemAction, ...]
+    market_actions: tuple[ItemAction, ...]
+    owner_actions: tuple[ItemAction, ...]
     tags: tuple[ItemTag, ...]
     descriptions: tuple[ItemDescription, ...]
+
+    fraud_warnings: tuple[str]
 
     commodity: bool  # ?
     tradable: bool
@@ -159,7 +186,20 @@ class ItemClass:
     market_marketable_restriction: int | None = None
 
     # optional csgo attrs
-    d_id: int | None = None
+    d_id: int | None = field(init=False, default=None)
+
+    def __post_init__(self):
+        self.actions and self._set_d_id()
+
+    def _set_d_id(self):
+        for action in self.actions:
+            if "Inspect" in action.name:
+                self.d_id = int(action.link.split("%D")[1])
+                break
+
+    @property
+    def class_id(self) -> int:
+        return self.id
 
     @property
     def icon_url(self) -> URL:
@@ -172,50 +212,152 @@ class ItemClass:
     def __eq__(self, other: "ItemClass"):
         return (self.id == other.id) and (self.game[0] == other.game[0]) and (self.game[1] == other.game[1])
 
+    def __hash__(self):
+        return self.id
+
 
 @dataclass(eq=False, slots=True)
-class InventoryItem:
-    asset_id: int
-    instance_id: int
-    class_: ItemClass
+class EconItem:
+    """
+    Represents Steam economy item (inventories).
+    """
 
+    id: int  # The item's unique ID within its app+context.
     owner_id: int
 
-    inspect_link: URL | None = field(init=False, default=None)  # optimization 🚀
+    class_: ItemClass
+
+    amount: int
+
+    inspect_link: str | None = field(init=False, default=None)  # optimization 🚀
+    ident_code: str = field(init=False, default=None)
 
     def __post_init__(self):
-        if self.class_.d_id:
-            url = STEAM_URL.INSPECT / f"+csgo_econ_action_preview S{self.owner_id}A{self.asset_id}D{self.class_.d_id}"
-            self.inspect_link = url
+        self._set_ident_code()
+        self.class_.d_id and self._set_inspect_url()
 
-    def __eq__(self, other: "InventoryItem"):
-        return (self.asset_id == other.asset_id) and (self.class_ == other.class_)
+    def _set_inspect_url(self):
+        url = STEAM_URL.INSPECT / f"+csgo_econ_action_preview S{self.owner_id}A{self.id}D{self.class_.d_id}"
+        self.inspect_link = url.human_repr()
+
+    def _set_ident_code(self):
+        self.ident_code = create_ident_code(self.id, *self.class_.game)
+
+    @property
+    def asset_id(self) -> int:
+        return self.id
+
+    def __eq__(self, other: "EconItem"):
+        return (self.id == other.id) and (self.class_ == other.class_)
+
+    def __hash__(self):
+        return hash(self.ident_code)
 
 
-# https://github.com/Gobot1234/steam.py/blob/afaa75047ca124dcd226be14c3df28e4cd4dc899/steam/guard.py#L93
+# https://github.com/DoctorMcKay/node-steamcommunity/blob/master/resources/EConfirmationType.js
+class ConfirmationType(Enum):
+    UNKNOWN = 1
+    TRADE = 2
+    LISTING = 3
+
+    @classmethod
+    def get(cls, v: int) -> "ConfirmationType":
+        try:
+            return cls(v)
+        except ValueError:
+            return cls.UNKNOWN
+
+
+# https://github.com/DoctorMcKay/node-steamcommunity/wiki/CConfirmation
 @dataclass(eq=False, slots=True)
 class Confirmation:
     id: int
-    data_conf_id: int
-    data_key: int
-    trade_id: int  # TODO check if this related to tradeoffer id
-    listing_id: int | None = None  # related sell listing id
+    nonce: str  # conf key
+    creator_id: int  # trade/listing id
+    creation_time: datetime
 
-    # TODO maybe I need order entity and relationship between confirmation and order
+    type: ConfirmationType
+
+    icon: str
+    multi: bool  # ?
+    headline: str
+    summary: str
+    warn: str | None  # ?
+
+    _asset_ident_code: str | None = None  # only to map confirmation to sell listing
 
     @property
-    def tag(self) -> str:
-        return f"details{self.data_conf_id}"
+    def details_tag(self) -> str:
+        return f"details{self.id}"
 
 
 @dataclass(eq=False, slots=True)
 class Notifications:
-    tradeoffers: int = 0  # 1
-    game: int = 0  # 2
-    moderatormessage: int = 0  # 3 ?
-    comment: int = 0  # 4
+    trades: int = 0  # 1
+    game_turns: int = 0  # 2
+    moderator_messages: int = 0  # 3
+    comments: int = 0  # 4
     items: int = 0  # 5
     invites: int = 0  # 6
+    # 7 missing
     gifts: int = 0  # 8
-    offlinemessages: int = 0  # 9 ?
-    helprequestreply: int = 0  # 10 ?
+    chats: int = 0  # 9
+    help_request_replies: int = 0  # 10
+    account_alerts: int = 0  # 11
+
+
+class MarketListingStatus(Enum):
+    NEED_CONFIRMATION = 17
+    ACTIVE = 1
+
+
+@dataclass(eq=False, slots=True)
+class SellOrderItem(EconItem):
+    # presented only on active listing
+
+    market_id: int | None = None  # listing id
+    unowned_id: int | None = None
+    original_amount: int | None = None
+    unowned_context_id: int | None = None
+
+    def _set_inspect_url(self):
+        url = STEAM_URL.INSPECT / f"+csgo_econ_action_preview M{self.market_id}A{self.id}D{self.class_.d_id}"
+        self.inspect_link = url.human_repr()
+
+
+@dataclass(eq=False, slots=True)
+class BaseOrder:
+    id: int  # listing/buy order id
+
+    price: float
+
+    def __hash__(self):
+        return self.id
+
+
+@dataclass(eq=False, slots=True)
+class MarketListing(BaseOrder):
+    lister_steam_id: int
+    time_created: datetime
+
+    item: SellOrderItem
+
+    status: MarketListingStatus
+    active: bool
+
+    # fields that can be useful
+    item_expired: int
+    cancel_reason: int
+    time_finish_hold: int
+
+    @property
+    def confirmed(self) -> bool:
+        return self.status is MarketListingStatus.ACTIVE
+
+
+@dataclass(eq=False, slots=True)
+class BuyOrder(BaseOrder):
+    item_class: ItemClass
+
+    quantity: int
+    quantity_remaining: int

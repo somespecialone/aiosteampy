@@ -1,6 +1,6 @@
 from typing import TypeAlias
 
-_json_types: TypeAlias = dict[str, ...] | list | str
+_json_types: TypeAlias = dict[str, ...] | list | str | int
 
 
 class _BaseExc(Exception):
@@ -22,4 +22,8 @@ class CaptchaRequired(Exception):
 
 
 class LoginError(ApiError):
-    pass
+    """When failed to do login."""
+
+
+class ConfirmationError(_BaseExc):
+    """Errors of all related to confirmation."""

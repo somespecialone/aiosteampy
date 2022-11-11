@@ -2,46 +2,49 @@ from typing import TYPE_CHECKING
 
 from aiohttp import ClientResponseError
 
-from .models import STEAM_URL, Game, GameType, ItemDescription, ItemTag, ItemClass, InventoryItem
+from .models import STEAM_URL, Game, GameType, ItemDescription, ItemTag, ItemClass, EconItem, ItemAction
 from .exceptions import ApiError
 
 if TYPE_CHECKING:
     from .client import SteamClient
 
+__all__ = ("InventoryMixin",)
 
+INV_COUNT = 2000  # steam new limit rule
+DEF_ITER = ()
+
+
+# TODO get inv from there https://steamcommunity.com/profiles/:steamid/inventory/json/:appid/:contextid
 class InventoryMixin:
+    """
+    Mixin with steam inventory related methods.
+    """
+
     __slots__ = ()
 
-    def get_inventory(self: "SteamClient", game: GameType, *, count=5000):
-        return self.get_user_inventory(self.steam_id, game, count=count)
+    def get_inventory(self: "SteamClient", game: GameType, *, page_size=INV_COUNT):
+        return self.get_user_inventory(self.steam_id, game, page_size=page_size)
 
     async def get_user_inventory(
-        self: "SteamClient", steam_id: int, game: GameType, *, count=5000
-    ) -> tuple[InventoryItem, ...]:
+        self: "SteamClient", steam_id: int, game: GameType, *, page_size=INV_COUNT
+    ) -> tuple[EconItem, ...]:
         inv_url = STEAM_URL.COMMUNITY / f"inventory/{steam_id}/"
+        params = {"l": "english", "count": page_size}
+        headers = {"Referer": inv_url.human_repr()}
         try:
-            resp = await self.session.get(
-                inv_url / f"{game[0]}/{game[1]}",
-                params={"l": "english", "count": count},
-                headers={"Referer": inv_url.human_repr()},
-            )
+            r = await self.session.get(inv_url / f"{game[0]}/{game[1]}", params=params, headers=headers)
         except ClientResponseError as e:
             if e.status == 403:
                 raise ApiError("User inventory is private.")
             else:
                 raise
 
-        resp_json: dict[str, list[dict] | int] = await resp.json()
-        if not resp_json.get("success"):
-            raise ApiError(f"Can't fetch inventory.", resp_json)
+        # TODO pagination
+        rj: dict[str, list[dict] | int] = await r.json()
+        if not rj.get("success"):
+            raise ApiError(f"Can't fetch inventory.", rj)
 
-        return self._parse_items(resp_json, steam_id)
-
-    @staticmethod
-    def _find_d_id(actions: list[dict[str, str]]) -> int | None:
-        for action in actions:
-            if "Inspect" in action["name"]:
-                return int(action["link"].split("%D")[1])
+        return self._parse_items(rj, steam_id)
 
     @staticmethod
     def _find_game(description_data: dict[str, int], assets: list[dict[str, int | str]]) -> GameType:
@@ -53,15 +56,17 @@ class InventoryMixin:
                     return asset["appid"], int(asset["contextid"])
 
     @classmethod
-    def _parse_items(cls, data: dict[str, list[dict]], steam_id: int) -> tuple[InventoryItem, ...]:
+    def _parse_items(cls, data: dict[str, list[dict]], steam_id: int) -> tuple[EconItem, ...]:
         classes_map: dict[str, ItemClass] = {
             d_data["classid"]: ItemClass(
                 id=int(d_data["classid"]),
+                instance_id=int(d_data["instanceid"]),
                 game=cls._find_game(d_data, data["assets"]),
                 name=d_data["name"],
-                name_color=d_data["name_color"],
                 market_name=d_data["market_name"],
                 market_hash_name=d_data["market_hash_name"],
+                name_color=d_data["name_color"] or None,
+                background_color=d_data.get("name_color") or None,
                 type=d_data["type"] or None,
                 icon=d_data["icon_url"],
                 icon_large=d_data.get("icon_url_large"),
@@ -72,7 +77,13 @@ class InventoryMixin:
                 market_buy_country_restriction=d_data.get("market_buy_country_restriction"),
                 market_fee_app=d_data.get("market_fee_app"),
                 market_marketable_restriction=d_data.get("market_marketable_restriction"),
-                d_id=cls._find_d_id(d_data["actions"]) if "actions" in d_data else None,
+                actions=tuple(ItemAction(a_data["link"], a_data["name"]) for a_data in d_data.get("actions", DEF_ITER)),
+                market_actions=tuple(
+                    ItemAction(a_data["link"], a_data["name"]) for a_data in d_data.get("market_actions", DEF_ITER)
+                ),
+                owner_actions=tuple(
+                    ItemAction(a_data["link"], a_data["name"]) for a_data in d_data.get("owner_actions", DEF_ITER)
+                ),
                 tags=tuple(
                     ItemTag(
                         category=t_data["category"],
@@ -81,26 +92,27 @@ class InventoryMixin:
                         localized_tag_name=t_data["localized_tag_name"],
                         color=t_data.get("color"),
                     )
-                    for t_data in d_data["tags"]
+                    for t_data in d_data.get("tags", DEF_ITER)
                 ),
                 descriptions=tuple(
                     ItemDescription(
                         value=de_data["value"],
                         color=de_data.get("color"),
                     )
-                    for de_data in d_data["descriptions"]
+                    for de_data in d_data.get("descriptions", DEF_ITER)
                     if de_data["value"] != " "  # ha, surprise!
                 ),
+                fraud_warnings=tuple(d_data.get("fraudwarnings", DEF_ITER)),
             )
             for d_data in data["descriptions"]
         }
 
         return tuple(
-            InventoryItem(
-                asset_id=int(asset_data["assetid"]),
-                instance_id=int(asset_data["instanceid"]),
+            EconItem(
+                id=int(asset_data["assetid"]),
                 owner_id=steam_id,
                 class_=classes_map[asset_data["classid"]],
+                amount=int(asset_data["amount"]),
             )
             for asset_data in data["assets"]
         )

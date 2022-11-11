@@ -27,3 +27,7 @@ class LoginError(ApiError):
 
 class ConfirmationError(_BaseExc):
     """Errors of all related to confirmation."""
+
+
+class SessionExpired(Exception):
+    """Raised when session is expired, and you need to do login"""

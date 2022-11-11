@@ -1,11 +1,10 @@
-from typing import TYPE_CHECKING, overload, Literal, Iterable
+from typing import TYPE_CHECKING, overload, Literal, Iterable, Callable, TypeAlias
 from json import loads
 from re import compile
 from datetime import datetime
 
-
 from .models import STEAM_URL, Confirmation, MarketListing, ConfirmationType, GameType, EconItem
-from .exceptions import ApiError, ConfirmationError
+from .exceptions import ApiError, ConfirmationError, SessionExpired
 from .utils import create_ident_code
 
 if TYPE_CHECKING:
@@ -16,12 +15,13 @@ __all__ = ("ConfirmationMixin", "CONF_URL")
 CONF_URL = STEAM_URL.COMMUNITY / "mobileconf"
 ITEM_INFO_RE = compile(r"'confiteminfo', (?P<item_info>.+), UserYou")
 CONF_OP_TAGS = Literal["allow", "cancel"]
+PREDICATE: TypeAlias = Callable[[Confirmation], bool]
 
 
 class ConfirmationMixin:
     """
     Mixin with confirmations related methods.
-    Depends on `SteamGuardMixin`
+    Depends on `SteamGuardMixin`.
     """
 
     __slots__ = ()
@@ -40,6 +40,7 @@ class ConfirmationMixin:
     @property
     def confirmations(self) -> tuple[Confirmation, ...]:
         """Cached confirmations."""
+
         return *self._listings_confs.values(), *self._trades_confs.values()
 
     @overload
@@ -66,52 +67,66 @@ class ConfirmationMixin:
         :param obj: `MarketListing` or `EconItem` that you listed or listing id or asset id
         :param game: `Game` or tuple with app and context id ints. Required when `obj` is asset id
         :return: listing id
+        :raises ConfirmationError:
+        :raises SessionExpired:
         """
+
+        update = False
         if isinstance(obj, MarketListing):
-            m = self._listings_confs_ident
-            key = create_ident_code(obj.item.id, *obj.item.class_.game)
+            m = self._listings_confs
+            key = obj.id
         elif isinstance(obj, EconItem):
             m = self._listings_confs_ident
             key = create_ident_code(obj.id, *obj.class_.game)
+            update = True
         else:  # int
-            if game:
+            if game:  # asset id & game
                 m = self._listings_confs_ident
                 key = create_ident_code(obj, *game)
+                update = True
             else:  # listing id
                 m = self._listings_confs
                 key = obj
 
         # below
-        conf = await self._get_or_fetch_confirmation(key, m)
+        conf = await self._get_or_fetch_confirmation(key, m, update)
         await self.allow_confirmation(conf)
 
         return conf.creator_id
 
-    async def _get_or_fetch_confirmation(self, key: str | int, mapping: dict[str | int, Confirmation]) -> Confirmation:
+    async def _get_or_fetch_confirmation(
+        self,
+        key: str | int,
+        mapping: dict[str | int, Confirmation],
+        update: bool,
+    ) -> Confirmation:
         conf = mapping.get(key)
-        not conf and await self.fetch_confirmations()
+        not conf and await self.fetch_confirmations(update_data=update)
         conf = mapping.get(key)
         if not conf:
             raise ConfirmationError(f"Can't find confirmation for {key} ident/trade/listing id.")
 
         return conf
 
-    async def allow_all_confirmations(self, *, predicate=lambda _: True) -> tuple[int, ...]:
+    async def allow_all_confirmations(
+        self,
+        *,
+        predicate: PREDICATE = None,
+    ) -> tuple[int, ...]:
         """
         Fetch all confirmations and allow its (which passes `predicate`) with single request to Steam.
 
         :param predicate: callable with single argument `Confirmation`, must return boolean
-        :return: tuple of allowed confirmations creator ids
+        :return: tuple of allowed confirmations creator ids (trade/listing id)
         """
 
-        confs = await self.fetch_confirmations(update_data=False)
-        confs = tuple(c for c in confs if predicate(c))
+        confs = await self.fetch_confirmations(predicate=predicate)
         confs and await self.allow_multiple_confirmations(confs)
-
         return tuple(c.creator_id for c in confs)
 
     def allow_confirmation(self, conf: Confirmation):
         """Shorthand for `send_confirmation(conf, 'allow')`."""
+
         return self.send_confirmation(conf, "allow")
 
     async def send_confirmation(self: "SteamClient", conf: Confirmation, tag: CONF_OP_TAGS) -> None:
@@ -124,7 +139,7 @@ class ConfirmationMixin:
 
         params = await self._create_confirmation_params(tag)
         params |= {"op": tag, "cid": conf.id, "ck": conf.nonce}
-        r = await self.session.get(CONF_URL / "ajaxop", params=params, headers={})
+        r = await self.session.get(CONF_URL / "ajaxop", params=params)
         rj = await r.json()
         self._remove_conf(conf)  # delete before raise error
 
@@ -135,6 +150,7 @@ class ConfirmationMixin:
 
     def allow_multiple_confirmations(self, confs: Iterable[Confirmation]):
         """Shorthand for `send_multiple_confirmations(conf, 'allow')`."""
+
         return self.send_multiple_confirmations(confs, "allow")
 
     async def send_multiple_confirmations(
@@ -171,12 +187,22 @@ class ConfirmationMixin:
             self._trades_confs[conf.creator_id] = conf
         # unknown type going away
 
-    async def fetch_confirmations(self: "SteamClient", *, update_data=True) -> tuple[Confirmation, ...]:
+    async def fetch_confirmations(
+        self: "SteamClient",
+        *,
+        predicate: PREDICATE = None,
+        update_data=False,
+    ) -> tuple[Confirmation, ...]:
         """
         Fetch confirmations, cache it and return.
 
+        :param predicate: callable with single argument `Confirmation`, must return boolean
+        :param update_data: fetch data and update confirmations.
+            Requires to bind newly created sell listing to confirmation.
+            You definitely don't need this
         :return: tuple of `Confirmation`
         """
+
         tag = "getlist"
         params = await self._create_confirmation_params(tag)
         r = await self.session.get(CONF_URL / tag, params=params)
@@ -198,10 +224,13 @@ class ConfirmationMixin:
                     summary=conf_data["summary"][0],
                     warn=conf_data["warn"],
                 )
+                # update_data and conf.type is ConfirmationType.LISTING and await self._update_confirmation(conf)
+                # update all confs before I check trade confs data
                 update_data and await self._update_confirmation(conf)
                 self._cache_conf(conf)
 
-        return self.confirmations
+        confs = self.confirmations
+        return tuple(c for c in confs if predicate(c)) if predicate else confs
 
     async def _create_confirmation_params(self: "SteamClient", tag: str) -> dict[str, ...]:
         conf_key, ts = await self._gen_confirmation_key(tag=tag)
@@ -215,14 +244,13 @@ class ConfirmationMixin:
         }
 
     async def _update_confirmation(self: "SteamClient", conf: Confirmation):
-        params = await self._create_confirmation_params(conf.details_tag)
+        params = await self._create_confirmation_params(f"details{conf.id}")
         r = await self.session.get(CONF_URL / f"details/{conf.id}", params=params)
         rj = await r.json()
         if not rj.get("success"):
             raise ApiError("Failed to fetch confirmation details.", conf.creator_id)
         text = rj["html"]
         data: dict[str, ...] = loads(ITEM_INFO_RE.search(text)["item_info"])
-        if conf.type is ConfirmationType.LISTING:
-            conf._asset_ident_code = create_ident_code(data["id"], data["appid"], data["contextid"])
+        conf._asset_ident_code = create_ident_code(data["id"], data["appid"], data["contextid"])
 
         # TODO check trade confs

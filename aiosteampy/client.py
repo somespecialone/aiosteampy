@@ -1,6 +1,7 @@
 from re import compile
 from urllib.parse import quote
 from json import loads
+from http.cookies import SimpleCookie
 
 from aiohttp import ClientSession
 from yarl import URL
@@ -24,9 +25,11 @@ TRADE_TOKEN_RE = compile(r"\d+&token=(?P<token>.+)\" readonly")
 
 API_KEY_CHECK_STR = "<h2>Access Denied</h2>"
 API_KEY_CHECK_STR1 = "You must have a validated email address to create a Steam Web API key"
+STEAM_LANG_COOKIE = "Steam_Language"
+DEF_LANG = "english"
 
 
-# TODO find a better way to type mixins
+# TODO find a better way to type mixins, and separate methods.
 class SteamClient(SteamGuardMixin, ConfirmationMixin, LoginMixin, InventoryMixin, MarketMixin):
     """
     Base class in hierarchy ...
@@ -62,6 +65,8 @@ class SteamClient(SteamGuardMixin, ConfirmationMixin, LoginMixin, InventoryMixin
         trade_token: str = None,
         steam_fee=0.05,
         publisher_fee=0.1,
+        lang=DEF_LANG,
+        tz_offset=0.0,
         session: ClientSession = None,
     ):
 
@@ -80,6 +85,8 @@ class SteamClient(SteamGuardMixin, ConfirmationMixin, LoginMixin, InventoryMixin
 
         super().__init__()
 
+        self._set_init_cookies(lang, tz_offset)
+
     @property
     def steam_id32(self) -> int:
         return self.steam_id & 0xFFFFFFFF
@@ -96,8 +103,29 @@ class SteamClient(SteamGuardMixin, ConfirmationMixin, LoginMixin, InventoryMixin
         return STEAM_URL.COMMUNITY / f"profiles/{self.steam_id}"
 
     @property
-    def session_id(self) -> str | None:
-        return get_cookie_value_from_session(self.session, STEAM_URL.HELP.host, "sessionid")
+    def language(self) -> str:
+        return get_cookie_value_from_session(self.session, STEAM_URL.STORE, STEAM_LANG_COOKIE) or DEF_LANG
+
+    def _set_init_cookies(self, lang: str, tz_offset: float):
+        urls = (STEAM_URL.COMMUNITY, STEAM_URL.STORE, STEAM_URL.HELP)
+        for url in urls:
+            c = SimpleCookie()
+            c[STEAM_LANG_COOKIE] = lang
+            c[STEAM_LANG_COOKIE]["path"] = "/"
+            c[STEAM_LANG_COOKIE]["domain"] = url.host
+            c[STEAM_LANG_COOKIE]["secure"] = True
+
+            self.session.cookie_jar.update_cookies(cookies=c, response_url=url)
+
+        c_key = "timezoneOffset"
+        for url in urls:
+            c = SimpleCookie()
+            c[c_key] = str(tz_offset).replace(".", ",")
+            c[c_key]["path"] = "/"
+            c[c_key]["domain"] = url.host
+            c[c_key]["SameSite"] = True
+
+            self.session.cookie_jar.update_cookies(cookies=c, response_url=url)
 
     async def _init_data(self):
         if not self._api_key:
@@ -115,23 +143,27 @@ class SteamClient(SteamGuardMixin, ConfirmationMixin, LoginMixin, InventoryMixin
             if not self._publisher_fee:
                 self._publisher_fee = float(wallet_info["wallet_publisher_fee_percent_default"])
 
+    async def _fetch_wallet_info(self) -> dict[str, str | int]:
+        r = await self.session.get(self.profile_url / "inventory", headers={"Referer": self.profile_url.human_repr()})
+        rt = await r.text()
+        info: dict = loads(WALLET_INFO_RE.search(rt)["info"])
+        if not info.get("success"):
+            raise ApiError("Failed to fetch wallet info", info)
+        return info
+
     async def get_wallet_balance(self) -> tuple[float, Currency]:
         """
         Fetch wallet balance and currency.
 
         :return: tuple of balance and `Currency`
         """
-        info = await self._fetch_wallet_info()
-        return int(info["wallet_balance"]) / 100, Currency(info["wallet_currency"])
 
-    async def _fetch_wallet_info(self) -> dict[str, str | int]:
-        headers = {"Referer": self.profile_url.human_repr()}
-        r = await self.session.get(self.profile_url / "inventory", headers=headers)
-        rt = await r.text()
-        info: dict = loads(WALLET_INFO_RE.search(rt)["info"])
-        if not info.get("success"):
-            raise ApiError("Failed to fetch wallet info", info)
-        return info
+        r = await self.session.get(STEAM_URL.STORE / "api/getfundwalletinfo")
+        rj = await r.json()
+        if not rj.get("success"):
+            raise ApiError("Failed to fetch wallet info", rj)
+
+        return int(rj["user_wallet"]["amount"]) / 100, Currency.by_name(rj["user_wallet"]["currency"])
 
     async def register_new_trade_url(self) -> URL:
         """
@@ -139,6 +171,7 @@ class SteamClient(SteamGuardMixin, ConfirmationMixin, LoginMixin, InventoryMixin
 
         :return: trade url
         """
+
         r = await self.session.post(
             self.profile_url / "tradeoffers/newtradeurl",
             data={"sessionid": self.session_id},
@@ -156,8 +189,6 @@ class SteamClient(SteamGuardMixin, ConfirmationMixin, LoginMixin, InventoryMixin
         return search["token"] if search else None
 
     async def _fetch_api_key(self) -> str | None:
-        # https://github.com/Gobot1234/steam.py/blob/main/steam/http.py#L208
-
         r = await self.session.get(STEAM_URL.COMMUNITY / "dev/apikey")
         rt = await r.text()
         if API_KEY_CHECK_STR in rt or API_KEY_CHECK_STR1 in rt:
@@ -173,7 +204,6 @@ class SteamClient(SteamGuardMixin, ConfirmationMixin, LoginMixin, InventoryMixin
         :param domain: On which domain api key will be registered. Default - `steamcommunity`
         :return: api key
         """
-        # https://github.com/Gobot1234/steam.py/blob/main/steam/http.py#L208
 
         data = {
             "domain": domain,
@@ -187,8 +217,15 @@ class SteamClient(SteamGuardMixin, ConfirmationMixin, LoginMixin, InventoryMixin
         self._api_key = API_KEY_RE.search(rt)["api_key"]
         return self._api_key
 
-    async def get_notifications_count(self) -> Notifications:
+    async def get_notifications(self) -> Notifications:
+        """Get notifications count."""
+
         headers = {"Referer": self.profile_url.human_repr()}
         r = await self.session.get(STEAM_URL.COMMUNITY / "actions/GetNotificationCounts", headers=headers)
         rj = await r.json()
         return Notifications(*(rj["notifications"][str(i)] for i in range(1, 12) if i != 7))
+
+    def reset_items_notifications(self):
+        """Fetching your inventory page, which resets new items notifications to 0."""
+
+        return self.session.get(self.profile_url / "inventory/")

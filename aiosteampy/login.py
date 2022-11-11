@@ -7,6 +7,7 @@ from rsa import PublicKey, encrypt
 
 from .exceptions import CaptchaRequired, LoginError, ApiError
 from .models import STEAM_URL
+from .utils import get_cookie_value_from_session
 
 if TYPE_CHECKING:
     from .client import SteamClient
@@ -34,28 +35,41 @@ class LoginMixin:
     def is_logged(self) -> bool:
         return self._is_logged
 
+    @property
+    def session_id(self: "SteamClient") -> str | None:
+        return get_cookie_value_from_session(self.session, STEAM_URL.HELP.host, "sessionid")
+
     async def is_session_alive(self: "SteamClient") -> bool:
         r = await self.session.get(STEAM_URL.COMMUNITY)
         rt = await r.text()
         return self.username.lower() in rt.lower()
 
     async def login(self: "SteamClient", *, init_data=True, rsa_retries=5):
+        """
+        Perform login.
+
+        :param init_data: fetch initial required data (api key, trade token)
+        :param rsa_retries: retries to fetch rsa
+        :raises ApiError: if failed to fetch rsa for `rsa_retries` times
+        :raises LoginError:
+        """
+
         data = await self._do_login(rsa_retries)
 
         # login redirects
         for url in data["transfer_urls"]:
             await self.session.post(url, data=data["transfer_parameters"])
 
-        cookie_key = "sessionid"
+        c_key = "sessionid"
         for url in (STEAM_URL.STORE, STEAM_URL.COMMUNITY):
-            cookie = SimpleCookie()
-            cookie[cookie_key] = self.session_id
-            cookie[cookie_key]["path"] = "/"
-            cookie[cookie_key]["domain"] = url.host
-            cookie[cookie_key]["secure"] = True
-            cookie[cookie_key]["SameSite"] = None
+            c = SimpleCookie()
+            c[c_key] = self.session_id
+            c[c_key]["path"] = "/"
+            c[c_key]["domain"] = url.host
+            c[c_key]["secure"] = True
+            c[c_key]["SameSite"] = None
 
-            self.session.cookie_jar.update_cookies(cookies=cookie, response_url=url)
+            self.session.cookie_jar.update_cookies(cookies=c, response_url=url)
 
         init_data and await self._init_data()
 

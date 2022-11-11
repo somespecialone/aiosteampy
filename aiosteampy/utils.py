@@ -25,8 +25,9 @@ __all__ = (
 
 def gen_two_factor_code(shared_secret: str, timestamp: int = None) -> str:
     """
-    Generate twofactor code
+    Generate twofactor (onetime) code.
     """
+
     if timestamp is None:
         timestamp = int(time_time())
     time_buffer = pack(">Q", timestamp // 30)  # pack as Big endian, uint64
@@ -62,6 +63,7 @@ async def do_session_steam_auth(session: ClientSession, auth_url: str | URL):
     """
     Request auth page, find specs of steam openid and log in through steam with passed session.
     """
+
     r = await session.get(auth_url)
     rt = await r.text()
 
@@ -81,6 +83,7 @@ def get_cookie_value_from_session(session: ClientSession, domain: str, field: st
     """
     This function exists only to hide annoying alert `unresolved _cookies attr reference` from main base code.
     """
+
     if field in session.cookie_jar._cookies[domain]:
         return session.cookie_jar._cookies[domain][field].value
 
@@ -120,6 +123,7 @@ def async_throttle(
     :param arg_index: index of related arg in *args tuple.
     :param arg_name: keyname of related arg in **kwargs.
     """
+
     # mega optimization, prevent arg checks in wrapped func call
     # I know about PEP8: E731, but this way is much shorter and readable
     if arg_index is None and arg_name is None:

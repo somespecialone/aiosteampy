@@ -114,6 +114,15 @@ class Currency(Enum):
     # HUF = 46  # Hungarian Forint
     # RON = 47  # Romanian Leu
 
+    _name_map: ClassVar[dict[str, "Currency"]]
+
+    @classmethod
+    def by_name(cls, name: str) -> "Currency":
+        return cls._name_map[name]
+
+
+Currency._name_map = {c.name: c for c in Currency.__members__.values()}
+
 
 class TradeOfferState(Enum):
     INVALID = 1
@@ -286,10 +295,6 @@ class Confirmation:
 
     _asset_ident_code: str | None = None  # only to map confirmation to sell listing
 
-    @property
-    def details_tag(self) -> str:
-        return f"details{self.id}"
-
 
 @dataclass(eq=False, slots=True)
 class Notifications:
@@ -351,6 +356,10 @@ class MarketListing(BaseOrder):
     time_finish_hold: int
 
     @property
+    def listing_id(self) -> int:
+        return self.id
+
+    @property
     def confirmed(self) -> bool:
         return self.status is MarketListingStatus.ACTIVE
 
@@ -361,3 +370,7 @@ class BuyOrder(BaseOrder):
 
     quantity: int
     quantity_remaining: int
+
+    @property
+    def buy_order_id(self) -> int:
+        return self.id

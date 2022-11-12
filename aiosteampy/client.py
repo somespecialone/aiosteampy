@@ -26,7 +26,6 @@ TRADE_TOKEN_RE = compile(r"\d+&token=(?P<token>.+)\" readonly")
 API_KEY_CHECK_STR = "<h2>Access Denied</h2>"
 API_KEY_CHECK_STR1 = "You must have a validated email address to create a Steam Web API key"
 STEAM_LANG_COOKIE = "Steam_Language"
-DEF_LANG = "english"
 
 
 # TODO find a better way to type mixins, and separate methods.
@@ -51,6 +50,7 @@ class SteamClient(SteamGuardMixin, ConfirmationMixin, LoginMixin, InventoryMixin
         "_trades_confs",
         "_steam_fee",
         "_publisher_fee",
+        "_wallet_currency",
     )
 
     def __init__(
@@ -63,9 +63,10 @@ class SteamClient(SteamGuardMixin, ConfirmationMixin, LoginMixin, InventoryMixin
         identity_secret: str,
         api_key: str = None,
         trade_token: str = None,
+        wallet_currency: Currency = None,
         steam_fee=0.05,
         publisher_fee=0.1,
-        lang=DEF_LANG,
+        lang="english",
         tz_offset=0.0,
         session: ClientSession = None,
     ):
@@ -82,6 +83,7 @@ class SteamClient(SteamGuardMixin, ConfirmationMixin, LoginMixin, InventoryMixin
         self._api_key = api_key
         self._steam_fee = steam_fee
         self._publisher_fee = publisher_fee
+        self._wallet_currency = wallet_currency
 
         super().__init__()
 
@@ -103,8 +105,12 @@ class SteamClient(SteamGuardMixin, ConfirmationMixin, LoginMixin, InventoryMixin
         return STEAM_URL.COMMUNITY / f"profiles/{self.steam_id}"
 
     @property
-    def language(self) -> str:
-        return get_cookie_value_from_session(self.session, STEAM_URL.STORE, STEAM_LANG_COOKIE) or DEF_LANG
+    def language(self) -> str | None:
+        return get_cookie_value_from_session(self.session, STEAM_URL.STORE, STEAM_LANG_COOKIE)
+
+    @property
+    def wallet_currency(self) -> Currency | None:
+        return self._wallet_currency
 
     def _set_init_cookies(self, lang: str, tz_offset: float):
         urls = (STEAM_URL.COMMUNITY, STEAM_URL.STORE, STEAM_URL.HELP)
@@ -136,24 +142,28 @@ class SteamClient(SteamGuardMixin, ConfirmationMixin, LoginMixin, InventoryMixin
             self.trade_token = await self._fetch_trade_token()
             not self.trade_token and await self.register_new_trade_url()
 
-        if not self._steam_fee or not self._publisher_fee:
+        if not self._steam_fee or not self._publisher_fee or not self._wallet_currency:
             wallet_info = await self._fetch_wallet_info()
             if not self._steam_fee:
                 self._steam_fee = float(wallet_info["wallet_fee_percent"])
             if not self._publisher_fee:
                 self._publisher_fee = float(wallet_info["wallet_publisher_fee_percent_default"])
+            if not self._wallet_currency:
+                self._wallet_currency = Currency(wallet_info["wallet_currency"])
 
     async def _fetch_wallet_info(self) -> dict[str, str | int]:
-        r = await self.session.get(self.profile_url / "inventory", headers={"Referer": self.profile_url.human_repr()})
+        # TODO fetching inventory reset new items notifs count
+        r = await self.session.get(self.profile_url / "inventory", headers={"Referer": str(self.profile_url)})
         rt = await r.text()
         info: dict = loads(WALLET_INFO_RE.search(rt)["info"])
         if not info.get("success"):
             raise ApiError("Failed to fetch wallet info", info)
+
         return info
 
     async def get_wallet_balance(self) -> tuple[float, Currency]:
         """
-        Fetch wallet balance and currency.
+        Fetch wallet balance and currency. Cache wallet currency.
 
         :return: tuple of balance and `Currency`
         """
@@ -163,7 +173,8 @@ class SteamClient(SteamGuardMixin, ConfirmationMixin, LoginMixin, InventoryMixin
         if not rj.get("success"):
             raise ApiError("Failed to fetch wallet info", rj)
 
-        return int(rj["user_wallet"]["amount"]) / 100, Currency.by_name(rj["user_wallet"]["currency"])
+        self._wallet_currency = Currency.by_name(rj["user_wallet"]["currency"])
+        return int(rj["user_wallet"]["amount"]) / 100, self._wallet_currency
 
     async def register_new_trade_url(self) -> URL:
         """
@@ -197,7 +208,7 @@ class SteamClient(SteamGuardMixin, ConfirmationMixin, LoginMixin, InventoryMixin
         search = API_KEY_RE.search(rt)
         return search["api_key"] if search else None
 
-    async def register_new_api_key(self, domain=STEAM_URL.COMMUNITY.human_repr()) -> str:
+    async def register_new_api_key(self, domain: str = str(STEAM_URL.COMMUNITY)) -> str:
         """
         Register new api key, cache it and return.
 
@@ -220,11 +231,12 @@ class SteamClient(SteamGuardMixin, ConfirmationMixin, LoginMixin, InventoryMixin
     async def get_notifications(self) -> Notifications:
         """Get notifications count."""
 
-        headers = {"Referer": self.profile_url.human_repr()}
+        headers = {"Referer": str(self.profile_url)}
         r = await self.session.get(STEAM_URL.COMMUNITY / "actions/GetNotificationCounts", headers=headers)
         rj = await r.json()
         return Notifications(*(rj["notifications"][str(i)] for i in range(1, 12) if i != 7))
 
+    # https://github.com/DoctorMcKay/node-steamcommunity/blob/851c14bd93008579e7a308ea8ecda873996baa1f/index.js#L405
     def reset_items_notifications(self):
         """Fetching your inventory page, which resets new items notifications to 0."""
 

@@ -154,16 +154,20 @@ def async_throttle(
     return decorator
 
 
-def create_ident_code(asset_id: int | str, app_id: int | str, context_id: int | str) -> str:
+def create_ident_code(obj_id: int | str, app_id: int | str, context_id: int | str = None) -> str:
     """
-    Create unique ident code for item within whole Steam Economy.
+    Create unique ident code for `EconItem` asset or item class (description) within whole Steam Economy.
 
-    https://github.com/DoctorMcKay/node-steamcommunity/wiki/CEconItem#id
+    https://dev.doctormckay.com/topic/332-identifying-steam-items/
 
-    :param asset_id: asset id of Steam Economy Item
+    :param obj_id: asset or class id of Steam Economy Item
     :param app_id: app id of Steam Game
-    :param context_id: context id of Steam Game
+    :param context_id: context id of Steam Game. Only for `EconItem`
     :return: ident code
     """
 
-    return f"{asset_id}_{app_id}_{context_id}"
+    code = f"{obj_id}_{app_id}"
+    if context_id is not None:
+        code += f"_{context_id}"
+
+    return code

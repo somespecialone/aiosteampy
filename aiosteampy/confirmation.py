@@ -249,8 +249,7 @@ class ConfirmationMixin:
         rj = await r.json()
         if not rj.get("success"):
             raise ApiError("Failed to fetch confirmation details.", conf.creator_id)
-        text = rj["html"]
-        data: dict[str, ...] = loads(ITEM_INFO_RE.search(text)["item_info"])
+        data: dict[str, ...] = loads(ITEM_INFO_RE.search(rj["html"])["item_info"])
         conf._asset_ident_code = create_ident_code(data["id"], data["appid"], data["contextid"])
 
         # TODO check trade confs

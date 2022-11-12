@@ -13,7 +13,6 @@ class STEAM_URL:
     COMMUNITY = URL("https://steamcommunity.com")
     STORE = URL("https://store.steampowered.com")
     HELP = URL("https://help.steampowered.com")
-    INSPECT = URL("steam://rungame/730/76561202255233023")
     STATIC = URL("https://community.akamai.steamstatic.com")
 
 
@@ -162,8 +161,14 @@ class ItemTag:
 
 @dataclass(eq=False, slots=True)
 class ItemClass:
+    """
+    `EconItem` description representation.
+    `ident_code` field is guaranteed unique within whole Steam Economy.
+    """
+
     id: int  # classid
     instance_id: int
+
     game: GameType
 
     name: str
@@ -194,29 +199,33 @@ class ItemClass:
     market_fee_app: int | None = None
     market_marketable_restriction: int | None = None
 
-    # optional csgo attrs
-    d_id: int | None = field(init=False, default=None)
+    # optimization 🚀
+    ident_code: str = field(init=False, default=None)
 
     def __post_init__(self):
-        self.actions and self._set_d_id()
+        self._set_ident_code()
 
-    def _set_d_id(self):
+    def _set_ident_code(self):
+        self.ident_code = create_ident_code(self.id, self.game[0])
+
+    @property
+    def d_id(self) -> int | None:
+        """Optional CSGO attr"""
         for action in self.actions:
             if "Inspect" in action.name:
-                self.d_id = int(action.link.split("%D")[1])
-                break
+                return int(action.link.split("%D")[1])
 
     @property
     def class_id(self) -> int:
         return self.id
 
     @property
-    def icon_url(self) -> URL:
-        return STEAM_URL.STATIC / f"economy/image/{self.icon}/96fx96f"
+    def icon_url(self) -> str:
+        return str(STEAM_URL.STATIC / f"economy/image/{self.icon}/96fx96f")
 
     @property
-    def icon_large_url(self) -> URL | None:
-        return (STEAM_URL.STATIC / f"economy/image/{self.icon_large}/330x192") if self.icon_large else None
+    def icon_large_url(self) -> str | None:
+        return str(STEAM_URL.STATIC / f"economy/image/{self.icon_large}/330x192") if self.icon_large else None
 
     def __eq__(self, other: "ItemClass"):
         return (self.id == other.id) and (self.game[0] == other.game[0]) and (self.game[1] == other.game[1])
@@ -229,6 +238,7 @@ class ItemClass:
 class EconItem:
     """
     Represents Steam economy item (inventories).
+    `ident_code` field is guaranteed unique within whole Steam Economy.
     """
 
     id: int  # The item's unique ID within its app+context.
@@ -238,19 +248,19 @@ class EconItem:
 
     amount: int
 
-    inspect_link: str | None = field(init=False, default=None)  # optimization 🚀
-    ident_code: str = field(init=False, default=None)
+    ident_code: str = field(init=False, default=None)  # optimization 🚀
 
     def __post_init__(self):
         self._set_ident_code()
-        self.class_.d_id and self._set_inspect_url()
-
-    def _set_inspect_url(self):
-        url = STEAM_URL.INSPECT / f"+csgo_econ_action_preview S{self.owner_id}A{self.id}D{self.class_.d_id}"
-        self.inspect_link = url.human_repr()
 
     def _set_ident_code(self):
         self.ident_code = create_ident_code(self.id, *self.class_.game)
+
+    @property
+    def inspect_link(self) -> str | None:
+        for action in self.class_.actions:
+            if "Inspect" in action.name:
+                return action.name.replace("%assetid%", str(self.id)).replace("%owner_steamid%", str(self.owner_id))
 
     @property
     def asset_id(self) -> int:
@@ -317,17 +327,18 @@ class MarketListingStatus(Enum):
 
 
 @dataclass(eq=False, slots=True)
-class SellOrderItem(EconItem):
+class MarketListingItem(EconItem):
     # presented only on active listing
+    market_id: int  # listing id
 
-    market_id: int | None = None  # listing id
-    unowned_id: int | None = None
-    original_amount: int | None = None
-    unowned_context_id: int | None = None
+    unowned_id: int | None
+    unowned_context_id: int | None
 
-    def _set_inspect_url(self):
-        url = STEAM_URL.INSPECT / f"+csgo_econ_action_preview M{self.market_id}A{self.id}D{self.class_.d_id}"
-        self.inspect_link = url.human_repr()
+    @property
+    def inspect_link(self) -> str | None:
+        for action in self.class_.market_actions:
+            if "Inspect" in action.name:
+                return action.name.replace("%assetid%", str(self.id)).replace("%listingid%", str(self.market_id))
 
 
 @dataclass(eq=False, slots=True)
@@ -335,6 +346,7 @@ class BaseOrder:
     id: int  # listing/buy order id
 
     price: float
+    currency: Currency
 
     def __hash__(self):
         return self.id
@@ -345,10 +357,10 @@ class MarketListing(BaseOrder):
     lister_steam_id: int
     time_created: datetime
 
-    item: SellOrderItem
+    item: MarketListingItem
 
     status: MarketListingStatus
-    active: bool
+    active: bool  # ?
 
     # fields that can be useful
     item_expired: int
@@ -358,10 +370,6 @@ class MarketListing(BaseOrder):
     @property
     def listing_id(self) -> int:
         return self.id
-
-    @property
-    def confirmed(self) -> bool:
-        return self.status is MarketListingStatus.ACTIVE
 
 
 @dataclass(eq=False, slots=True)

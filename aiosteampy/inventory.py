@@ -12,7 +12,6 @@ if TYPE_CHECKING:
 __all__ = ("InventoryMixin", "INVENTORY_URL")
 
 INV_PAGE_SIZE = 2000  # steam new limit rule
-DEF_ITER = ()
 INVENTORY_URL = STEAM_URL.COMMUNITY / "inventory"
 PREDICATE: TypeAlias = Callable[[EconItem], bool]
 
@@ -40,7 +39,7 @@ class InventoryMixin:
         *,
         predicate: PREDICATE = None,
         page_size=INV_PAGE_SIZE,
-    ) -> tuple[EconItem, ...]:
+    ) -> list[EconItem]:
         """
         Fetches inventory of user.
 
@@ -55,25 +54,23 @@ class InventoryMixin:
 
         inv_url = INVENTORY_URL / f"{steam_id}/"
         params = {"l": self.language, "count": page_size}
-        headers = {"Referer": inv_url.human_repr()}
+        headers = {"Referer": str(inv_url)}
         url = inv_url / f"{game[0]}/{game[1]}"
 
+        classes_map = {}  # shared classes within whole game context inventory
         items = []
         more_items = True
         last_assetid = None
         while more_items:
-            params_pag = {**params}
-            if last_assetid:
-                params_pag["start_assetid"] = last_assetid
-
-            rj = await self._fetch_inventory(url, params_pag, headers, steam_id)
-
-            more_items = rj.get("more_items", False)
+            params_pag = {**params, "start_assetid": last_assetid} if last_assetid else params
+            data = await self._fetch_inventory(url, params_pag, headers, steam_id)
+            more_items = data.get("more_items", False)
             if more_items:
-                last_assetid = rj.get("last_assetid")
-            items.extend(self._parse_items(rj, steam_id))
+                last_assetid = data.get("last_assetid")
 
-        return tuple(i for i in items if predicate(i)) if predicate else tuple(items)
+            items.extend(self._parse_items(data, steam_id, classes_map))
+
+        return list(i for i in items if predicate(i)) if predicate else items
 
     async def _fetch_inventory(
         self: "SteamClient",
@@ -105,56 +102,16 @@ class InventoryMixin:
                     return asset["appid"], int(asset["contextid"])
 
     @classmethod
-    def _parse_items(cls, data: dict[str, list[dict]], steam_id: int) -> tuple[EconItem, ...]:
-        classes_map: dict[str, ItemClass] = {
-            d_data["classid"]: ItemClass(
-                id=int(d_data["classid"]),
-                instance_id=int(d_data["instanceid"]),
-                game=cls._find_game(d_data, data["assets"]),
-                name=d_data["name"],
-                market_name=d_data["market_name"],
-                market_hash_name=d_data["market_hash_name"],
-                name_color=d_data["name_color"] or None,
-                background_color=d_data.get("name_color") or None,
-                type=d_data["type"] or None,
-                icon=d_data["icon_url"],
-                icon_large=d_data.get("icon_url_large"),
-                commodity=bool(d_data["commodity"]),
-                tradable=bool(d_data["tradable"]),
-                marketable=bool(d_data["marketable"]),
-                market_tradable_restriction=d_data.get("market_tradable_restriction"),
-                market_buy_country_restriction=d_data.get("market_buy_country_restriction"),
-                market_fee_app=d_data.get("market_fee_app"),
-                market_marketable_restriction=d_data.get("market_marketable_restriction"),
-                actions=tuple(ItemAction(a_data["link"], a_data["name"]) for a_data in d_data.get("actions", DEF_ITER)),
-                market_actions=tuple(
-                    ItemAction(a_data["link"], a_data["name"]) for a_data in d_data.get("market_actions", DEF_ITER)
-                ),
-                owner_actions=tuple(
-                    ItemAction(a_data["link"], a_data["name"]) for a_data in d_data.get("owner_actions", DEF_ITER)
-                ),
-                tags=tuple(
-                    ItemTag(
-                        category=t_data["category"],
-                        internal_name=t_data["internal_name"],
-                        localized_category_name=t_data["localized_category_name"],
-                        localized_tag_name=t_data["localized_tag_name"],
-                        color=t_data.get("color"),
-                    )
-                    for t_data in d_data.get("tags", DEF_ITER)
-                ),
-                descriptions=tuple(
-                    ItemDescription(
-                        value=de_data["value"],
-                        color=de_data.get("color"),
-                    )
-                    for de_data in d_data.get("descriptions", DEF_ITER)
-                    if de_data["value"] != " "  # ha, surprise!
-                ),
-                fraud_warnings=tuple(d_data.get("fraudwarnings", DEF_ITER)),
-            )
-            for d_data in data["descriptions"]
-        }
+    def _parse_items(
+        cls,
+        data: dict[str, list[dict]],
+        steam_id: int,
+        classes_map: dict[str, ItemClass],
+    ) -> tuple[EconItem, ...]:
+        for d_data in data["descriptions"]:
+            key = d_data["classid"]
+            if key not in classes_map:
+                classes_map[key] = cls._create_item_class_from_data(d_data, data["assets"])
 
         return tuple(
             EconItem(
@@ -164,4 +121,51 @@ class InventoryMixin:
                 amount=int(asset_data["amount"]),
             )
             for asset_data in data["assets"]
+        )
+
+    @classmethod
+    def _create_item_class_from_data(cls, data: dict, assets: list[dict[str, int | str]]) -> ItemClass:
+        return ItemClass(
+            id=int(data["classid"]),
+            instance_id=int(data["instanceid"]),
+            game=cls._find_game(data, assets),
+            name=data["name"],
+            market_name=data["market_name"],
+            market_hash_name=data["market_hash_name"],
+            name_color=data["name_color"] or None,
+            background_color=data.get("name_color") or None,
+            type=data["type"] or None,
+            icon=data["icon_url"],
+            icon_large=data.get("icon_url_large"),
+            commodity=bool(data["commodity"]),
+            tradable=bool(data["tradable"]),
+            marketable=bool(data["marketable"]),
+            market_tradable_restriction=data.get("market_tradable_restriction"),
+            market_buy_country_restriction=data.get("market_buy_country_restriction"),
+            market_fee_app=data.get("market_fee_app"),
+            market_marketable_restriction=data.get("market_marketable_restriction"),
+            actions=tuple(ItemAction(a_data["link"], a_data["name"]) for a_data in data.get("actions", ())),
+            market_actions=tuple(
+                ItemAction(a_data["link"], a_data["name"]) for a_data in data.get("market_actions", ())
+            ),
+            owner_actions=tuple(ItemAction(a_data["link"], a_data["name"]) for a_data in data.get("owner_actions", ())),
+            tags=tuple(
+                ItemTag(
+                    category=t_data["category"],
+                    internal_name=t_data["internal_name"],
+                    localized_category_name=t_data["localized_category_name"],
+                    localized_tag_name=t_data["localized_tag_name"],
+                    color=t_data.get("color"),
+                )
+                for t_data in data.get("tags", ())
+            ),
+            descriptions=tuple(
+                ItemDescription(
+                    value=de_data["value"],
+                    color=de_data.get("color"),
+                )
+                for de_data in data.get("descriptions", ())
+                if de_data["value"] != " "  # ha, surprise!
+            ),
+            fraud_warnings=tuple(data.get("fraudwarnings", ())),
         )

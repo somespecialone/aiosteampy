@@ -1,5 +1,3 @@
-from urllib.parse import quote
-
 from yarl import URL
 
 from .models import STEAM_URL

@@ -75,6 +75,7 @@ pytest
 
 ## Links:
 
-* [Revadike/InternalSteamWebAPI](https://github.com/Revadike/InternalSteamWebAPI)
 * [DoctorMcKay/node-steamcommunity](https://github.com/DoctorMcKay/node-steamcommunity)
+* [Identifying Steam items](https://dev.doctormckay.com/topic/332-identifying-steam-items/)
+* [Revadike/InternalSteamWebAPI](https://github.com/Revadike/InternalSteamWebAPI)
 * [Gobot1234/steam.py](https://github.com/Gobot1234/steam.py)

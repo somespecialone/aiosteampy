@@ -1,4 +1,4 @@
-# <p align="center">AIOSTEAMPY</p>
+# <p align="center">AIOSteamPY</p>
 
 [![Made in Ukraine](https://img.shields.io/badge/made_in-ukraine-ffd700.svg?labelColor=0057b7)](https://stand-with-ukraine.pp.ua)
 [![steam](https://shields.io/badge/steam-1b2838?logo=steam)](https://store.steampowered.com/)
@@ -13,15 +13,25 @@
 
 > ### Previously this library was a soft fork of [bukson/steampy](https://github.com/bukson/steampy) ⚠ and created only to provide asynchronous methods and proxies support.
 > ### But now ...
----
-[![Stand With Ukraine](https://raw.githubusercontent.com/vshymanskyy/StandWithUkraine/main/banner-direct-single.svg)](https://stand-with-ukraine.pp.ua)
+
 ---
 
-## Navigation
+[![Stand With Ukraine](https://raw.githubusercontent.com/vshymanskyy/StandWithUkraine/main/banner-direct-single.svg)](https://stand-with-ukraine.pp.ua)
+
+---
+
+## Navigation 🧾
 
 - [**Installation**](#installation)
+- [**Get started 🚀**](#get-started-)
+- [**Universes**]()
+    - [**Market**]()
+    - [**Trade 💱**]()
+    - [**Login**]()
+    - [**Inventory**]()
+    - [**Utils 🛠**]()
 - [**Proxy support**](#proxy-support)
-- [**Tests**](#tests)
+- [**Tests 🧪**](#tests)
 - [**Links**](#links)
 
 ---
@@ -46,7 +56,7 @@ poetry
 poetry add aiosteampy
 ```
 
-[//]: # (TODO readme)
+## Get started 🚀
 
 ## Proxy support
 
@@ -59,12 +69,12 @@ https://github.com/Skactor/aiohttp-proxy) instead.
 
 ```
 
-## Tests
+## Tests 🧪
 
-To run tests clone repo, install with dev dependencies
+To run tests clone repo, install with tests
 
 ```shell
-poetry install
+poetry install --with test
 ```
 
 Create env variables listed in [tests/data](tests/data.py) and run `pytest` from project dir:
@@ -79,3 +89,4 @@ pytest
 * [Identifying Steam items](https://dev.doctormckay.com/topic/332-identifying-steam-items/)
 * [Revadike/InternalSteamWebAPI](https://github.com/Revadike/InternalSteamWebAPI)
 * [Gobot1234/steam.py](https://github.com/Gobot1234/steam.py)
+* [somespecialone/steam-item-name-ids](https://github.com/somespecialone/steam-item-name-ids)

@@ -30,6 +30,8 @@ class InventoryMixin:
         predicate: PREDICATE = None,
         page_size=INV_PAGE_SIZE,
     ):
+        """Fetches self inventory. Shorthand for `get_user_inventory(self.steam_id, ...)`."""
+
         return self.get_user_inventory(self.steam_id, game, predicate=predicate, page_size=page_size)
 
     async def get_user_inventory(
@@ -45,7 +47,7 @@ class InventoryMixin:
 
         :param steam_id: steamid64 of user
         :param game: just Steam Game
-        :param page_size:
+        :param page_size: max items on page. Current Steam limit 2000
         :param predicate: callable with single arg `EconItem`, must return bool
         :return: tuple of `EconItem`
         :raises ApiError: if response data `success` is False or user inventory is private
@@ -83,7 +85,7 @@ class InventoryMixin:
             r = await self.session.get(url, params=params, headers=headers)
         except ClientResponseError as e:
             if e.status == 403:  # self inventory can't be private
-                raise SessionExpired if self.steam_id == steam_id else ApiError("User inventory is private.")
+                raise SessionExpired if self.steam_id == steam_id else ApiError("User inventory is private.", str(url))
             raise
 
         rj: dict[str, list[dict] | int] = await r.json()

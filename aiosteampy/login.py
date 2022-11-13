@@ -116,7 +116,7 @@ class LoginMixin:
             except KeyError:
                 pass
 
-        raise ApiError("Could not obtain rsa-key", rj)
+        raise ApiError("Could not obtain rsa-key.", rj)
 
     async def logout(self: "SteamClient") -> None:
         await self.session.post(LOGIN_URL / "logout/", data={"sessionid": self.session_id})

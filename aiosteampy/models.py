@@ -14,6 +14,8 @@ class STEAM_URL:
     STORE = URL("https://store.steampowered.com")
     HELP = URL("https://help.steampowered.com")
     STATIC = URL("https://community.akamai.steamstatic.com")
+    # specific
+    MARKET = COMMUNITY / "market/"
 
 
 # https://stackoverflow.com/a/54732120/19419998
@@ -382,3 +384,6 @@ class BuyOrder(BaseOrder):
     @property
     def buy_order_id(self) -> int:
         return self.id
+
+
+# TODO base listing, self market listing, market listing(converted fees and prices)

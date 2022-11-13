@@ -208,7 +208,7 @@ class ConfirmationMixin:
         r = await self.session.get(CONF_URL / tag, params=params)
         rj: dict[str, ...] = await r.json()
         if not rj.get("success"):
-            raise ApiError("Can't fetch confirmations", rj)
+            raise ApiError("Can't fetch confirmations.", rj)
 
         if "conf" in rj:
             for conf_data in rj["conf"]:
@@ -248,7 +248,7 @@ class ConfirmationMixin:
         r = await self.session.get(CONF_URL / f"details/{conf.id}", params=params)
         rj = await r.json()
         if not rj.get("success"):
-            raise ApiError("Failed to fetch confirmation details.", conf.creator_id)
+            raise ApiError(f"Failed to fetch confirmation [{conf.id}] details.", rj)
         data: dict[str, ...] = loads(ITEM_INFO_RE.search(rj["html"])["item_info"])
         conf._asset_ident_code = create_ident_code(data["id"], data["appid"], data["contextid"])
 

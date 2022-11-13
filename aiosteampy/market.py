@@ -1,5 +1,6 @@
 from typing import TYPE_CHECKING, overload, Literal, TypeAlias, Type
 from datetime import datetime
+from math import floor
 
 from aiohttp import ClientResponseError
 from yarl import URL
@@ -7,15 +8,11 @@ from yarl import URL
 from .exceptions import ApiError, SessionExpired
 from .models import (
     STEAM_URL,
-    Game,
     GameType,
     EconItem,
     MarketListing,
     BuyOrder,
     ItemClass,
-    ItemAction,
-    ItemTag,
-    ItemDescription,
     MarketListingItem,
     MarketListingStatus,
     Currency,
@@ -25,9 +22,8 @@ from .utils import create_ident_code
 if TYPE_CHECKING:
     from .client import SteamClient
 
-__all__ = ("MarketMixin", "MARKET_URL")
+__all__ = ("MarketMixin",)
 
-MARKET_URL = STEAM_URL.COMMUNITY / "market/"
 MY_LISTINGS: TypeAlias = tuple[list[MarketListing], list[MarketListing], list[BuyOrder]]
 
 
@@ -38,8 +34,6 @@ class MarketMixin:
     """
 
     __slots__ = ()
-
-    # TODO check if I can check that required mixins in MRO or something near
 
     @overload
     async def place_sell_listing(self, asset: EconItem, *, price: float) -> int:
@@ -117,14 +111,14 @@ class MarketMixin:
             "amount": 1,
             "price": int(to_receive * 100),
         }
-        headers = {"Referer": str(self.profile_url / "inventory")}
-        r = await self.session.post(MARKET_URL / "sellitem/", data=data, headers=headers)
+        headers = {"Referer": str(STEAM_URL.COMMUNITY / f"profiles/{self.steam_id}/inventory")}
+        r = await self.session.post(STEAM_URL.MARKET / "sellitem/", data=data, headers=headers)
         rj: dict[str, ...] = await r.json()
         if not rj.get("success"):
-            raise ApiError("Failed to place sell listing", rj)
+            raise ApiError("Failed to place sell listing.", rj)
 
         if rj.get("needs_email_confirmation"):
-            raise ApiError("Creating sell listing needs email confirmation.")
+            raise ApiError("Creating sell listing needs email confirmation.", rj)
         elif rj.get("needs_mobile_confirmation") and confirm:
             return await self.confirm_sell_listing(asset_id, game)
 
@@ -137,8 +131,8 @@ class MarketMixin:
 
         listing_id: int = obj.id if isinstance(obj, MarketListing) else obj
         data = {"sessionid": self.session_id}
-        headers = {"Referer": str(MARKET_URL)}
-        return self.session.post(MARKET_URL / f"removelisting/{listing_id}", data=data, headers=headers)
+        headers = {"Referer": str(STEAM_URL.MARKET)}
+        return self.session.post(STEAM_URL.MARKET / f"removelisting/{listing_id}", data=data, headers=headers)
 
     @overload
     async def place_buy_order(self, obj: ItemClass, *, price: float, quantity: int) -> int:
@@ -181,8 +175,8 @@ class MarketMixin:
             "quantity": quantity,
         }
 
-        headers = {"Referer": str(MARKET_URL / f"listings/{game[0]}/{name}")}
-        r = await self.session.post(MARKET_URL / "createbuyorder/", data=data, headers=headers)
+        headers = {"Referer": str(STEAM_URL.MARKET / f"listings/{game[0]}/{name}")}
+        r = await self.session.post(STEAM_URL.MARKET / "createbuyorder/", data=data, headers=headers)
         rj: dict[str, ...] = await r.json()
         if not rj.get("success"):
             raise ApiError("Failed to create buy order.", rj)
@@ -202,15 +196,11 @@ class MarketMixin:
             order_id = order
 
         data = {"sessionid": self.session_id, "buy_orderid": order_id}
-        headers = {"Referer": str(MARKET_URL)}
-        r = await self.session.post(MARKET_URL / "cancelbuyorder/", data=data, headers=headers)
+        headers = {"Referer": str(STEAM_URL.MARKET)}
+        r = await self.session.post(STEAM_URL.MARKET / "cancelbuyorder/", data=data, headers=headers)
         rj = await r.json()
         if not rj.get("success"):
             raise ApiError(f"Failed to cancel buy order [{order_id}].", rj)
-
-    # TODO fetch listings history (check steammarket page)
-    #  orders activity https://steamcommunity.com/market/itemordersactivity?country=RU&language=ukrainian&currency=5&item_nameid=176321160&two_factor=0
-    #  orders hist https://steamcommunity.com/market/itemordershistogram?country=RU&language=ukrainian&currency=5&item_nameid=176321160&two_factor=0
 
     async def get_my_listings(self: "SteamClient", *, page_size=100) -> MY_LISTINGS:
         """
@@ -222,7 +212,7 @@ class MarketMixin:
         :raises SessionExpired:
         """
 
-        url = MARKET_URL / "mylistings"
+        url = STEAM_URL.MARKET / "mylistings"
         params = {"norender": 1, "start": 0, "count": page_size}
         active = []
         to_confirm = []
@@ -329,3 +319,57 @@ class MarketMixin:
             )
 
         return orders_list
+
+    async def buy_market_listing(
+        self: "SteamClient",
+        listing_id: int,
+        price: float,
+        market_hash_name: str,
+        game: GameType,
+        *,
+        fee: int = None,
+    ) -> float:
+        """
+        Buy item listing from market.
+        Unfortunately, Steam requires referer header to buy item,
+        so `market hash name` and `game` is mandatory args.
+
+        # TODO link to readme
+
+        :param listing_id: id for listing itself (aka market id).
+        :param price: price in `1.24` format, can be found on listing data in
+            Steam under field `converted_price` divided by 100
+        :param market_hash_name: as arg name
+        :param game: as arg name&type
+        :param fee: if fee of listing is different from default one,
+            can be found on listing data in Steam under field `converted_fee`.
+            If you don't know what is this - then you definitely do not need it
+        :return: wallet balance
+        :raises ApiError: for regular reasons
+        """
+
+        price = int(price * 100)
+        if fee is None:
+            steam_fee = floor(price * self._steam_fee) or 1
+            publ_fee = floor(price * self._publisher_fee) or 1
+            fee = steam_fee + publ_fee
+        total = price + fee
+        data = {
+            "sessionid": self.session_id,
+            "currency": self._wallet_currency.value,
+            "subtotal": price,
+            "fee": fee,
+            "total": total,
+            "quantity": 1,
+        }
+        headers = {"Referer": str(STEAM_URL.MARKET / f"listings/{game[0]}/{market_hash_name}")}
+        r = await self.session.post(STEAM_URL.MARKET / f"buylisting/{listing_id}", data=data, headers=headers)
+        rj: dict[str, dict[str, str]] = await r.json()
+        if not rj.get("wallet_info", {}).get("success"):
+            raise ApiError(
+                f"Failed to buy listing [{listing_id}] of `{market_hash_name}` "
+                f"for {total / 100} {self._wallet_currency.name}.",
+                rj,
+            )
+
+        return int(rj["wallet_info"]["wallet_balance"]) / 100

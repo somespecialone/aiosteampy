@@ -28,7 +28,7 @@
     - [**Market**]()
     - [**Trade 💱**]()
     - [**Login**]()
-    - [**Inventory**]()
+    - [**Public**]()
     - [**Utils 🛠**]()
 - [**Proxy support**](#proxy-support)
 - [**Tests 🧪**](#tests)

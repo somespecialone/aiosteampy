@@ -1,4 +1,7 @@
-from typing import TypedDict
+from typing import TypedDict, Literal
+
+
+SUCCESS = Literal[0, 1]
 
 
 class SellOrderTable(TypedDict):
@@ -13,7 +16,7 @@ class BuyOrderTable(TypedDict):
 
 
 class ItemOrdersHistogram(TypedDict):
-    success: int
+    success: SUCCESS
     sell_order_count: str
     sell_order_price: str
     sell_order_table: list[SellOrderTable]
@@ -32,3 +35,22 @@ class ItemOrdersHistogram(TypedDict):
     graph_max_x: float
     price_prefix: str
     price_suffix: str
+
+
+class Activity(TypedDict):
+    type: str
+    quantity: str
+    price: str
+    time: int
+    avatar_buyer: str
+    avatar_medium_buyer: str
+    persona_buyer: str
+    avatar_seller: str
+    avatar_medium_seller: str
+    persona_seller: str
+
+
+class ItemOrdersActivity(TypedDict):
+    success: SUCCESS
+    activity: list[Activity]
+    timestamp: int

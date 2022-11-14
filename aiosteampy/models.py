@@ -348,7 +348,6 @@ class BaseOrder:
     id: int  # listing/buy order id
 
     price: float
-    currency: Currency
 
     def __hash__(self):
         return self.id
@@ -384,6 +383,64 @@ class BuyOrder(BaseOrder):
     @property
     def buy_order_id(self) -> int:
         return self.id
+
+
+@dataclass(eq=False, slots=True)
+class MarketHistoryListingItem(EconItem):
+    class_: ItemClass = None  # just to avoid dataclass defining TypeError
+
+    owner_id: None = None
+    amount: int = 1  # item on listing always have 1 amount
+
+    unowned_id: int | None = None
+    unowned_contextid: int | None = None
+    rollback_new_id: int | None = None
+    rollback_new_contextid: int | None = None
+
+    # purchase fields
+    new_id: int | None = None
+    new_context_id: int | None = None
+
+    @property
+    def inspect_link(self) -> None:
+        """Always `None`, because we can't be sure that asset id has not been changed."""
+        return None
+
+
+@dataclass(eq=False, slots=True)
+class MarketHistoryListing(BaseOrder):
+    item: MarketHistoryListingItem = None
+
+    price: float | None = None
+
+    # purchase fields
+    purchase_id: int | None = None
+    steamid_purchaser: int | None = None
+    received_amount: float | None = None
+
+    # listing fields
+    original_price: float | None = None
+    cancel_reason: str | None = None
+
+
+class MarketHistoryEventType(Enum):
+    LISTING_CREATED = 1
+    LISTING_CANCELED = 2
+    LISTING_SOLD = 3
+    LISTING_PURCHASED = 4
+
+
+@dataclass(eq=False, slots=True)
+class MarketHistoryEvent:
+    """
+    Event entity in market history. Represents event linked with related listing.
+    Note that this is just a snapshot of listing, asset data for event fire moment time
+    and `asset id`, `context id` of asset may change already.
+    """
+
+    listing: MarketHistoryListing
+    time_event: datetime
+    type: MarketHistoryEventType
 
 
 # TODO base listing, self market listing, market listing(converted fees and prices)

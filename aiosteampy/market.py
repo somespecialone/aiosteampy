@@ -1,4 +1,4 @@
-from typing import TYPE_CHECKING, overload, Literal, TypeAlias, Type
+from typing import TYPE_CHECKING, overload, Literal, TypeAlias, Type, Callable
 from datetime import datetime
 from math import floor
 
@@ -16,6 +16,10 @@ from .models import (
     MarketListingItem,
     MarketListingStatus,
     Currency,
+    MarketHistoryEvent,
+    MarketHistoryEventType,
+    MarketHistoryListing,
+    MarketHistoryListingItem,
 )
 from .utils import create_ident_code
 
@@ -25,6 +29,7 @@ if TYPE_CHECKING:
 __all__ = ("MarketMixin",)
 
 MY_LISTINGS: TypeAlias = tuple[list[MarketListing], list[MarketListing], list[BuyOrder]]
+PREDICATE: TypeAlias = Callable[[MarketHistoryEvent], bool]
 
 
 class MarketMixin:
@@ -271,7 +276,6 @@ class MarketMixin:
             MarketListing(
                 id=int(l_data["listingid"]),
                 price=l_data["price"] / 100,
-                currency=Currency(int(l_data["currencyid"][-1:])),
                 lister_steam_id=self.steam_id,
                 time_created=datetime.fromtimestamp(l_data["time_created"]),
                 item=MarketListingItem(
@@ -298,7 +302,7 @@ class MarketMixin:
     def _parse_buy_orders(
         cls: Type["SteamClient"],
         orders: list[dict[str, ...]],
-        classes_map: dict[str],
+        classes_map: dict[str, ItemClass],
     ) -> list[BuyOrder, ...]:
         orders_list = []
         for o_data in orders:
@@ -311,7 +315,6 @@ class MarketMixin:
                 BuyOrder(
                     id=int(o_data["buy_orderid"]),
                     price=int(o_data["price"]) / 100,
-                    currency=Currency(o_data["wallet_currency"]),
                     item_class=classes_map[class_ident_key],
                     quantity=int(o_data["quantity"]),
                     quantity_remaining=int(o_data["quantity_remaining"]),
@@ -373,3 +376,118 @@ class MarketMixin:
             )
 
         return int(rj["wallet_info"]["wallet_balance"]) / 100
+
+    async def get_my_market_history(
+        self: "SteamClient",
+        *,
+        predicate: PREDICATE = None,
+        page_size=500,
+    ) -> list[MarketHistoryEvent]:
+        url = STEAM_URL.MARKET / "myhistory"
+        params = {"norender": 1, "start": 0, "count": page_size}
+        events = []
+        classes_map = {}  # ident code: ... , shared classes within whole listings
+        assets_map = {}  # ident code: ...
+        listings_map = {}  # listings id / listing_purchase id
+
+        more_listings = True
+        while more_listings:
+            data = await self._fetch_listings(url, params)
+            if data["total_count"] > data["pagesize"]:
+                more_listings = True
+                params["start"] += data["pagesize"]
+                params["count"] = data["pagesize"]
+            else:
+                more_listings = False
+
+            self._parse_item_classes_for_listings(data["assets"], classes_map)
+            self._parse_assets_for_history_listings(data["assets"], classes_map, assets_map)
+            self._parse_history_listings(data, assets_map, listings_map)
+            events.extend(self._parse_history_events(data, listings_map))
+
+        return list(e for e in events if predicate(e)) if predicate else events
+
+    @staticmethod
+    def _parse_assets_for_history_listings(
+        data: dict[str, dict[str, dict[str, dict[str, ...]]]],
+        classes_map: dict[str, ItemClass],
+        assets_map: dict[str, MarketHistoryListingItem],
+    ):
+        for app_id, app_data in data.items():
+            for context_id, context_data in app_data.items():
+                for a_data in context_data.values():
+                    key = create_ident_code(a_data["id"], app_id, context_id)
+                    if key not in assets_map:
+                        assets_map[key] = MarketHistoryListingItem(
+                            id=int(a_data["id"]),
+                            class_=classes_map[create_ident_code(a_data["classid"], app_id)],
+                            unowned_id=int(a_data["unowned_id"]),
+                            unowned_contextid=int(a_data["unowned_contextid"]),
+                            rollback_new_id=int(a_data["rollback_new_id"]) if "rollback_new_id" in a_data else None,
+                            rollback_new_contextid=int(a_data["rollback_new_contextid"])
+                            if "rollback_new_contextid" in a_data
+                            else None,
+                        )
+
+    @staticmethod
+    def _parse_history_listings(
+        data: dict[str, dict[str, dict[str, ...]]],
+        assets_map: dict[str, MarketHistoryListingItem],
+        listings_map: dict[str, MarketHistoryListing],
+    ):
+        for l_id, l_data in data["listings"].items():
+            if l_id not in listings_map:
+                listings_map[l_id] = MarketHistoryListing(
+                    id=int(l_data["listingid"]),
+                    price=int(l_data["price"]) / 100,
+                    item=assets_map[
+                        create_ident_code(
+                            l_data["asset"]["id"],
+                            l_data["asset"]["appid"],
+                            l_data["asset"]["contextid"],
+                        )
+                    ],
+                    original_price=int(l_data["original_price"]) / 100,
+                    cancel_reason=l_data.get("cancel_reason"),
+                )
+
+        for p_id, p_data in data["purchases"].items():
+            if p_id not in listings_map:
+                listing = MarketHistoryListing(
+                    id=int(p_data["listingid"]),
+                    item=assets_map[
+                        create_ident_code(
+                            p_data["asset"]["id"],
+                            p_data["asset"]["appid"],
+                            p_data["asset"]["contextid"],
+                        )
+                    ],
+                    purchase_id=int(p_data["purchaseid"]),
+                    steamid_purchaser=int(p_data["steamid_purchaser"]),
+                    received_amount=int(p_data["received_amount"]) / 100,
+                )
+                listing.item.new_id = int(p_data["asset"]["new_id"])
+                listing.item.new_context_id = int(p_data["asset"]["new_contextid"])
+
+                listings_map[p_id] = listing
+
+    @staticmethod
+    def _parse_history_events(
+        data: dict[str, list[dict[str, ...]] | dict[str, dict[str, ...]]],
+        listings_map: dict[str, MarketHistoryListing],
+    ) -> list[MarketHistoryEvent]:
+        events = []
+        for e_data in data["events"]:
+            listing_key = e_data["listingid"]
+            if "purchaseid" in e_data:
+                listing_key += "_" + e_data["purchaseid"]
+
+            events.append(
+                MarketHistoryEvent(
+                    listing=listings_map[listing_key],
+                    time_event=datetime.fromtimestamp(e_data["time_event"]),
+                    type=MarketHistoryEventType(e_data["event_type"]),
+                )
+            )
+
+        return events

@@ -9,3 +9,5 @@ class TradeMixin:
     """
 
     __slots__ = ()
+
+    # TODO this.

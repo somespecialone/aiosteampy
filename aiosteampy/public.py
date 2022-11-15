@@ -3,14 +3,28 @@ from typing import Callable, TypeAlias, overload
 from aiohttp import ClientSession, ClientResponseError
 from yarl import URL
 
-from .models import STEAM_URL, Currency, Game, GameType, ItemDescription, ItemTag, ItemClass, EconItem, ItemAction
+from .models import (
+    STEAM_URL,
+    Currency,
+    Game,
+    GameType,
+    ItemDescription,
+    ItemTag,
+    ItemClass,
+    EconItem,
+    ItemAction,
+    MarketListing,
+    MarketListingItem,
+)
 from .public_models import ItemOrdersHistogram, ItemOrdersActivity, PriceOverview
 from .exceptions import ApiError
+from .utils import create_ident_code
 
 INV_PAGE_SIZE = 2000  # steam new limit rule
 INVENTORY_URL = STEAM_URL.COMMUNITY / "inventory"
 PREDICATE: TypeAlias = Callable[[EconItem], bool]
 PRIVATE_USER_EXC_MSG = "User inventory is private."
+ITEM_MARKET_LISTINGS_DATA: TypeAlias = tuple[tuple[MarketListing, ...], int]
 
 
 class SteamPublicMixin:
@@ -305,4 +319,149 @@ class SteamPublicMixin:
 
         return rj
 
-    # TODO get listing of item method
+    @overload
+    async def get_item_listings(
+        self,
+        obj: EconItem,
+        *,
+        country: str = None,
+        currency: Currency = None,
+        query: str = None,
+        start: int = 0,
+        count: int = 100,
+    ) -> ITEM_MARKET_LISTINGS_DATA:
+        ...
+
+    @overload
+    async def get_item_listings(
+        self,
+        obj: ItemClass,
+        *,
+        country: str = None,
+        currency: Currency = None,
+        query: str = None,
+        start: int = 0,
+        count: int = 100,
+    ) -> ITEM_MARKET_LISTINGS_DATA:
+        ...
+
+    @overload
+    async def get_item_listings(
+        self,
+        obj: str,
+        app_id: int,
+        *,
+        country: str = None,
+        currency: Currency = None,
+        query: str = None,
+        start: int = 0,
+        count: int = 100,
+    ) -> ITEM_MARKET_LISTINGS_DATA:
+        ...
+
+    async def get_item_listings(
+        self,
+        obj: str | EconItem | ItemClass,
+        app_id: int = None,
+        *,
+        country: str = None,
+        currency: Currency = None,
+        lang: str = None,
+        query: str = None,
+        start: int = 0,
+        count: int = 100,
+    ) -> ITEM_MARKET_LISTINGS_DATA:
+        """
+
+        `Warning` - this request is rate limited by Steam.
+
+        :param obj:
+        :param app_id:
+        :param country:
+        :param currency:
+        :param lang:
+        :param count:
+        :param start:
+        :param query:
+        :return:
+        :raises ApiError:
+        """
+
+        if isinstance(obj, EconItem):
+            name = obj.class_.market_hash_name
+            app_id = obj.class_.game.app_id
+        elif isinstance(obj, ItemClass):
+            name = obj.market_hash_name
+            app_id = obj.game.app_id
+        else:  # str
+            name = obj
+
+        base_url = STEAM_URL.MARKET / f"listings/{app_id}/{name}"
+        params = {
+            "query": query or "",
+            "country": country or self.country,
+            "currency": currency.value if currency else self.currency.value,
+            "start": start,
+            "count": count,
+            "language": lang or self.language,
+        }
+        headers = {"Referer": str(base_url)}
+        r = await self.session.get(base_url / "render", params=params, headers=headers)
+        rj: dict[str, int | dict[str, dict[str, ...]]] = await r.json()
+        if not rj.get("success"):
+            raise ApiError(f"Can't fetch market listings for `{name}`.", rj)
+        if not rj["total_count"] or not rj["assets"]:
+            return (), 0
+
+        # all listings on page DOES NOT have single item class, because Steam
+        classes_map = {}
+        assets_map = {}
+        assets_data: dict[str, dict[str, dict[str, ...]]] = rj["assets"]
+        for app_id, app_data in assets_data.items():
+            for context_id, context_data in app_data.items():
+                for asset_id, a_data in context_data.items():
+                    key = create_ident_code(a_data["classid"], app_id)
+                    classes_map[key] = self._create_item_class_from_data(a_data, (a_data,))
+
+        self._parse_assets_for_listings(assets_data, classes_map, assets_map)
+
+        listings = tuple(
+            MarketListing(
+                id=int(l_data["listingid"]),
+                item=assets_map[
+                    create_ident_code(
+                        l_data["asset"]["id"],
+                        l_data["asset"]["appid"],
+                        l_data["asset"]["contextid"],
+                    )
+                ],
+                currency=Currency(int(l_data["currencyid"]) - 2000),
+                price=int(l_data["price"] / 100),
+                fee=int(l_data["fee"] / 100),
+                converted_currency=Currency(int(l_data["converted_currencyid"]) - 2000),
+                converted_fee=int(l_data["converted_price"] / 100),
+                converted_price=int(l_data["converted_fee"] / 100),
+            )
+            for l_data in rj["listinginfo"].values()
+        )
+
+        return listings, rj["total_count"]
+
+    @staticmethod
+    def _parse_assets_for_listings(
+        data: dict[str, dict[str, dict[str, dict[str, ...]]]],
+        classes_map: dict[str, ItemClass],
+        assets_map: dict[str, MarketListingItem],
+    ):
+        for app_id, app_data in data.items():
+            for context_id, context_data in app_data.items():
+                for a_data in context_data.values():
+                    key = create_ident_code(a_data["id"], app_id, context_id)
+                    if key not in assets_map:
+                        assets_map[key] = MarketListingItem(
+                            id=int(a_data["id"]),
+                            market_id=0,  # market listing post init
+                            class_=classes_map[create_ident_code(a_data["classid"], app_id)],
+                            unowned_id=int(a_data["unowned_id"]),
+                            unowned_context_id=int(a_data["unowned_contextid"]),
+                        )

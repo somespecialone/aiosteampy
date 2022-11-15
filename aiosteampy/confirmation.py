@@ -3,7 +3,7 @@ from json import loads
 from re import compile
 from datetime import datetime
 
-from .models import STEAM_URL, Confirmation, MarketListing, ConfirmationType, GameType, EconItem
+from .models import STEAM_URL, Confirmation, MyMarketListing, ConfirmationType, GameType, EconItem
 from .exceptions import ApiError, ConfirmationError, SessionExpired
 from .utils import create_ident_code
 
@@ -43,7 +43,7 @@ class ConfirmationMixin:
         return *self._listings_confs.values(), *self._trades_confs.values()
 
     @overload
-    async def confirm_sell_listing(self, obj: MarketListing) -> int:
+    async def confirm_sell_listing(self, obj: MyMarketListing) -> int:
         ...
 
     @overload
@@ -58,12 +58,12 @@ class ConfirmationMixin:
     async def confirm_sell_listing(self, obj: int, game: GameType) -> int:
         ...
 
-    async def confirm_sell_listing(self, obj: MarketListing | EconItem | int, game: GameType = None) -> int:
+    async def confirm_sell_listing(self, obj: MyMarketListing | EconItem | int, game: GameType = None) -> int:
         """
         Perform sell listing confirmation.
         Pass `game` arg only with asset id.
 
-        :param obj: `MarketListing` or `EconItem` that you listed or listing id or asset id
+        :param obj: `MyMarketListing` or `EconItem` that you listed or listing id or asset id
         :param game: `Game` or tuple with app and context id ints. Required when `obj` is asset id
         :return: listing id
         :raises ConfirmationError:
@@ -71,7 +71,7 @@ class ConfirmationMixin:
         """
 
         update = False
-        if isinstance(obj, MarketListing):
+        if isinstance(obj, MyMarketListing):
             m = self._listings_confs
             key = obj.id
         elif isinstance(obj, EconItem):

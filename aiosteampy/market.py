@@ -10,7 +10,7 @@ from .models import (
     STEAM_URL,
     GameType,
     EconItem,
-    MarketListing,
+    MyMarketListing,
     BuyOrder,
     ItemClass,
     MarketListingItem,
@@ -20,6 +20,7 @@ from .models import (
     MarketHistoryListing,
     MarketHistoryListingItem,
     PriceHistoryEntry,
+    MarketListing,
 )
 from .utils import create_ident_code
 
@@ -28,7 +29,7 @@ if TYPE_CHECKING:
 
 __all__ = ("MarketMixin",)
 
-MY_LISTINGS: TypeAlias = tuple[list[MarketListing], list[MarketListing], list[BuyOrder]]
+MY_LISTINGS: TypeAlias = tuple[list[MyMarketListing], list[MyMarketListing], list[BuyOrder]]
 PREDICATE: TypeAlias = Callable[[MarketHistoryEvent], bool]
 PRICE_HISTORY_ENTRY_DATE_FORMAT = "%b %d %Y"
 
@@ -128,14 +129,14 @@ class MarketMixin:
         elif rj.get("needs_mobile_confirmation") and confirm:
             return await self.confirm_sell_listing(asset_id, game)
 
-    def cancel_sell_listing(self: "SteamClient", obj: MarketListing | int):
+    def cancel_sell_listing(self: "SteamClient", obj: MyMarketListing | int):
         """
         Just cancel sell listing.
 
-        :param obj: `MarketListing` or listing id
+        :param obj: `MyMarketListing` or listing id
         """
 
-        listing_id: int = obj.id if isinstance(obj, MarketListing) else obj
+        listing_id: int = obj.id if isinstance(obj, MyMarketListing) else obj
         data = {"sessionid": self.session_id}
         headers = {"Referer": str(STEAM_URL.MARKET)}
         return self.session.post(STEAM_URL.MARKET / f"removelisting/{listing_id}", data=data, headers=headers)
@@ -210,7 +211,7 @@ class MarketMixin:
 
     async def get_my_listings(self: "SteamClient", *, page_size=100) -> MY_LISTINGS:
         """
-        Fetch listings.
+        Fetch users market listings.
 
         :param page_size: listings per page. Steam do not accept greater than 100
         :return: tuples of active listings, listings to confirm, buy orders
@@ -272,9 +273,9 @@ class MarketMixin:
         self: "SteamClient",
         listings: list[dict[str, ...]],
         classes_map: dict[str, ItemClass],
-    ) -> tuple[MarketListing, ...]:
+    ) -> tuple[MyMarketListing, ...]:
         return tuple(
-            MarketListing(
+            MyMarketListing(
                 id=int(l_data["listingid"]),
                 price=l_data["price"] / 100,
                 lister_steam_id=self.steam_id,
@@ -324,39 +325,76 @@ class MarketMixin:
 
         return orders_list
 
+    @overload
     async def buy_market_listing(
-        self: "SteamClient",
-        listing_id: int,
+        self,
+        listing: MarketListing,
+    ) -> float:
+        ...
+
+    @overload
+    async def buy_market_listing(
+        self,
+        listing: int,
         price: float,
         market_hash_name: str,
         game: GameType,
         *,
-        fee: int = None,
+        fee: int = ...,
+    ) -> float:
+        ...
+
+    async def buy_market_listing(
+        self: "SteamClient",
+        listing: int | MarketListing,
+        price: float = None,
+        market_hash_name: str = None,
+        game: GameType = None,
+        *,
+        fee: float = None,
     ) -> float:
         """
         Buy item listing from market. Cache wallet balance.
         Unfortunately, Steam requires referer header to buy item,
         so `market hash name` and `game` is mandatory args.
 
-        # TODO link to readme
+        Make sure that listing converted currency is wallet currency!
 
-        :param listing_id: id for listing itself (aka market id).
+        :param listing: id for listing itself (aka market id) or `MarketListing`
         :param price: price in `1.24` format, can be found on listing data in
             Steam under field `converted_price` divided by 100
         :param market_hash_name: as arg name
         :param game: as arg name&type
         :param fee: if fee of listing is different from default one,
-            can be found on listing data in Steam under field `converted_fee`.
+            can be found on listing data in Steam under field `converted_fee` divided by 100.
             If you don't know what is this - then you definitely do not need it
         :return: wallet balance
         :raises ApiError: for regular reasons
+        :raises ValueError:
         """
+        if isinstance(listing, MarketListing):
+            if listing.converted_currency is self.currency:
+                raise ValueError(
+                    f"Currency of listing [{listing.converted_currency.name}] is "
+                    f"different from wallet [{self.currency.name}] one!"
+                )
+
+            listing_id = listing.id
+            price = listing.converted_price
+            fee = listing.converted_fee
+            market_hash_name = listing.item.class_.market_hash_name
+            game = listing.item.class_.game
+        else:
+            listing_id = listing
 
         price = int(price * 100)
         if fee is None:
             steam_fee = floor(price * self._steam_fee) or 1
             publ_fee = floor(price * self._publisher_fee) or 1
             fee = steam_fee + publ_fee
+        else:
+            fee = int(fee * 100)
+
         total = price + fee
         data = {
             "sessionid": self.session_id,
@@ -424,9 +462,9 @@ class MarketMixin:
                             id=int(a_data["id"]),
                             class_=classes_map[create_ident_code(a_data["classid"], app_id)],
                             unowned_id=int(a_data["unowned_id"]),
-                            unowned_contextid=int(a_data["unowned_contextid"]),
+                            unowned_context_id=int(a_data["unowned_contextid"]),
                             rollback_new_id=int(a_data["rollback_new_id"]) if "rollback_new_id" in a_data else None,
-                            rollback_new_contextid=int(a_data["rollback_new_contextid"])
+                            rollback_new_context_id=int(a_data["rollback_new_contextid"])
                             if "rollback_new_contextid" in a_data
                             else None,
                         )

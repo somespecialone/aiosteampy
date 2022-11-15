@@ -65,7 +65,11 @@ GameType: TypeAlias = Game | tuple[int, int]
 
 
 class Currency(Enum):
-    # https://partner.steamgames.com/doc/store/pricing/currencies
+    """
+    Steam currency enum.
+
+    https://partner.steamgames.com/doc/store/pricing/currencies
+    """
 
     USD = 1  # UnitedStates Dollar
     GBP = 2  # United Kingdom Pound
@@ -236,7 +240,7 @@ class ItemClass:
         return self.id
 
 
-@dataclass(eq=False, slots=True)
+@dataclass(eq=False, slots=True, kw_only=True)
 class EconItem:
     """
     Represents Steam economy item (inventories).
@@ -262,7 +266,7 @@ class EconItem:
     def inspect_link(self) -> str | None:
         for action in self.class_.actions:
             if "Inspect" in action.name:
-                return action.name.replace("%assetid%", str(self.id)).replace("%owner_steamid%", str(self.owner_id))
+                return action.link.replace("%assetid%", str(self.id)).replace("%owner_steamid%", str(self.owner_id))
 
     @property
     def asset_id(self) -> int:
@@ -328,7 +332,7 @@ class MarketListingStatus(Enum):
     ACTIVE = 1
 
 
-@dataclass(eq=False, slots=True)
+@dataclass(eq=False, slots=True, kw_only=True)
 class MarketListingItem(EconItem):
     # presented only on active listing
     market_id: int  # listing id
@@ -336,11 +340,14 @@ class MarketListingItem(EconItem):
     unowned_id: int | None
     unowned_context_id: int | None
 
+    amount: int = 1  # item on listing always have 1 amount
+    owner_id: int = 0
+
     @property
     def inspect_link(self) -> str | None:
         for action in self.class_.market_actions:
             if "Inspect" in action.name:
-                return action.name.replace("%assetid%", str(self.id)).replace("%listingid%", str(self.market_id))
+                return action.link.replace("%assetid%", str(self.id)).replace("%listingid%", str(self.market_id))
 
 
 @dataclass(eq=False, slots=True)
@@ -354,7 +361,7 @@ class BaseOrder:
 
 
 @dataclass(eq=False, slots=True)
-class MarketListing(BaseOrder):
+class MyMarketListing(BaseOrder):
     lister_steam_id: int
     time_created: datetime
 
@@ -385,21 +392,15 @@ class BuyOrder(BaseOrder):
         return self.id
 
 
-@dataclass(eq=False, slots=True)
-class MarketHistoryListingItem(EconItem):
-    class_: ItemClass = None  # just to avoid dataclass defining TypeError
-
-    owner_id: None = None
-    amount: int = 1  # item on listing always have 1 amount
-
-    unowned_id: int | None = None
-    unowned_contextid: int | None = None
-    rollback_new_id: int | None = None
-    rollback_new_contextid: int | None = None
+@dataclass(eq=False, slots=True, kw_only=True)
+class MarketHistoryListingItem(MarketListingItem):
+    market_id: None = None
 
     # purchase fields
     new_id: int | None = None
     new_context_id: int | None = None
+    rollback_new_id: int | None = None
+    rollback_new_context_id: int | None = None
 
     @property
     def inspect_link(self) -> None:
@@ -407,9 +408,9 @@ class MarketHistoryListingItem(EconItem):
         return None
 
 
-@dataclass(eq=False, slots=True)
+@dataclass(eq=False, slots=True, kw_only=True)
 class MarketHistoryListing(BaseOrder):
-    item: MarketHistoryListingItem = None
+    item: MarketHistoryListingItem
 
     price: float | None = None
 
@@ -421,6 +422,10 @@ class MarketHistoryListing(BaseOrder):
     # listing fields
     original_price: float | None = None
     cancel_reason: str | None = None
+
+    @property
+    def listing_id(self) -> int:
+        return self.id
 
 
 class MarketHistoryEventType(Enum):
@@ -449,4 +454,22 @@ class PriceHistoryEntry:
     price: float
     daily_volume: int
 
-# TODO base listing, self market listing, market listing(converted fees and prices)
+
+@dataclass(eq=False, slots=True)
+class MarketListing(BaseOrder):
+    item: MarketListingItem
+
+    currency: Currency  # original currency
+    fee: float
+
+    converted_currency: Currency
+    converted_price: float
+    converted_fee: float
+
+    def __post_init__(self):
+        if not self.item.market_id:
+            self.item.market_id = self.id
+
+    @property
+    def listing_id(self) -> int:
+        return self.id

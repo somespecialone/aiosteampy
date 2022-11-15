@@ -10,12 +10,11 @@ from .guard import SteamGuardMixin
 from .confirmation import ConfirmationMixin
 from .login import LoginMixin
 from .trade import TradeMixin
-from .inventory import InventoryMixin
 from .market import MarketMixin
-from .public import SteamPublicMixin
+from .public import SteamPublicMixin, INV_PAGE_SIZE, PREDICATE, PRIVATE_USER_EXC_MSG
 
-from .models import STEAM_URL, Currency, Notifications
-from .exceptions import ApiError
+from .models import STEAM_URL, Currency, Notifications, GameType, EconItem
+from .exceptions import ApiError, SessionExpired
 from .utils import get_cookie_value_from_session
 
 __all__ = ("SteamClient", "SteamPublicClient")
@@ -29,8 +28,7 @@ API_KEY_CHECK_STR1 = "You must have a validated email address to create a Steam 
 STEAM_LANG_COOKIE = "Steam_Language"
 
 
-# TODO find a better way to type mixins, and separate methods.
-class SteamClient(SteamGuardMixin, ConfirmationMixin, LoginMixin, InventoryMixin, MarketMixin, SteamPublicMixin):
+class SteamClient(SteamGuardMixin, ConfirmationMixin, LoginMixin, MarketMixin, SteamPublicMixin):
     """
     Base class in hierarchy ...
     """
@@ -175,7 +173,7 @@ class SteamClient(SteamGuardMixin, ConfirmationMixin, LoginMixin, InventoryMixin
                 self._wallet_currency = Currency(wallet_info["wallet_currency"])
 
     async def _fetch_wallet_info(self) -> dict[str, str | int]:
-        # TODO fetching inventory may reset new items notifs count
+        # fetching inventory may reset new items notifs count
         r = await self.session.get(self.profile_url / "inventory", headers={"Referer": str(self.profile_url)})
         rt = await r.text()
         info: dict = loads(WALLET_INFO_RE.search(rt)["info"])
@@ -266,7 +264,33 @@ class SteamClient(SteamGuardMixin, ConfirmationMixin, LoginMixin, InventoryMixin
 
         return self.session.get(self.profile_url / "inventory/")
 
+    async def get_inventory(
+        self,
+        game: GameType,
+        *,
+        predicate: PREDICATE = None,
+        page_size=INV_PAGE_SIZE,
+    ) -> list[EconItem]:
+        """
+        Fetches self inventory. Shorthand for `get_user_inventory(self.steam_id, ...)`.
 
+        :param game: just Steam Game
+        :param page_size: max items on page. Current Steam limit is 2000
+        :param predicate: callable with single arg `EconItem`, must return bool
+        :return: tuple of `EconItem`
+        :raises ApiError: for ordinary reasons
+        :raises SessionExpired:
+        """
+
+        try:
+            inv = await self.get_user_inventory(self.steam_id, game, predicate=predicate, page_size=page_size)
+        except ApiError as e:
+            raise SessionExpired if e.msg == PRIVATE_USER_EXC_MSG else e  # self inventory can't be private
+
+        return inv
+
+
+# TODO solve problem with class vars or another def values
 class SteamPublicClient(SteamPublicMixin):
     __slots__ = ("session",)
 

@@ -40,7 +40,6 @@ class ConfirmationMixin:
     @property
     def confirmations(self) -> tuple[Confirmation, ...]:
         """Cached confirmations."""
-
         return *self._listings_confs.values(), *self._trades_confs.values()
 
     @overload
@@ -118,6 +117,8 @@ class ConfirmationMixin:
 
         :param predicate: callable with single argument `Confirmation`, must return boolean
         :return: tuple of allowed confirmations creator ids (trade/listing id)
+        :raises ConfirmationError:
+        :raises ApiError:
         """
 
         confs = await self.fetch_confirmations(predicate=predicate)
@@ -135,6 +136,7 @@ class ConfirmationMixin:
 
         :param conf: `Confirmation` that you wand to proceed
         :param tag: string literal of conf tag. Can be 'allow' or 'cancel'
+        :raises ConfirmationError:
         """
 
         params = await self._create_confirmation_params(tag)
@@ -162,6 +164,7 @@ class ConfirmationMixin:
 
         :param confs: list of `Confirmation` that you wand to proceed
         :param tag: string literal of conf tag. Can be 'allow' or 'cancel'
+        :raises ConfirmationError:
         """
 
         data = await self._create_confirmation_params(tag)
@@ -201,6 +204,7 @@ class ConfirmationMixin:
             Requires to bind newly created sell listing to confirmation.
             You definitely don't need this
         :return: tuple of `Confirmation`
+        :raises ApiError:
         """
 
         tag = "getlist"

@@ -1,3 +1,5 @@
+"""Models used only and only in `aiosteampy.public`"""
+
 from typing import TypedDict, Literal
 
 
@@ -54,3 +56,10 @@ class ItemOrdersActivity(TypedDict):
     success: SUCCESS
     activity: list[Activity]
     timestamp: int
+
+
+class PriceOverview(TypedDict):
+    success: SUCCESS
+    lowest_price: str
+    volume: str
+    median_price: str

@@ -15,11 +15,11 @@ from .models import (
     ItemClass,
     MarketListingItem,
     MarketListingStatus,
-    Currency,
     MarketHistoryEvent,
     MarketHistoryEventType,
     MarketHistoryListing,
     MarketHistoryListingItem,
+    PriceHistoryEntry,
 )
 from .utils import create_ident_code
 
@@ -30,12 +30,13 @@ __all__ = ("MarketMixin",)
 
 MY_LISTINGS: TypeAlias = tuple[list[MarketListing], list[MarketListing], list[BuyOrder]]
 PREDICATE: TypeAlias = Callable[[MarketHistoryEvent], bool]
+PRICE_HISTORY_ENTRY_DATE_FORMAT = "%b %d %Y"
 
 
 class MarketMixin:
     """
     Mixin with market related methods.
-    Depends on `ConfirmationMixin`, `InventoryMixin`
+    Depends on `ConfirmationMixin`, `SteamPublicMixin`.
     """
 
     __slots__ = ()
@@ -333,7 +334,7 @@ class MarketMixin:
         fee: int = None,
     ) -> float:
         """
-        Buy item listing from market.
+        Buy item listing from market. Cache wallet balance.
         Unfortunately, Steam requires referer header to buy item,
         so `market hash name` and `game` is mandatory args.
 
@@ -375,7 +376,8 @@ class MarketMixin:
                 rj,
             )
 
-        return int(rj["wallet_info"]["wallet_balance"]) / 100
+        self._wallet_balance = int(rj["wallet_info"]["wallet_balance"]) / 100
+        return self._wallet_balance
 
     async def get_my_market_history(
         self: "SteamClient",
@@ -491,3 +493,53 @@ class MarketMixin:
             )
 
         return events
+
+    @overload
+    async def fetch_price_history(self, obj: EconItem) -> tuple[PriceHistoryEntry, ...]:
+        ...
+
+    @overload
+    async def fetch_price_history(self, obj: ItemClass) -> tuple[PriceHistoryEntry, ...]:
+        ...
+
+    @overload
+    async def fetch_price_history(self, obj: str, app_id: int) -> tuple[PriceHistoryEntry, ...]:
+        ...
+
+    async def fetch_price_history(self: "SteamClient", obj: str, app_id: int = None) -> tuple[PriceHistoryEntry, ...]:
+        """
+        Fetch price history.
+        Prices always will be same currency as a wallet.
+
+        `Warning` - this request is rate limited by Steam.
+
+        https://github.com/Revadike/InternalSteamWebAPI/wiki/Get-Market-Price-History
+
+        :param obj: `EconItem` or `ItemClass` or market hash name
+        :param app_id:
+        :return: tuple of `PriceHistoryEntry`
+        :raises ApiError:
+        """
+        if isinstance(obj, EconItem):
+            name = obj.class_.market_hash_name
+            app_id = obj.class_.game.app_id
+        elif isinstance(obj, ItemClass):
+            name = obj.market_hash_name
+            app_id = obj.game.app_id
+        else:  # str
+            name = obj
+
+        params = {"appid": app_id, "market_hash_name": name}
+        r = await self.session.get(STEAM_URL.MARKET / "pricehistory", params=params)
+        rj: dict[str, list[list]] = await r.json()
+        if not rj.get("success"):
+            raise ApiError(f"Failed to fetch `{name}` price history.", rj)
+
+        return tuple(
+            PriceHistoryEntry(
+                date=datetime.strptime(e_data[0], PRICE_HISTORY_ENTRY_DATE_FORMAT),
+                price=e_data[1],
+                daily_volume=int(e_data[2]),
+            )
+            for e_data in rj["prices"]
+        )

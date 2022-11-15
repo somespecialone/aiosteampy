@@ -443,4 +443,10 @@ class MarketHistoryEvent:
     type: MarketHistoryEventType
 
 
+@dataclass(eq=False, slots=True)
+class PriceHistoryEntry:
+    date: datetime
+    price: float
+    daily_volume: int
+
 # TODO base listing, self market listing, market listing(converted fees and prices)

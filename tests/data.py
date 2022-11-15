@@ -1,35 +1,22 @@
 import os
-
-from _.models import Currency, GameOptions
-
-ITEM_DATA = "M4A1-S | Cyrex (Factory New)"
+import base64
 
 # env variables
-# TEST_API_KEY
-# TEST_LOGIN
+# TEST_USERNAME
 # TEST_PASSWORD
 # TEST_STEAMID
 # TEST_SHARED_SECRET
 # TEST_IDENTITY_SECRET
 
 CREDENTIALS = {
-    "api_key": os.getenv("TEST_API_KEY"),
-    "login": os.getenv("TEST_LOGIN"),
+    "username": os.getenv("TEST_USERNAME"),
     "password": os.getenv("TEST_PASSWORD"),
-    "steam_guard": {
-        "steamid": os.getenv("TEST_STEAMID"),
-        "shared_secret": os.getenv("TEST_SHARED_SECRET"),
-        "identity_secret": os.getenv("TEST_IDENTITY_SECRET"),
-    },
+    "steam_id": int(os.getenv("TEST_STEAMID")),
+    "shared_secret": os.getenv("TEST_SHARED_SECRET"),
+    "identity_secret": os.getenv("TEST_IDENTITY_SECRET"),
 }
 
-HEADERS = {
-    "User-Agent": "Mozilla/5.0 (X11; CrOS x86_64 8172.45.0) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/51.0.2704.64 Safari/537.36"
-}
+UA = "Mozilla/5.0 (X11; CrOS x86_64 8172.45.0) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/51.0.2704.64 Safari/537.36"
 
-TOTAL_LISTINGS = 2
-BUY_ORDERS = 0
-SELL_LISTINGS = 0
-
-CURRENCY = Currency.RUB
-GAME = GameOptions.CSGO
+MOCK_SHARED_SECRET = base64.b64encode("1234567890abcdefghij".encode("utf-8"))
+MOCK_IDENTITY_SECRET = base64.b64encode("abcdefghijklmnoprstu".encode("utf-8"))

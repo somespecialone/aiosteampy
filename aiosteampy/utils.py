@@ -24,9 +24,7 @@ __all__ = (
 
 
 def gen_two_factor_code(shared_secret: str, timestamp: int = None) -> str:
-    """
-    Generate twofactor (onetime) code.
-    """
+    """Generate twofactor (onetime/TOTP) code."""
 
     if timestamp is None:
         timestamp = int(time_time())
@@ -53,6 +51,8 @@ def generate_confirmation_key(identity_secret: str, tag: str, timestamp: int = N
 
 # It works, however it's different that one generated from mobile app
 def generate_device_id(steam_id: int) -> str:
+    """Generate mobile android device id. Confirmation endpoints requires this."""
+
     hexed_steam_id = sha1(str(steam_id).encode("ascii")).hexdigest()
     return "android:" + "-".join(
         [hexed_steam_id[:8], hexed_steam_id[8:12], hexed_steam_id[12:16], hexed_steam_id[16:20], hexed_steam_id[20:32]]
@@ -62,6 +62,10 @@ def generate_device_id(steam_id: int) -> str:
 async def do_session_steam_auth(session: ClientSession, auth_url: str | URL):
     """
     Request auth page, find specs of steam openid and log in through steam with passed session.
+    Useful when you need to log in 3rd party site trough Steam.
+
+    :param session: just session
+    :param auth_url: url to site, which redirect you to steam login page
     """
 
     r = await session.get(auth_url)

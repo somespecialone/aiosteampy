@@ -1,146 +1,17 @@
-from enum import Enum
 from dataclasses import dataclass, field
-from typing import Literal, TypeAlias, ClassVar
+from typing import Literal
 from datetime import datetime
 
-from yarl import URL
-
-from .utils import create_ident_code
-
-
-class STEAM_URL:
-    API = URL("https://api.steampowered.com")
-    COMMUNITY = URL("https://steamcommunity.com")
-    STORE = URL("https://store.steampowered.com")
-    HELP = URL("https://help.steampowered.com")
-    STATIC = URL("https://community.akamai.steamstatic.com")
-    # specific
-    MARKET = COMMUNITY / "market/"
-
-
-# https://stackoverflow.com/a/54732120/19419998
-class Game(Enum):
-    CSGO = 730, 2
-    DOTA2 = 570, 2
-    H1Z1 = 433850, 2
-    RUST = 252490, 2
-    TF2 = 440, 2
-    PUBG = 578080, 2
-
-    STEAM = 753, 6  # not actually a game :)
-
-    _steam_id_map: ClassVar[dict[int, "Game"]]
-
-    def __new__(cls, *args, **kwargs):
-        obj = object.__new__(cls)
-        obj._value_ = args[0]
-        return obj
-
-    def __init__(self, _, context_id):
-        self._context_id_ = context_id
-        self._args_tuple_ = (self._value_, self._context_id_)
-
-    @property
-    def context_id(self) -> int:
-        return self._context_id_
-
-    @property
-    def app_id(self) -> int:
-        return self._value_
-
-    @classmethod
-    def by_steam_id(cls, steam_id: int) -> "Game | None":
-        return cls._steam_id_map.get(steam_id)
-
-    def __getitem__(self, index: int) -> int:
-        return self._args_tuple_[index]
-
-    def __iter__(self):  # for unpacking
-        return iter(self._args_tuple_)
-
-
-Game._steam_id_map = {g.value: g for g in Game.__members__.values()}
-
-GameType: TypeAlias = Game | tuple[int, int]
-
-
-class Currency(Enum):
-    """
-    Steam currency enum.
-
-    https://partner.steamgames.com/doc/store/pricing/currencies
-    """
-
-    USD = 1  # UnitedStates Dollar
-    GBP = 2  # United Kingdom Pound
-    EURO = 3  # European Union Euro
-    CHF = 4  # Swiss Francs
-    RUB = 5  # Russian Rouble
-    PLN = 6  # Polish Złoty
-    BRL = 7  # Brazilian Reals
-    JPY = 8  # Japanese Yen
-    NOK = 9  # Norwegian Krone
-    IDR = 10  # Indonesian Rupiah
-    MYR = 11  # Malaysian Ringgit
-    PHP = 12  # Philippine Peso
-    SGD = 13  # Singapore Dollar
-    THB = 14  # Thai Baht
-    VND = 15  # Vietnamese Dong
-    KRW = 16  # South KoreanWon
-    TRY = 17  # Turkish Lira
-    UAH = 18  # Ukrainian Hryvnia
-    MXN = 19  # Mexican Peso
-    CAD = 20  # Canadian Dollars
-    AUD = 21  # Australian Dollars
-    NZD = 22  # New Zealand Dollar
-    CNY = 23  # Chinese Renminbi (yuan)
-    INR = 24  # Indian Rupee
-    CLP = 25  # Chilean Peso
-    PEN = 26  # Peruvian Sol
-    COP = 27  # Colombian Peso
-    ZAR = 28  # South AfricanRand
-    HKD = 29  # Hong KongDollar
-    TWD = 30  # New TaiwanDollar
-    SAR = 31  # Saudi Riyal
-    AED = 32  # United ArabEmirates Dirham
-    # SEK = 33  # Swedish Krona
-    ARS = 34  # Argentine Peso
-    ILS = 35  # Israeli NewShekel
-    # BYN = 36  # Belarusian Ruble
-    KZT = 37  # Kazakhstani Tenge
-    KWD = 38  # Kuwaiti Dinar
-    QAR = 39  # Qatari Riyal
-    CRC = 40  # Costa Rican Colón
-    UYU = 41  # Uruguayan Peso
-    # BGN = 42  # Bulgarian Lev
-    # HRK = 43  # Croatian Kuna
-    # CZK = 44  # Czech Koruna
-    # DKK = 45  # Danish Krone
-    # HUF = 46  # Hungarian Forint
-    # RON = 47  # Romanian Leu
-
-    _name_map: ClassVar[dict[str, "Currency"]]
-
-    @classmethod
-    def by_name(cls, name: str) -> "Currency":
-        return cls._name_map[name]
-
-
-Currency._name_map = {c.name: c for c in Currency.__members__.values()}
-
-
-class TradeOfferState(Enum):
-    INVALID = 1
-    ACTIVE = 2
-    ACCEPTED = 3
-    COUNTERED = 4
-    EXPIRED = 5
-    CANCELED = 6
-    DECLINED = 7
-    INVALID_ITEMS = 8
-    CONFIRMATION_NEED = 9
-    CANCELED_BY_SECONDARY_FACTOR = 10
-    STATE_IN_ESCROW = 11
+from .constants import (
+    STEAM_URL,
+    GameType,
+    Currency,
+    ConfirmationType,
+    MarketHistoryEventType,
+    MarketListingStatus,
+    TradeOfferStatus,
+)
+from .utils import create_ident_code, account_id_to_steam_id
 
 
 @dataclass(eq=False, slots=True)
@@ -279,20 +150,6 @@ class EconItem:
         return hash(self.ident_code)
 
 
-# https://github.com/DoctorMcKay/node-steamcommunity/blob/master/resources/EConfirmationType.js
-class ConfirmationType(Enum):
-    UNKNOWN = 1
-    TRADE = 2
-    LISTING = 3
-
-    @classmethod
-    def get(cls, v: int) -> "ConfirmationType":
-        try:
-            return cls(v)
-        except ValueError:
-            return cls.UNKNOWN
-
-
 # https://github.com/DoctorMcKay/node-steamcommunity/wiki/CConfirmation
 @dataclass(eq=False, slots=True)
 class Confirmation:
@@ -325,11 +182,6 @@ class Notifications:
     chats: int = 0  # 9
     help_request_replies: int = 0  # 10
     account_alerts: int = 0  # 11
-
-
-class MarketListingStatus(Enum):
-    NEED_CONFIRMATION = 17
-    ACTIVE = 1
 
 
 @dataclass(eq=False, slots=True, kw_only=True)
@@ -428,13 +280,6 @@ class MarketHistoryListing(BaseOrder):
         return self.id
 
 
-class MarketHistoryEventType(Enum):
-    LISTING_CREATED = 1
-    LISTING_CANCELED = 2
-    LISTING_SOLD = 3
-    LISTING_PURCHASED = 4
-
-
 @dataclass(eq=False, slots=True)
 class MarketHistoryEvent:
     """
@@ -473,3 +318,108 @@ class MarketListing(BaseOrder):
     @property
     def listing_id(self) -> int:
         return self.id
+
+
+@dataclass(eq=False, slots=True, kw_only=True)
+class BaseTradeOfferItem(EconItem):
+    class_id: int
+    game: GameType
+
+    class_: ItemClass | None  # old trades don't have descriptions for asset due to Steam :)
+
+    def _set_ident_code(self):
+        self.ident_code = create_ident_code(self.id, *self.game)
+
+    @property
+    def inspect_link(self) -> None:
+        return None
+
+
+@dataclass(eq=False, slots=True, kw_only=True)
+class TradeOfferItem(BaseTradeOfferItem):
+    missing: bool
+    est_usd: int
+
+    owner_id: int = 0
+
+    def __eq__(self, other: "EconItem | TradeOfferItem"):
+        if isinstance(other, EconItem):
+            game = other.class_.game
+            class_id = other.class_.id
+        else:
+            game = other.game
+            class_id = other.class_id
+
+        return (
+            (self.id == other.id)
+            and (self.game[0] == game[0])
+            and (self.game[1] == game[1])
+            and (self.class_id == class_id)
+        )
+
+
+@dataclass(eq=False, slots=True)
+class BaseTradeOffer:
+    id: int
+
+    owner: int  # steam id64 of entity owner acc (SteamClient)
+    partner_id: int  # id32
+
+    status: TradeOfferStatus
+
+    @property
+    def trade_offer_id(self) -> int:
+        return self.id
+
+    @property
+    def partner_id64(self) -> int:
+        return account_id_to_steam_id(self.partner_id)
+
+
+@dataclass(eq=False, slots=True)
+class TradeOffer(BaseTradeOffer):
+    """Steam Trade Offer entity."""
+
+    is_our_offer: bool
+
+    expiration_time: datetime
+    time_created: datetime
+    time_updated: datetime
+
+    items_to_give: tuple[TradeOfferItem, ...]
+    items_to_receive: tuple[TradeOfferItem, ...]
+
+    message: str | None
+
+    def __post_init__(self):
+        for i in self.items_to_give:
+            i.owner_id = self.owner
+
+        for i in self.items_to_receive:
+            i.owner_id = self.partner_id64
+
+    @property
+    def sender(self) -> int:
+        """Steam id64 of sender."""
+        return self.owner if self.is_our_offer else self.partner_id64
+
+    @property
+    def receiver(self) -> int:
+        """Steam id64 of receiver."""
+        return self.partner_id64 if self.is_our_offer else self.owner
+
+
+@dataclass(eq=False, slots=True, kw_only=True)
+class HistoryTradeOfferItem(BaseTradeOfferItem):
+    new_asset_id: int
+    new_context_id: int
+
+    owner_id: None = None
+
+
+@dataclass(eq=False, slots=True)
+class HistoryTradeOffer(BaseTradeOffer):
+    time_init: datetime
+
+    assets_received: tuple[HistoryTradeOfferItem, ...]
+    assets_given: tuple[HistoryTradeOfferItem, ...]

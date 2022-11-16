@@ -6,7 +6,7 @@ from time import time as time_time
 from rsa import PublicKey, encrypt
 
 from .exceptions import CaptchaRequired, LoginError, ApiError
-from .models import STEAM_URL
+from .constants import STEAM_URL
 from .utils import get_cookie_value_from_session
 
 if TYPE_CHECKING:

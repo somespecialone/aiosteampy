@@ -13,9 +13,10 @@ from .trade import TradeMixin
 from .market import MarketMixin
 from .public import SteamPublicMixin, INV_PAGE_SIZE, PREDICATE, PRIVATE_USER_EXC_MSG
 
-from .models import STEAM_URL, Currency, Notifications, GameType, EconItem
+from .models import Notifications, EconItem
+from .constants import STEAM_URL, Currency, GameType, Language
 from .exceptions import ApiError, SessionExpired
-from .utils import get_cookie_value_from_session
+from .utils import get_cookie_value_from_session, steam_id_to_account_id
 
 __all__ = ("SteamClient", "SteamPublicClient")
 
@@ -26,9 +27,10 @@ TRADE_TOKEN_RE = compile(r"\d+&token=(?P<token>.+)\" readonly")
 API_KEY_CHECK_STR = "<h2>Access Denied</h2>"
 API_KEY_CHECK_STR1 = "You must have a validated email address to create a Steam Web API key"
 STEAM_LANG_COOKIE = "Steam_Language"
+DEF_COUNTRY = "UA"
 
 
-class SteamClient(SteamGuardMixin, ConfirmationMixin, LoginMixin, MarketMixin, SteamPublicMixin):
+class SteamClient(SteamGuardMixin, ConfirmationMixin, LoginMixin, MarketMixin, TradeMixin, SteamPublicMixin):
     """
     Base class in hierarchy ...
     """
@@ -44,14 +46,13 @@ class SteamClient(SteamGuardMixin, ConfirmationMixin, LoginMixin, MarketMixin, S
         "_api_key",
         "trade_token",
         "_device_id",
-        "_listings_confs_ident",
-        "_listings_confs",
-        "_trades_confs",
+        "_confirmation_storage",
         "_steam_fee",
         "_publisher_fee",
         "_wallet_currency",
         "_wallet_balance",
         "_wallet_country",
+        "_trades_storage",
     )
 
     def __init__(
@@ -65,9 +66,10 @@ class SteamClient(SteamGuardMixin, ConfirmationMixin, LoginMixin, MarketMixin, S
         api_key: str = None,
         trade_token: str = None,
         wallet_currency: Currency = None,
-        wallet_country="UA",
+        wallet_country=DEF_COUNTRY,
         steam_fee=0.05,
         publisher_fee=0.1,
+        lang=Language.ENGLISH,
         tz_offset=0.0,
         session: ClientSession = None,
     ):
@@ -91,27 +93,26 @@ class SteamClient(SteamGuardMixin, ConfirmationMixin, LoginMixin, MarketMixin, S
 
         super().__init__()
 
-        self._set_init_cookies(tz_offset)
+        self._set_init_cookies(lang, tz_offset)
 
     @property
-    def steam_id32(self) -> int:
-        return self.steam_id & 0xFFFFFFFF
+    def account_id(self) -> int:
+        """Steam id32."""
+        return steam_id_to_account_id(self.steam_id)
 
     @property
     def trade_url(self) -> URL | None:
         if self.trade_token:
-            return (STEAM_URL.COMMUNITY / "tradeoffer/new/").with_query(
-                {"partner": self.steam_id32, "token": self.trade_token}
-            )
+            return (STEAM_URL.COMMUNITY / "tradeoffer/new/") % {"partner": self.account_id, "token": self.trade_token}
 
     @property
     def profile_url(self) -> URL:
         return STEAM_URL.COMMUNITY / f"profiles/{self.steam_id}"
 
     @property
-    def language(self) -> str:
-        """Language of Steam html pages, json info, descriptions, etc..."""
-        return get_cookie_value_from_session(self.session, STEAM_URL.STORE.host, STEAM_LANG_COOKIE)
+    def language(self) -> Language:
+        """Language of Steam html pages, json info, descriptions, etc."""
+        return Language(get_cookie_value_from_session(self.session, STEAM_URL.STORE.host, STEAM_LANG_COOKIE))
 
     @property
     def wallet_balance(self) -> float:
@@ -131,11 +132,11 @@ class SteamClient(SteamGuardMixin, ConfirmationMixin, LoginMixin, MarketMixin, S
         """Alias for wallet currency. Needed for public methods."""
         return self._wallet_currency
 
-    def _set_init_cookies(self, tz_offset: float):
+    def _set_init_cookies(self, lang: str, tz_offset: float):
         urls = (STEAM_URL.COMMUNITY, STEAM_URL.STORE, STEAM_URL.HELP)
         for url in urls:
             c = SimpleCookie()
-            c[STEAM_LANG_COOKIE] = "english"
+            c[STEAM_LANG_COOKIE] = lang
             c[STEAM_LANG_COOKIE]["path"] = "/"
             c[STEAM_LANG_COOKIE]["domain"] = url.host
             c[STEAM_LANG_COOKIE]["secure"] = True
@@ -234,7 +235,7 @@ class SteamClient(SteamGuardMixin, ConfirmationMixin, LoginMixin, MarketMixin, S
         """
         Register new api key, cache it and return.
 
-        :param domain: On which domain api key will be registered. Default - `steamcommunity`
+        :param domain: On which domain api key will be registered. Default - "steamcommunity"
         :return: api key
         """
 
@@ -272,7 +273,7 @@ class SteamClient(SteamGuardMixin, ConfirmationMixin, LoginMixin, MarketMixin, S
         page_size=INV_PAGE_SIZE,
     ) -> list[EconItem]:
         """
-        Fetches self inventory. Shorthand for `get_user_inventory(self.steam_id, ...)`.
+        Fetches self inventory. Shorthand for "get_user_inventory(self.steam_id, ...)".
 
         :param game: just Steam Game
         :param page_size: max items on page. Current Steam limit is 2000
@@ -290,13 +291,19 @@ class SteamClient(SteamGuardMixin, ConfirmationMixin, LoginMixin, MarketMixin, S
         return inv
 
 
-# TODO solve problem with class vars or another def values
 class SteamPublicClient(SteamPublicMixin):
-    __slots__ = ("session",)
+    __slots__ = ("session", "language", "currency", "country")
 
     def __init__(
         self,
         *,
+        language=Language.ENGLISH,
+        currency=Currency.USD,
+        country=DEF_COUNTRY,
         session: ClientSession = None,
     ):
         self.session = session or ClientSession(raise_for_status=True)
+
+        self.language = language
+        self.currency = currency
+        self.country = country

@@ -3,7 +3,8 @@ from json import loads
 from re import compile
 from datetime import datetime
 
-from .models import STEAM_URL, Confirmation, MyMarketListing, ConfirmationType, GameType, EconItem
+from .models import Confirmation, MyMarketListing, EconItem, TradeOffer
+from .constants import STEAM_URL, ConfirmationType, GameType
 from .exceptions import ApiError, ConfirmationError, SessionExpired
 from .utils import create_ident_code
 
@@ -16,79 +17,93 @@ CONF_URL = STEAM_URL.COMMUNITY / "mobileconf"
 ITEM_INFO_RE = compile(r"'confiteminfo', (?P<item_info>.+), UserYou")
 CONF_OP_TAGS = Literal["allow", "cancel"]
 PREDICATE: TypeAlias = Callable[[Confirmation], bool]
+STORAGE_TRADES_KEY = "trades"
+STORAGE_LISTINGS_KEY = "listings"
+STORAGE_LISTINGS_IDENT_KEY = "listings_ident"
 
 
 class ConfirmationMixin:
     """
     Mixin with confirmations related methods.
-    Depends on `SteamGuardMixin`.
+    Depends on :py:class:`aiosteampy.guard.SteamGuardMixin`.
     """
 
     __slots__ = ()
 
-    _listings_confs_ident: dict[str, Confirmation]  # ident code: ...
-    _listings_confs: dict[int, Confirmation]  # listingid: ...
-    _trades_confs: dict[int, Confirmation]  # tradeid: ...
+    # _listings_confs_ident: dict[str, Confirmation]  # ident code: ...
+    # _listings_confs: dict[int, Confirmation]  # listingid: ...
+    # _trades_confs: dict[int, Confirmation]  # tradeid: ...
+    #
+    _confirmation_storage: dict[str, dict[str | int, Confirmation]]  # listing/trade id/ident code
 
     def __init__(self, *args, **kwargs):
         self._listings_confs_ident = {}
         self._listings_confs = {}
         self._trades_confs = {}
 
+        self._confirmation_storage = {
+            STORAGE_TRADES_KEY: {},
+            STORAGE_LISTINGS_KEY: {},
+            STORAGE_LISTINGS_IDENT_KEY: {},
+        }
+
         super().__init__(*args, **kwargs)
 
     @property
     def confirmations(self) -> tuple[Confirmation, ...]:
         """Cached confirmations."""
-        return *self._listings_confs.values(), *self._trades_confs.values()
-
-    @overload
-    async def confirm_sell_listing(self, obj: MyMarketListing) -> int:
-        ...
-
-    @overload
-    async def confirm_sell_listing(self, obj: EconItem) -> int:
-        ...
-
-    @overload
-    async def confirm_sell_listing(self, obj: int) -> int:
-        ...
+        return (
+            *self._confirmation_storage[STORAGE_TRADES_KEY].values(),
+            *self._confirmation_storage[STORAGE_LISTINGS_KEY].values(),
+        )
 
     @overload
     async def confirm_sell_listing(self, obj: int, game: GameType) -> int:
         ...
 
+    @overload
+    async def confirm_sell_listing(self, obj: MyMarketListing | EconItem | int) -> int:
+        ...
+
     async def confirm_sell_listing(self, obj: MyMarketListing | EconItem | int, game: GameType = None) -> int:
         """
         Perform sell listing confirmation.
-        Pass `game` arg only with asset id.
+        Pass ``game`` arg only with asset id.
 
         :param obj: `MyMarketListing` or `EconItem` that you listed or listing id or asset id
-        :param game: `Game` or tuple with app and context id ints. Required when `obj` is asset id
+        :param game: `Game` or tuple with app and context id ints. Required when ``obj`` is asset id
         :return: listing id
         :raises ConfirmationError:
-        :raises SessionExpired:
         """
 
         update = False
         if isinstance(obj, MyMarketListing):
-            m = self._listings_confs
             key = obj.id
         elif isinstance(obj, EconItem):
-            m = self._listings_confs_ident
             key = create_ident_code(obj.id, *obj.class_.game)
             update = True
         else:  # int
             if game:  # asset id & game
-                m = self._listings_confs_ident
                 key = create_ident_code(obj, *game)
                 update = True
             else:  # listing id
-                m = self._listings_confs
                 key = obj
 
-        # below
-        conf = await self._get_or_fetch_confirmation(key, m, update)
+        conf = await self._get_or_fetch_confirmation(key, update)
+        await self.allow_confirmation(conf)
+
+        return conf.creator_id
+
+    async def confirm_trade_offer(self, offer: int | TradeOffer) -> int:
+        """
+        Perform sell trade offer confirmation.
+
+        :param offer: trade offer id or `TradeOffer`
+        :return: trade id
+        :raises ConfirmationError:
+        """
+
+        conf = await self._get_or_fetch_confirmation(offer.id if isinstance(offer, TradeOffer) else offer)
         await self.allow_confirmation(conf)
 
         return conf.creator_id
@@ -96,12 +111,11 @@ class ConfirmationMixin:
     async def _get_or_fetch_confirmation(
         self,
         key: str | int,
-        mapping: dict[str | int, Confirmation],
-        update: bool,
+        update=False,
     ) -> Confirmation:
-        conf = mapping.get(key)
-        not conf and await self.fetch_confirmations(update_data=update)
-        conf = mapping.get(key)
+        conf = await self.get_confirmation(key)
+        not conf and await self.get_confirmations(update=update)
+        conf = await self.get_confirmation(key)
         if not conf:
             raise ConfirmationError(f"Can't find confirmation for {key} ident/trade/listing id.")
 
@@ -113,7 +127,7 @@ class ConfirmationMixin:
         predicate: PREDICATE = None,
     ) -> tuple[int, ...]:
         """
-        Fetch all confirmations and allow its (which passes `predicate`) with single request to Steam.
+        Fetch all confirmations and allow its (which passes ``predicate``) with single request to Steam.
 
         :param predicate: callable with single argument `Confirmation`, must return boolean
         :return: tuple of allowed confirmations creator ids (trade/listing id)
@@ -121,12 +135,12 @@ class ConfirmationMixin:
         :raises ApiError:
         """
 
-        confs = await self.fetch_confirmations(predicate=predicate)
+        confs = await self.get_confirmations(predicate=predicate)
         confs and await self.allow_multiple_confirmations(confs)
         return tuple(c.creator_id for c in confs)
 
     def allow_confirmation(self, conf: Confirmation):
-        """Shorthand for `send_confirmation(conf, 'allow')`."""
+        """Shorthand for "send_confirmation(conf, 'allow')"."""
 
         return self.send_confirmation(conf, "allow")
 
@@ -143,7 +157,7 @@ class ConfirmationMixin:
         params |= {"op": tag, "cid": conf.id, "ck": conf.nonce}
         r = await self.session.get(CONF_URL / "ajaxop", params=params)
         rj = await r.json()
-        self._remove_conf(conf)  # delete before raise error
+        await self.remove_confirmation(conf)  # delete before raise error
 
         if not rj.get("success"):
             raise ConfirmationError(
@@ -151,7 +165,7 @@ class ConfirmationMixin:
             )
 
     def allow_multiple_confirmations(self, confs: Iterable[Confirmation]):
-        """Shorthand for `send_multiple_confirmations(conf, 'allow')`."""
+        """Shorthand for "send_multiple_confirmations(conf, 'allow')"."""
 
         return self.send_multiple_confirmations(confs, "allow")
 
@@ -172,35 +186,63 @@ class ConfirmationMixin:
         r = await self.session.post(CONF_URL / "multiajaxop", data=data)
         rj: dict[str, ...] = await r.json()
         for conf in confs:
-            self._remove_conf(conf)  # delete before raise error
+            await self.remove_confirmation(conf)  # delete before raise error
 
         if not rj.get("success"):
             raise ConfirmationError(f"Failed to perform action `{tag}` for multiple confs.")
 
-    def _remove_conf(self, conf: Confirmation):
-        mapping = self._listings_confs if conf.type is ConfirmationType.LISTING else self._trades_confs
-        mapping.pop(conf.creator_id, None)
-        conf.type is ConfirmationType.LISTING and self._listings_confs_ident.pop(conf._asset_ident_code, None)
+    # TODO docs about storage
+    async def remove_confirmation(self, conf: Confirmation):
+        """
+        Remove confirmation silently from cache.
+        You can override this method to provide your custom storage.
+        """
 
-    def _cache_conf(self, conf: Confirmation):
         if conf.type is ConfirmationType.LISTING:
-            self._listings_confs[conf.creator_id] = conf
-            self._listings_confs_ident[conf._asset_ident_code] = conf
+            self._confirmation_storage[STORAGE_LISTINGS_KEY].pop(conf.creator_id, None)
+            self._confirmation_storage[STORAGE_LISTINGS_IDENT_KEY].pop(conf._asset_ident_code, None)
+        else:
+            self._confirmation_storage[STORAGE_TRADES_KEY].pop(conf.creator_id, None)
+
+    async def store_confirmation(self, conf: Confirmation):
+        """
+        Cache conf to inner store.
+        You can override this method to provide your custom storage.
+        """
+
+        if conf.type is ConfirmationType.LISTING:
+            self._confirmation_storage[STORAGE_LISTINGS_KEY][conf.creator_id] = conf
+            self._confirmation_storage[STORAGE_LISTINGS_IDENT_KEY][conf._asset_ident_code] = conf
         elif conf.type is ConfirmationType.TRADE:
-            self._trades_confs[conf.creator_id] = conf
+            self._confirmation_storage[STORAGE_TRADES_KEY][conf.creator_id] = conf
         # unknown type going away
 
-    async def fetch_confirmations(
+    async def get_confirmation(self, key) -> Confirmation | None:
+        """
+        Get conf from storage.
+        You can override this method to provide your custom storage.
+        """
+
+        if isinstance(key, int):  # trade/listing id
+            maps = (self._confirmation_storage[STORAGE_TRADES_KEY], self._confirmation_storage[STORAGE_LISTINGS_KEY])
+        else:  # ident_code of listing asset
+            maps = (self._confirmation_storage[STORAGE_LISTINGS_IDENT_KEY],)
+
+        for m in maps:
+            if key in m:
+                return m[key]
+
+    async def get_confirmations(
         self: "SteamClient",
         *,
         predicate: PREDICATE = None,
-        update_data=False,
+        update=False,
     ) -> tuple[Confirmation, ...]:
         """
         Fetch confirmations, cache it and return.
 
         :param predicate: callable with single argument `Confirmation`, must return boolean
-        :param update_data: fetch data and update confirmations.
+        :param update: fetch data and update confirmations.
             Requires to bind newly created sell listing to confirmation.
             You definitely don't need this
         :return: tuple of `Confirmation`
@@ -228,10 +270,8 @@ class ConfirmationMixin:
                     summary=conf_data["summary"][0],
                     warn=conf_data["warn"],
                 )
-                # update_data and conf.type is ConfirmationType.LISTING and await self._update_confirmation(conf)
-                # update all confs before I check trade confs data
-                update_data and await self._update_confirmation(conf)
-                self._cache_conf(conf)
+                update and conf.type is ConfirmationType.LISTING and await self._update_confirmation(conf)
+                await self.store_confirmation(conf)
 
         confs = self.confirmations
         return tuple(c for c in confs if predicate(c)) if predicate else confs
@@ -255,5 +295,3 @@ class ConfirmationMixin:
             raise ApiError(f"Failed to fetch confirmation [{conf.id}] details.", rj)
         data: dict[str, ...] = loads(ITEM_INFO_RE.search(rj["html"])["item_info"])
         conf._asset_ident_code = create_ident_code(data["id"], data["appid"], data["contextid"])
-
-        # TODO check trade confs

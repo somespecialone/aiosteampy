@@ -1,4 +1,4 @@
-"""Models used only and only in `aiosteampy.public`"""
+"""Typed dicts for responses and methods."""
 
 from typing import TypedDict, Literal
 
@@ -63,3 +63,16 @@ class PriceOverview(TypedDict):
     lowest_price: str
     volume: str
     median_price: str
+
+
+class TradeOffersSummary(TypedDict):
+    pending_received_count: int
+    new_received_count: int
+    updated_received_count: int
+    historical_received_count: int
+    pending_sent_count: int
+    newly_accepted_sent_count: int
+    updated_sent_count: int
+    historical_sent_count: int
+    escrow_received_count: int
+    escrow_sent_count: int

@@ -5,7 +5,7 @@ from time import time as time_time
 from hmac import new as hmac_new
 from hashlib import sha1
 from functools import wraps
-from typing import Callable, overload, ParamSpec, TypeVar
+from typing import Callable, overload, ParamSpec, TypeVar, Literal
 
 from bs4 import BeautifulSoup
 from aiohttp import ClientSession
@@ -20,6 +20,9 @@ __all__ = (
     "get_cookie_value_from_session",
     "async_throttle",
     "create_ident_code",
+    "account_id_to_steam_id",
+    "steam_id_to_account_id",
+    "to_int_boolean",
 )
 
 
@@ -85,7 +88,7 @@ async def do_session_steam_auth(session: ClientSession, auth_url: str | URL):
 
 def get_cookie_value_from_session(session: ClientSession, domain: str, field: str) -> str | None:
     """
-    This function exists only to hide annoying alert `unresolved _cookies attr reference` from main base code.
+    This function exists only to hide annoying alert "unresolved _cookies attr reference" from main base code.
     """
 
     if field in session.cookie_jar._cookies[domain]:
@@ -115,10 +118,10 @@ def async_throttle(
     seconds: float, *, arg_index: int = None, arg_name: str = None
 ) -> Callable[[Callable[_P, _R]], Callable[_P, _R]]:
     """
-    Prevents the decorated function from being called more than once per `seconds`.
+    Prevents the decorated function from being called more than once per ``seconds``.
     Throttle (`await asyncio.sleep`) before call wrapped async func,
     when related arg was equal (same hash value) to related arg passed in previous func call
-    if time between previous and current call lower than `seconds`.
+    if time between previous and current call lower than ``seconds``.
     Related arg must be hashable (can be dict key).
     Wrapped func must be async (return Coroutine).
     Throttle every func call time if related arg has been not specified.
@@ -160,7 +163,8 @@ def async_throttle(
 
 def create_ident_code(obj_id: int | str, app_id: int | str, context_id: int | str = None) -> str:
     """
-    Create unique ident code for `EconItem` asset or item class (description) within whole Steam Economy.
+    Create unique ident code for :py:class:`aiosteampy.models.EconItem` asset or item class
+    (description) within whole Steam Economy.
 
     https://dev.doctormckay.com/topic/332-identifying-steam-items/
 
@@ -175,3 +179,20 @@ def create_ident_code(obj_id: int | str, app_id: int | str, context_id: int | st
         code += f"_{context_id}"
 
     return code
+
+
+def steam_id_to_account_id(steam_id: int) -> int:
+    """Convert steam id64 to steam id32."""
+
+    return steam_id & 0xFFFFFFFF
+
+
+def account_id_to_steam_id(account_id: int) -> int:
+    """Convert steam id32 to steam id64."""
+
+    return 1 << 56 | 1 << 52 | 1 << 32 | account_id
+
+
+def to_int_boolean(s):
+    """Convert something to 1, 0."""
+    return 1 if s else 0

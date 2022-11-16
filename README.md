@@ -90,3 +90,4 @@ pytest
 * [Revadike/InternalSteamWebAPI](https://github.com/Revadike/InternalSteamWebAPI)
 * [Gobot1234/steam.py](https://github.com/Gobot1234/steam.py)
 * [somespecialone/steam-item-name-ids](https://github.com/somespecialone/steam-item-name-ids)
+* [steamapi.xpaw.me](https://steamapi.xpaw.me/)

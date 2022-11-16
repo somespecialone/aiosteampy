@@ -4,10 +4,6 @@ from aiohttp import ClientSession, ClientResponseError
 from yarl import URL
 
 from .models import (
-    STEAM_URL,
-    Currency,
-    Game,
-    GameType,
     ItemDescription,
     ItemTag,
     ItemClass,
@@ -16,7 +12,8 @@ from .models import (
     MarketListing,
     MarketListingItem,
 )
-from .public_models import ItemOrdersHistogram, ItemOrdersActivity, PriceOverview
+from .constants import STEAM_URL, Game, Currency, GameType, Language
+from .typed import ItemOrdersHistogram, ItemOrdersActivity, PriceOverview
 from .exceptions import ApiError
 from .utils import create_ident_code
 
@@ -33,7 +30,7 @@ class SteamPublicMixin:
     __slots__ = ()
 
     session: ClientSession
-    language: str
+    language: Language
     currency: Currency
     country: str
 
@@ -94,7 +91,7 @@ class SteamPublicMixin:
         return rj
 
     @staticmethod
-    def _find_game(description_data: dict[str, int], assets: list[dict[str, int | str]]) -> GameType:
+    def _find_game_for_asset(description_data: dict[str, int], assets: list[dict[str, int | str]]) -> GameType:
         try:
             return Game(description_data["appid"])
         except ValueError:
@@ -129,7 +126,7 @@ class SteamPublicMixin:
         return ItemClass(
             id=int(data["classid"]),
             instance_id=int(data["instanceid"]),
-            game=cls._find_game(data, assets),
+            game=cls._find_game_for_asset(data, assets),
             name=data["name"],
             market_name=data["market_name"],
             market_hash_name=data["market_hash_name"],
@@ -175,17 +172,18 @@ class SteamPublicMixin:
         self,
         item_nameid: int,
         *,
-        lang: str = None,
+        lang: Language = None,
         country: str = None,
         currency: Currency = None,
     ) -> ItemOrdersHistogram:
         """
         Do what described in method name.
 
-        `Warning!` - steam rate limit this request.
-
         https://github.com/Revadike/InternalSteamWebAPI/wiki/Get-Market-Item-Orders-Histogram
         https://github.com/somespecialone/steam-item-name-ids
+
+        .. warning::
+            This request is rate limited by Steam.
 
         :param item_nameid: special id of item class. Can be found only on listings page.
         :param lang:
@@ -199,7 +197,7 @@ class SteamPublicMixin:
             "norender": 1,
             "language": lang or self.language,
             "country": country or self.country,
-            "currency": currency.value if currency else self.currency.value,
+            "currency": currency or self.currency,
             "item_nameid": item_nameid,
         }
         r = await self.session.get(STEAM_URL.MARKET / "itemordershistogram", params=params)
@@ -211,9 +209,9 @@ class SteamPublicMixin:
 
     async def fetch_item_orders_activity(
         self,
-        item_nameid: int,
+        item_name_id: int,
         *,
-        lang: str = None,
+        lang: Language = None,
         country: str = None,
         currency: Currency = None,
     ) -> ItemOrdersActivity:
@@ -223,7 +221,7 @@ class SteamPublicMixin:
         https://github.com/Revadike/InternalSteamWebAPI/wiki/Get-Market-Item-Orders-Activity
         https://github.com/somespecialone/steam-item-name-ids
 
-        :param item_nameid: special id of item class. Can be found only on listings page.
+        :param item_name_id: special id of item class. Can be found only on listings page.
         :param lang:
         :param country:
         :param currency:
@@ -235,13 +233,13 @@ class SteamPublicMixin:
             "norender": 1,
             "language": lang or self.language,
             "country": country or self.country,
-            "currency": currency.value if currency else self.currency.value,
-            "item_nameid": item_nameid,
+            "currency": currency or self.currency,
+            "item_nameid": item_name_id,
         }
         r = await self.session.get(STEAM_URL.MARKET / "itemordersactivity", params=params)
         rj: ItemOrdersActivity = await r.json()
         if not rj.get("success"):
-            raise ApiError(f"Can't fetch item orders activity for {item_nameid}.", rj)
+            raise ApiError(f"Can't fetch item orders activity for {item_name_id}.", rj)
 
         return rj
 
@@ -287,7 +285,8 @@ class SteamPublicMixin:
         """
         Fetch price data.
 
-        `Warning` - this request is rate limited by Steam.
+        .. warning::
+            This request is rate limited by Steam.
 
         :param obj:
         :param app_id:
@@ -308,7 +307,7 @@ class SteamPublicMixin:
 
         params = {
             "country": country or self.country,
-            "currency": currency.value if currency else self.currency.value,
+            "currency": currency or self.currency,
             "market_hash_name": name,
             "appid": app_id,
         }
@@ -373,7 +372,8 @@ class SteamPublicMixin:
     ) -> ITEM_MARKET_LISTINGS_DATA:
         """
 
-        `Warning` - this request is rate limited by Steam.
+        .. warning::
+            This request is rate limited by Steam.
 
         :param obj:
         :param app_id:
@@ -400,7 +400,7 @@ class SteamPublicMixin:
         params = {
             "query": query or "",
             "country": country or self.country,
-            "currency": currency.value if currency else self.currency.value,
+            "currency": currency or self.currency,
             "start": start,
             "count": count,
             "language": lang or self.language,

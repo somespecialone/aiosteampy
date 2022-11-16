@@ -7,21 +7,18 @@ from yarl import URL
 
 from .exceptions import ApiError, SessionExpired
 from .models import (
-    STEAM_URL,
-    GameType,
     EconItem,
     MyMarketListing,
     BuyOrder,
     ItemClass,
     MarketListingItem,
-    MarketListingStatus,
     MarketHistoryEvent,
-    MarketHistoryEventType,
     MarketHistoryListing,
     MarketHistoryListingItem,
     PriceHistoryEntry,
     MarketListing,
 )
+from .constants import STEAM_URL, GameType, MarketListingStatus, MarketHistoryEventType
 from .utils import create_ident_code
 
 if TYPE_CHECKING:
@@ -37,7 +34,9 @@ PRICE_HISTORY_ENTRY_DATE_FORMAT = "%b %d %Y"
 class MarketMixin:
     """
     Mixin with market related methods.
-    Depends on `ConfirmationMixin`, `SteamPublicMixin`.
+
+    Depends on :py:class:`aiosteampy.confirmation.ConfirmationMixin`,
+    :py:class:`aiosteampy.public.SteamPublicMixin`.
     """
 
     __slots__ = ()
@@ -99,6 +98,7 @@ class MarketMixin:
         :param to_receive: money that you wand to receive
         :param confirm: confirm listing or not if steam demands mobile confirmation
         :return: sell listing id or None
+        :raises ApiError:
         """
 
         if isinstance(asset, EconItem):
@@ -124,9 +124,7 @@ class MarketMixin:
         if not rj.get("success"):
             raise ApiError("Failed to place sell listing.", rj)
 
-        if rj.get("needs_email_confirmation"):
-            raise ApiError("Creating sell listing needs email confirmation.", rj)
-        elif rj.get("needs_mobile_confirmation") and confirm:
+        if rj.get("needs_mobile_confirmation") and confirm:
             return await self.confirm_sell_listing(asset_id, game)
 
     def cancel_sell_listing(self: "SteamClient", obj: MyMarketListing | int):
@@ -175,7 +173,7 @@ class MarketMixin:
 
         data = {
             "sessionid": self.session_id,
-            "currency": self._wallet_currency.value,
+            "currency": self._wallet_currency,
             "appid": game[0],
             "market_hash_name": name,
             "price_total": int(price * quantity * 100),
@@ -358,7 +356,8 @@ class MarketMixin:
         Unfortunately, Steam requires referer header to buy item,
         so `market hash name` and `game` is mandatory args.
 
-        Make sure that listing converted currency is wallet currency!
+        .. note::
+            Make sure that listing converted currency is wallet currency!
 
         :param listing: id for listing itself (aka market id) or `MarketListing`
         :param price: price in `1.24` format, can be found on listing data in
@@ -375,8 +374,8 @@ class MarketMixin:
         if isinstance(listing, MarketListing):
             if listing.converted_currency is self.currency:
                 raise ValueError(
-                    f"Currency of listing [{listing.converted_currency.name}] is "
-                    f"different from wallet [{self.currency.name}] one!"
+                    f"Currency of listing [{listing.converted_currency}] is "
+                    f"different from wallet [{self.currency}] one!"
                 )
 
             listing_id = listing.id
@@ -398,7 +397,7 @@ class MarketMixin:
         total = price + fee
         data = {
             "sessionid": self.session_id,
-            "currency": self._wallet_currency.value,
+            "currency": self._wallet_currency,
             "subtotal": price,
             "fee": fee,
             "total": total,
@@ -410,7 +409,7 @@ class MarketMixin:
         if not rj.get("wallet_info", {}).get("success"):
             raise ApiError(
                 f"Failed to buy listing [{listing_id}] of `{market_hash_name}` "
-                f"for {total / 100} {self._wallet_currency.name}.",
+                f"for {total / 100} {self._wallet_currency}.",
                 rj,
             )
 
@@ -549,9 +548,10 @@ class MarketMixin:
         Fetch price history.
         Prices always will be same currency as a wallet.
 
-        `Warning` - this request is rate limited by Steam.
-
         https://github.com/Revadike/InternalSteamWebAPI/wiki/Get-Market-Price-History
+
+        .. warning::
+            This request is rate limited by Steam.
 
         :param obj: `EconItem` or `ItemClass` or market hash name
         :param app_id:

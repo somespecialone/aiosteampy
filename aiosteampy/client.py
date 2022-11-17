@@ -273,12 +273,12 @@ class SteamClient(SteamGuardMixin, ConfirmationMixin, LoginMixin, MarketMixin, T
         page_size=INV_PAGE_SIZE,
     ) -> list[EconItem]:
         """
-        Fetches self inventory. Shorthand for "get_user_inventory(self.steam_id, ...)".
+        Fetches self inventory.".
 
         :param game: just Steam Game
         :param page_size: max items on page. Current Steam limit is 2000
         :param predicate: callable with single arg `EconItem`, must return bool
-        :return: tuple of `EconItem`
+        :return: list of `EconItem`
         :raises ApiError: for ordinary reasons
         :raises SessionExpired:
         """

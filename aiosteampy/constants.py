@@ -214,7 +214,7 @@ class STEAM_URL:
     STATIC = URL("https://community.akamai.steamstatic.com")
     # specific
     MARKET = COMMUNITY / "market/"
-    TRADES = COMMUNITY / "tradeoffer"
+    TRADE = COMMUNITY / "tradeoffer"
 
     class API:
         BASE = _API_BASE

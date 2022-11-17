@@ -21,7 +21,7 @@ INV_PAGE_SIZE = 2000  # steam new limit rule
 INVENTORY_URL = STEAM_URL.COMMUNITY / "inventory"
 PREDICATE: TypeAlias = Callable[[EconItem], bool]
 PRIVATE_USER_EXC_MSG = "User inventory is private."
-ITEM_MARKET_LISTINGS_DATA: TypeAlias = tuple[tuple[MarketListing, ...], int]
+ITEM_MARKET_LISTINGS_DATA: TypeAlias = tuple[list[MarketListing], int]
 
 
 class SteamPublicMixin:
@@ -49,7 +49,7 @@ class SteamPublicMixin:
         :param game: just Steam Game
         :param page_size: max items on page. Current Steam limit is 2000
         :param predicate: callable with single arg `EconItem`, must return bool
-        :return: tuple of `EconItem`
+        :return: list of `EconItem`
         :raises ApiError: if response data `success` is False or user inventory is private
         """
 
@@ -71,7 +71,7 @@ class SteamPublicMixin:
 
             items.extend(self._parse_items(data, steam_id, classes_map))
 
-        return list(i for i in items if predicate(i)) if predicate else items
+        return [i for i in items if predicate(i)] if predicate else items
 
     async def _fetch_inventory(
         self,
@@ -246,17 +246,7 @@ class SteamPublicMixin:
     @overload
     async def fetch_price_overview(
         self,
-        obj: EconItem,
-        *,
-        country: str = ...,
-        currency: Currency = ...,
-    ) -> PriceOverview:
-        ...
-
-    @overload
-    async def fetch_price_overview(
-        self,
-        obj: ItemClass,
+        obj: EconItem | ItemClass,
         *,
         country: str = ...,
         currency: Currency = ...,
@@ -321,26 +311,13 @@ class SteamPublicMixin:
     @overload
     async def get_item_listings(
         self,
-        obj: EconItem,
+        obj: EconItem | ItemClass,
         *,
-        country: str = None,
-        currency: Currency = None,
-        query: str = None,
-        start: int = 0,
-        count: int = 100,
-    ) -> ITEM_MARKET_LISTINGS_DATA:
-        ...
-
-    @overload
-    async def get_item_listings(
-        self,
-        obj: ItemClass,
-        *,
-        country: str = None,
-        currency: Currency = None,
-        query: str = None,
-        start: int = 0,
-        count: int = 100,
+        country: str = ...,
+        currency: Currency = ...,
+        query: str = ...,
+        start: int = ...,
+        count: int = ...,
     ) -> ITEM_MARKET_LISTINGS_DATA:
         ...
 
@@ -383,7 +360,7 @@ class SteamPublicMixin:
         :param count:
         :param start:
         :param query:
-        :return:
+        :return: list of `MarketListing`, total listings count
         :raises ApiError:
         """
 
@@ -411,21 +388,15 @@ class SteamPublicMixin:
         if not rj.get("success"):
             raise ApiError(f"Can't fetch market listings for `{name}`.", rj)
         if not rj["total_count"] or not rj["assets"]:
-            return (), 0
+            return [], 0
 
         # all listings on page DOES NOT have single item class, because Steam
         classes_map = {}
         assets_map = {}
-        assets_data: dict[str, dict[str, dict[str, ...]]] = rj["assets"]
-        for app_id, app_data in assets_data.items():
-            for context_id, context_data in app_data.items():
-                for asset_id, a_data in context_data.items():
-                    key = create_ident_code(a_data["classid"], app_id)
-                    classes_map[key] = self._create_item_class_from_data(a_data, (a_data,))
+        self._update_classes_map_for_public(rj["assets"], classes_map)
+        self._parse_assets_for_listings(rj["assets"], classes_map, assets_map)
 
-        self._parse_assets_for_listings(assets_data, classes_map, assets_map)
-
-        listings = tuple(
+        return [
             MarketListing(
                 id=int(l_data["listingid"]),
                 item=assets_map[
@@ -443,9 +414,19 @@ class SteamPublicMixin:
                 converted_price=int(l_data["converted_fee"] / 100),
             )
             for l_data in rj["listinginfo"].values()
-        )
+        ], rj["total_count"]
 
-        return listings, rj["total_count"]
+    @classmethod
+    def _update_classes_map_for_public(
+        cls,
+        assets: dict[str, dict[str, dict[str, dict[str, ...]]]],
+        classes_map: dict[str, ItemClass],
+    ):
+        for app_id, app_data in assets.items():
+            for context_id, context_data in app_data.items():
+                for asset_id, a_data in context_data.items():
+                    key = create_ident_code(a_data["classid"], app_id)
+                    classes_map[key] = cls._create_item_class_from_data(a_data, (a_data,))
 
     @staticmethod
     def _parse_assets_for_listings(

@@ -212,7 +212,7 @@ class MarketMixin:
         Fetch users market listings.
 
         :param page_size: listings per page. Steam do not accept greater than 100
-        :return: tuples of active listings, listings to confirm, buy orders
+        :return: active listings, listings to confirm, buy orders
         :raises ApiError:
         :raises SessionExpired:
         """
@@ -532,18 +532,18 @@ class MarketMixin:
         return events
 
     @overload
-    async def fetch_price_history(self, obj: EconItem) -> tuple[PriceHistoryEntry, ...]:
+    async def fetch_price_history(self, obj: EconItem) -> list[PriceHistoryEntry]:
         ...
 
     @overload
-    async def fetch_price_history(self, obj: ItemClass) -> tuple[PriceHistoryEntry, ...]:
+    async def fetch_price_history(self, obj: ItemClass) -> list[PriceHistoryEntry]:
         ...
 
     @overload
-    async def fetch_price_history(self, obj: str, app_id: int) -> tuple[PriceHistoryEntry, ...]:
+    async def fetch_price_history(self, obj: str, app_id: int) -> list[PriceHistoryEntry]:
         ...
 
-    async def fetch_price_history(self: "SteamClient", obj: str, app_id: int = None) -> tuple[PriceHistoryEntry, ...]:
+    async def fetch_price_history(self: "SteamClient", obj: str, app_id: int = None) -> list[PriceHistoryEntry]:
         """
         Fetch price history.
         Prices always will be same currency as a wallet.
@@ -555,7 +555,7 @@ class MarketMixin:
 
         :param obj: `EconItem` or `ItemClass` or market hash name
         :param app_id:
-        :return: tuple of `PriceHistoryEntry`
+        :return: list of `PriceHistoryEntry`
         :raises ApiError:
         """
         if isinstance(obj, EconItem):
@@ -573,11 +573,11 @@ class MarketMixin:
         if not rj.get("success"):
             raise ApiError(f"Failed to fetch `{name}` price history.", rj)
 
-        return tuple(
+        return [
             PriceHistoryEntry(
                 date=datetime.strptime(e_data[0], PRICE_HISTORY_ENTRY_DATE_FORMAT),
                 price=e_data[1],
                 daily_volume=int(e_data[2]),
             )
             for e_data in rj["prices"]
-        )
+        ]

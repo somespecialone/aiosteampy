@@ -1,5 +1,5 @@
 from dataclasses import dataclass, field
-from typing import Literal
+from typing import Literal, TypeAlias
 from datetime import datetime
 
 from .constants import (
@@ -111,6 +111,9 @@ class ItemClass:
         return self.id
 
 
+EconItemTuple: TypeAlias = tuple[int, int, int, int]
+
+
 @dataclass(eq=False, slots=True, kw_only=True)
 class EconItem:
     """
@@ -126,12 +129,17 @@ class EconItem:
     amount: int
 
     ident_code: str = field(init=False, default=None)  # optimization 🚀
+    _args_tuple_: EconItemTuple = field(init=False, default=(), repr=False)
 
     def __post_init__(self):
         self._set_ident_code()
+        self._set_args_tuple()
 
     def _set_ident_code(self):
         self.ident_code = create_ident_code(self.id, *self.class_.game)
+
+    def _set_args_tuple(self):
+        self._args_tuple_ = (self.class_.game[0], self.class_.game[1], self.amount, self.id)
 
     @property
     def inspect_link(self) -> str | None:
@@ -143,11 +151,20 @@ class EconItem:
     def asset_id(self) -> int:
         return self.id
 
+    def __getitem__(self, index: int) -> int:  # some magic
+        return self._args_tuple_[index]
+
+    def __iter__(self):
+        return iter(self._args_tuple_)
+
     def __eq__(self, other: "EconItem"):
         return (self.id == other.id) and (self.class_ == other.class_)
 
     def __hash__(self):
         return hash(self.ident_code)
+
+
+EconItemType: TypeAlias = EconItem | EconItemTuple
 
 
 # https://github.com/DoctorMcKay/node-steamcommunity/wiki/CConfirmation
@@ -166,7 +183,7 @@ class Confirmation:
     summary: str
     warn: str | None  # ?
 
-    _asset_ident_code: str | None = None  # only to map confirmation to sell listing
+    asset_ident_code: str | None = None  # only to map confirmation to sell listing without id
 
 
 @dataclass(eq=False, slots=True)
@@ -330,6 +347,9 @@ class BaseTradeOfferItem(EconItem):
     def _set_ident_code(self):
         self.ident_code = create_ident_code(self.id, *self.game)
 
+    def _set_args_tuple(self):
+        self._args_tuple_ = (self.game[0], self.game[1], self.amount, self.id)
+
     @property
     def inspect_link(self) -> None:
         return None
@@ -386,10 +406,10 @@ class TradeOffer(BaseTradeOffer):
     time_created: datetime
     time_updated: datetime
 
-    items_to_give: tuple[TradeOfferItem, ...]
-    items_to_receive: tuple[TradeOfferItem, ...]
+    items_to_give: list[TradeOfferItem]
+    items_to_receive: list[TradeOfferItem]
 
-    message: str | None
+    message: str = ""
 
     def __post_init__(self):
         for i in self.items_to_give:

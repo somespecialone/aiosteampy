@@ -179,11 +179,11 @@ class SteamPublicMixin:
         """
         Do what described in method name.
 
-        https://github.com/Revadike/InternalSteamWebAPI/wiki/Get-Market-Item-Orders-Histogram
-        https://github.com/somespecialone/steam-item-name-ids
+        .. seealso::
+            * https://github.com/Revadike/InternalSteamWebAPI/wiki/Get-Market-Item-Orders-Histogram
+            * https://github.com/somespecialone/steam-item-name-ids
 
-        .. warning::
-            This request is rate limited by Steam.
+        .. warning:: This request is rate limited by Steam.
 
         :param item_nameid: special id of item class. Can be found only on listings page.
         :param lang:

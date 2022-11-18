@@ -1,11 +1,11 @@
-from typing import TYPE_CHECKING, overload, Literal, Type, TypeAlias, Callable, Coroutine
+from typing import TYPE_CHECKING, overload, Literal, Type, TypeAlias, Callable
 from datetime import datetime
 from json import dumps as jdumps
 
 from yarl import URL
 
 from .exceptions import ApiError
-from .constants import STEAM_URL
+from .constants import STEAM_URL, CORO
 from .models import (
     TradeOffer,
     TradeOfferItem,
@@ -613,7 +613,7 @@ class TradeMixin:
         *,
         partner_id: int = None,
         confirm=True,
-    ) -> Coroutine[..., ..., int]:
+    ) -> CORO[int]:
         """
         Counter trade offer with another.
 

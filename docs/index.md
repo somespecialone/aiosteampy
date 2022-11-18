@@ -11,38 +11,13 @@
 [![CodeFactor](https://www.codefactor.io/repository/github/somespecialone/aiosteampy/badge)](https://www.codefactor.io/repository/github/somespecialone/aiosteampy)
 [![black](https://img.shields.io/badge/code%20style-black-000000.svg)](https://github.com/psf/black)
 
-> ### Previously this library was a soft fork of [bukson/steampy](https://github.com/bukson/steampy) and created only to provide asynchronous methods and proxies support.
-> ### But now it standalone project. Created by myself for steam trading purposes mostly.
+> Previously this library was a soft fork of [bukson/steampy](https://github.com/bukson/steampy) and created only to
+> provide asynchronous methods and proxies support.
+> But now it standalone project. Created by myself for steam trading purposes mostly.
 
 ---
 
 [![Stand With Ukraine](https://raw.githubusercontent.com/vshymanskyy/StandWithUkraine/main/banner-direct-single.svg)](https://stand-with-ukraine.pp.ua)
-
----
-
-### **See full documentation [here](https://github.com/somespecialone/aiosteampy) 📖**
-
----
-
-## Installation
-
-pip
-
-```shell
-pip install aiosteampy
-```
-
-pipenv
-
-```shell
-pipenv install aiosteampy
-```
-
-poetry
-
-```shell
-poetry add aiosteampy
-```
 
 ---
 
@@ -85,22 +60,6 @@ but created with additions and differences, of course.
 * Interact with game servers (inspect CSGO items, ...).
 * Edit profile, social interaction(groups, clans).
 * Handle entities(listings, items, tradeoffers) lifecycle for easy if you need to store it.
-
----
-
-## Tests 🧪
-
-To run tests clone repo, install with tests
-
-```shell
-poetry install --with test
-```
-
-Create env variables listed in [tests/data](tests/data.py) and run `pytest` from project dir:
-
-```shell
-pytest
-```
 
 ## Credits
 

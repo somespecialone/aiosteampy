@@ -1,9 +1,13 @@
-"""Constants and enums, some typing"""
+"""Constants and enums, some types"""
 
-from typing import TypeAlias, ClassVar
+from typing import TypeAlias, ClassVar, Any, TypeVar, Coroutine
 from enum import Enum, IntEnum
 
 from yarl import URL
+
+_T = TypeVar("_T")
+
+CORO: TypeAlias = Coroutine[Any, Any, _T]
 
 
 # https://stackoverflow.com/a/54732120/19419998

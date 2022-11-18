@@ -4,7 +4,7 @@ from re import compile
 from datetime import datetime
 
 from .models import Confirmation, MyMarketListing, EconItem, TradeOffer, EconItemType
-from .constants import STEAM_URL, ConfirmationType, GameType
+from .constants import STEAM_URL, ConfirmationType, GameType, CORO
 from .exceptions import ApiError, ConfirmationError, SessionExpired
 from .utils import create_ident_code
 
@@ -38,6 +38,68 @@ class ConfirmationMixin:
         }
 
         super().__init__(*args, **kwargs)
+
+    # TODO docs about storage
+    async def remove_confirmation(self, id_or_ident: str | int, conf: Confirmation):
+        """
+        Remove confirmation silently from cache.
+
+        You can override this method to provide your custom storage.
+        """
+
+        if conf.type is ConfirmationType.LISTING:
+            self._confirmation_storage[STORAGE_LISTINGS_KEY].pop(id_or_ident, None)
+        else:
+            self._confirmation_storage[STORAGE_TRADES_KEY].pop(conf.creator_id, None)
+
+    async def remove_multiple_confirmations(self, conf_ids: list[int | str], confs: list[Confirmation]):
+        """
+        Remove multiple confirmations silently from cache.
+
+        You can override this method to provide your custom storage.
+        """
+        for index, id_or_ident in enumerate(conf_ids):
+            conf = confs[index]
+            if conf.type is ConfirmationType.LISTING:
+                self._confirmation_storage[STORAGE_LISTINGS_KEY].pop(id_or_ident, None)
+            else:
+                self._confirmation_storage[STORAGE_TRADES_KEY].pop(conf.creator_id, None)
+
+    async def store_multiple_confirmations(self, conf_ids: list[int | str], confs: list[Confirmation]):
+        """
+        Cache multiple confirmations to inner store.
+
+        You can override this method to provide your custom storage.
+        """
+
+        for index, id_or_ident in enumerate(conf_ids):
+            conf = confs[index]
+            if conf.type is ConfirmationType.LISTING:
+                self._confirmation_storage[STORAGE_LISTINGS_KEY][id_or_ident] = conf
+            elif conf.type is ConfirmationType.TRADE:
+                self._confirmation_storage[STORAGE_TRADES_KEY][id_or_ident] = conf
+            # unknown type going away
+
+    async def get_confirmation(self, id_or_ident: str | int) -> Confirmation | None:
+        """
+        Get conf from storage.
+
+        You can override this method to provide your custom storage.
+        """
+
+        return self._confirmation_storage[STORAGE_TRADES_KEY].get(id_or_ident) or self._confirmation_storage[
+            STORAGE_LISTINGS_KEY
+        ].get(id_or_ident)
+
+    async def get_confirmations(self, predicate: PRED = None) -> list[Confirmation]:
+        """
+        Cached confirmations.
+
+        You can override this method to provide your custom storage.
+        """
+
+        confs = [*self._confirmation_storage[STORAGE_TRADES_KEY], *self._confirmation_storage[STORAGE_LISTINGS_KEY]]
+        return [c for c in confs if predicate(c)] if predicate else confs
 
     @overload
     async def confirm_sell_listing(self, obj: int, game: GameType) -> int:
@@ -118,7 +180,7 @@ class ConfirmationMixin:
         confs and await self.allow_multiple_confirmations(confs)
         return confs
 
-    def allow_confirmation(self, conf: Confirmation):
+    def allow_confirmation(self, conf: Confirmation) -> CORO[None]:
         """Shorthand for "send_confirmation(conf, 'allow')"."""
 
         return self.send_confirmation(conf, "allow")
@@ -143,7 +205,7 @@ class ConfirmationMixin:
                 f"Failed to perform confirmation action `{tag}` for {conf.creator_id} trade/listing id."
             )
 
-    def allow_multiple_confirmations(self, confs: list[Confirmation]):
+    def allow_multiple_confirmations(self, confs: list[Confirmation]) -> CORO[None]:
         """Shorthand for "send_multiple_confirmations(conf, 'allow')"."""
 
         return self.send_multiple_confirmations(confs, "allow")
@@ -167,68 +229,6 @@ class ConfirmationMixin:
 
         if not rj.get("success"):
             raise ConfirmationError(f"Failed to perform action `{tag}` for multiple confs.")
-
-    # TODO docs about storage
-    async def remove_confirmation(self, id_or_ident: str | int, conf: Confirmation):
-        """
-        Remove confirmation silently from cache.
-
-        You can override this method to provide your custom storage.
-        """
-
-        if conf.type is ConfirmationType.LISTING:
-            self._confirmation_storage[STORAGE_LISTINGS_KEY].pop(id_or_ident, None)
-        else:
-            self._confirmation_storage[STORAGE_TRADES_KEY].pop(conf.creator_id, None)
-
-    async def remove_multiple_confirmations(self, conf_ids: list[int | str], confs: list[Confirmation]):
-        """
-        Remove multiple confirmations silently from cache.
-
-        You can override this method to provide your custom storage.
-        """
-        for index, id_or_ident in enumerate(conf_ids):
-            conf = confs[index]
-            if conf.type is ConfirmationType.LISTING:
-                self._confirmation_storage[STORAGE_LISTINGS_KEY].pop(id_or_ident, None)
-            else:
-                self._confirmation_storage[STORAGE_TRADES_KEY].pop(conf.creator_id, None)
-
-    async def store_multiple_confirmations(self, conf_ids: list[int | str], confs: list[Confirmation]):
-        """
-        Cache multiple confirmations to inner store.
-
-        You can override this method to provide your custom storage.
-        """
-
-        for index, id_or_ident in enumerate(conf_ids):
-            conf = confs[index]
-            if conf.type is ConfirmationType.LISTING:
-                self._confirmation_storage[STORAGE_LISTINGS_KEY][id_or_ident] = conf
-            elif conf.type is ConfirmationType.TRADE:
-                self._confirmation_storage[STORAGE_TRADES_KEY][id_or_ident] = conf
-            # unknown type going away
-
-    async def get_confirmation(self, id_or_ident: str | int) -> Confirmation | None:
-        """
-        Get conf from storage.
-
-        You can override this method to provide your custom storage.
-        """
-
-        return self._confirmation_storage[STORAGE_TRADES_KEY].get(id_or_ident) or self._confirmation_storage[
-            STORAGE_LISTINGS_KEY
-        ].get(id_or_ident)
-
-    async def get_confirmations(self, predicate: PRED = None) -> list[Confirmation]:
-        """
-        Cached confirmations.
-
-        You can override this method to provide your custom storage.
-        """
-
-        confs = [*self._confirmation_storage[STORAGE_TRADES_KEY], *self._confirmation_storage[STORAGE_LISTINGS_KEY]]
-        return [c for c in confs if predicate(c)] if predicate else confs
 
     async def fetch_confirmations(
         self: "SteamClient",

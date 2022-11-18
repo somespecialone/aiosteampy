@@ -1,0 +1,65 @@
+site_name: aiosteampy
+site_url: https://somespecialone.github.io/aiosteampy
+
+repo_name: somespecialone/aiosteampy
+repo_url: https://github.com/somespecialone/aiosteampy
+
+copyright: Copyright &copy; 2022 Dmytro Tkachenko
+
+theme:
+  name: material
+  custom_dir: docs/theme
+  logo: logo.svg
+  favicon: favicon.png
+  icon:
+    repo: fontawesome/brands/github
+    edit: material/file-document-edit-outline
+
+  features:
+    - navigation.instant
+    - navigation.tracking
+    - navigation.expand
+    - navigation.top
+    - toc.follow
+
+extra_css:
+  - theme/extra.css
+
+extra:
+  social:
+    - icon: fontawesome/brands/github
+      link: https://github.com/somespecialone
+    - icon: fontawesome/brands/instagram
+      link: https://instagram.com/tkachenkodimitriy/
+    - icon: fontawesome/brands/yahoo
+      link: mailto:tkachenkodmitriy@yahoo.com
+    - icon: fontawesome/brands/telegram
+      link: https://t.me/somespecialone
+    - icon: fontawesome/brands/twitter
+      link: https://twitter.com/_somespecialone
+    - icon: fontawesome/brands/linkedin
+      link: https://www.linkedin.com/in/somespecialone/
+    - icon: fontawesome/brands/docker
+      link: https://hub.docker.com/u/somespecialone
+
+plugins:
+  - search
+  - git-revision-date-localized:
+      type: date
+
+markdown_extensions:
+  - pymdownx.highlight:
+      anchor_linenums: true
+  - toc:
+      permalink: true
+#  - pymdownx.emoji:
+#      emoji_index: !!python/name:materialx.emoji.twemoji
+#      emoji_generator: !!python/name:materialx.emoji.to_svg
+
+nav:
+  - Overview: index.md
+  - Install: install.md
+  - Getting started 🚀: get_started.md
+  - Market: market.md
+  - Trade: trade.md
+  - Public: public.md

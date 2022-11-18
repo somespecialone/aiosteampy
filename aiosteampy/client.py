@@ -4,6 +4,7 @@ from json import loads
 from http.cookies import SimpleCookie
 
 from aiohttp import ClientSession
+from aiohttp.client import _RequestContextManager
 from yarl import URL
 
 from .guard import SteamGuardMixin
@@ -14,7 +15,7 @@ from .market import MarketMixin
 from .public import SteamPublicMixin, INV_PAGE_SIZE, PREDICATE, PRIVATE_USER_EXC_MSG
 
 from .models import Notifications, EconItem
-from .constants import STEAM_URL, Currency, GameType, Language
+from .constants import STEAM_URL, Currency, GameType, Language, CORO
 from .exceptions import ApiError, SessionExpired
 from .utils import get_cookie_value_from_session, steam_id_to_account_id
 
@@ -260,7 +261,7 @@ class SteamClient(SteamGuardMixin, ConfirmationMixin, LoginMixin, MarketMixin, T
         return Notifications(*(rj["notifications"][str(i)] for i in range(1, 12) if i != 7))
 
     # https://github.com/DoctorMcKay/node-steamcommunity/blob/851c14bd93008579e7a308ea8ecda873996baa1f/index.js#L405
-    def reset_items_notifications(self):
+    def reset_items_notifications(self) -> CORO[_RequestContextManager]:
         """Fetching your inventory page, which resets new items notifications to 0."""
 
         return self.session.get(self.profile_url / "inventory/")
@@ -273,7 +274,7 @@ class SteamClient(SteamGuardMixin, ConfirmationMixin, LoginMixin, MarketMixin, T
         page_size=INV_PAGE_SIZE,
     ) -> list[EconItem]:
         """
-        Fetches self inventory.".
+        Fetches self inventory.
 
         :param game: just Steam Game
         :param page_size: max items on page. Current Steam limit is 2000

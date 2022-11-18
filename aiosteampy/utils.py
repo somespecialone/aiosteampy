@@ -5,7 +5,7 @@ from time import time as time_time
 from hmac import new as hmac_new
 from hashlib import sha1
 from functools import wraps
-from typing import Callable, overload, ParamSpec, TypeVar, Literal
+from typing import Callable, overload, ParamSpec, TypeVar
 
 from bs4 import BeautifulSoup
 from aiohttp import ClientSession
@@ -196,3 +196,6 @@ def account_id_to_steam_id(account_id: int) -> int:
 def to_int_boolean(s):
     """Convert something to 1, 0."""
     return 1 if s else 0
+
+
+# TODO load from file cookie helper

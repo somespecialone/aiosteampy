@@ -1,0 +1,32 @@
+:root {
+    --md-primary-fg-color: #171A21;
+    --md-primary-bg-color: #c5c3c0;
+    --md-default-bg-color: #1b2838;
+    --md-default-fg-color: #fff;
+    --md-default-fg-color--light: #acb2b8;
+    --md-accent-fg-color: #66C0F4;
+    --md-default-fg-color--lighter: rgba(136, 136, 136, 0.32);
+}
+
+:root > * {
+    --md-typeset-a-color: var(--md-accent-fg-color);
+    --md-default-fg-color--lightest: var(--md-default-fg-color--lighter);
+
+    /* Code blocks colors */
+    --md-code-fg-color: white;
+    --md-code-bg-color: #2C3746;
+    --md-code-hl-name-color: white;
+    --md-code-hl-string-color: #0FF1CE;
+}
+
+p {
+    color: var(--md-default-fg-color--light);
+}
+
+.md-tabs, .md-footer {
+    background-color: rgba( 0, 0, 0, 0.4 );
+}
+
+.md-footer-meta {
+    background-color: black;
+}

@@ -7,7 +7,7 @@ authors = ["Dmytro Tkachenko <tkachenkodmitriy@yahoo.com>"]
 readme = "README.md"
 homepage = "https://github.com/somespecialone/aiosteampy/"
 repository = "https://github.com/somespecialone/aiosteampy/"
-documentation = "https://github.com/somespecialone/aiosteampy/"
+documentation = "https://somespecialone.github.io/aiosteampy"
 keywords = ["steam", "trade", "steamguard", "asyncio", "steam-market"]
 classifiers = [
     "Framework :: AsyncIO",

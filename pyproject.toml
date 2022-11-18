@@ -45,6 +45,7 @@ optional = true
 mkdocs = "^1.4.2"
 mkdocs-material = "^8.5.8"
 mkdocs-git-revision-date-localized-plugin = "^1.1.0"
+mkautodoc = "^0.2.0"
 
 [tool.pytest.ini_options]
 testpaths = ["tests"]

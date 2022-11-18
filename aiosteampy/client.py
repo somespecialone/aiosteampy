@@ -17,9 +17,9 @@ from .public import SteamPublicMixin, INV_PAGE_SIZE, PREDICATE, PRIVATE_USER_EXC
 from .models import Notifications, EconItem
 from .constants import STEAM_URL, Currency, GameType, Language, CORO
 from .exceptions import ApiError, SessionExpired
-from .utils import get_cookie_value_from_session, steam_id_to_account_id
+from .utils import get_cookie_value_from_session, steam_id_to_account_id, account_id_to_steam_id
 
-__all__ = ("SteamClient", "SteamPublicClient")
+__all__ = ("SteamClient", "SteamPublicClient", "SteamCommunityMixin")
 
 API_KEY_RE = compile(r"<p>Key: (?P<api_key>[0-9A-F]+)</p>")
 WALLET_INFO_RE = compile(r"g_rgWalletInfo = (?P<info>.+);")
@@ -31,30 +31,13 @@ STEAM_LANG_COOKIE = "Steam_Language"
 DEF_COUNTRY = "UA"
 
 
-class SteamClient(SteamGuardMixin, ConfirmationMixin, LoginMixin, MarketMixin, TradeMixin, SteamPublicMixin):
+class SteamCommunityMixin(SteamGuardMixin, ConfirmationMixin, LoginMixin, MarketMixin, TradeMixin, SteamPublicMixin):
     """
-    Base class in hierarchy ...
+    Mixin class, but with `__init__`. Inherits all other mixins.
+    Need in case you want to use multiple inheritance with `__slots__`.
     """
 
-    __slots__ = (
-        "_is_logged",
-        "session",
-        "username",
-        "steam_id",
-        "_password",
-        "_shared_secret",
-        "_identity_secret",
-        "_api_key",
-        "trade_token",
-        "_device_id",
-        "_confirmation_storage",
-        "_steam_fee",
-        "_publisher_fee",
-        "_wallet_currency",
-        "_wallet_balance",
-        "_wallet_country",
-        "_trades_storage",
-    )
+    __slots__ = ()
 
     def __init__(
         self,
@@ -76,9 +59,8 @@ class SteamClient(SteamGuardMixin, ConfirmationMixin, LoginMixin, MarketMixin, T
     ):
 
         self.session = session or ClientSession(raise_for_status=True)
-        # admit about raise for status and strange behaviour if opposite in docs.
         self.username = username
-        self.steam_id = steam_id  # steam id64
+        self.steam_id = account_id_to_steam_id(steam_id) if steam_id < 4294967296 else steam_id  # steam id64
         self.trade_token = trade_token
 
         self._password = password
@@ -90,7 +72,6 @@ class SteamClient(SteamGuardMixin, ConfirmationMixin, LoginMixin, MarketMixin, T
         self._wallet_currency = wallet_currency
 
         self._wallet_country = wallet_country
-        self._wallet_balance = 0.0
 
         super().__init__()
 
@@ -102,9 +83,8 @@ class SteamClient(SteamGuardMixin, ConfirmationMixin, LoginMixin, MarketMixin, T
         return steam_id_to_account_id(self.steam_id)
 
     @property
-    def trade_url(self) -> URL | None:
-        if self.trade_token:
-            return (STEAM_URL.COMMUNITY / "tradeoffer/new/") % {"partner": self.account_id, "token": self.trade_token}
+    def trade_url(self) -> URL:
+        return (STEAM_URL.TRADE / "tradeoffer/new/") % {"partner": self.account_id, "token": self.trade_token or ""}
 
     @property
     def profile_url(self) -> URL:
@@ -116,20 +96,12 @@ class SteamClient(SteamGuardMixin, ConfirmationMixin, LoginMixin, MarketMixin, T
         return Language(get_cookie_value_from_session(self.session, STEAM_URL.STORE.host, STEAM_LANG_COOKIE))
 
     @property
-    def wallet_balance(self) -> float:
-        """
-        Cached wallet balance.
-        Updates when you buy market listing, fetch wallet balance.
-        """
-        return self._wallet_balance
-
-    @property
     def country(self) -> str:
         """Just wallet country. Needed for public methods."""
         return self._wallet_country
 
     @property
-    def currency(self) -> Currency | None:
+    def currency(self) -> Currency:
         """Alias for wallet currency. Needed for public methods."""
         return self._wallet_currency
 
@@ -165,7 +137,6 @@ class SteamClient(SteamGuardMixin, ConfirmationMixin, LoginMixin, MarketMixin, T
 
         if not self._steam_fee or not self._publisher_fee or not self._wallet_currency:
             wallet_info = await self._fetch_wallet_info()
-            self._wallet_balance = int(wallet_info["wallet_balance"]) / 100
             self._wallet_country = wallet_info["wallet_country"]
             if not self._steam_fee:
                 self._steam_fee = float(wallet_info["wallet_fee_percent"])
@@ -186,7 +157,7 @@ class SteamClient(SteamGuardMixin, ConfirmationMixin, LoginMixin, MarketMixin, T
 
     async def get_wallet_balance(self) -> tuple[float, Currency]:
         """
-        Fetch wallet balance and currency. Cache data.
+        Fetch wallet balance and currency.
 
         :return: tuple of balance and `Currency`
         """
@@ -197,8 +168,7 @@ class SteamClient(SteamGuardMixin, ConfirmationMixin, LoginMixin, MarketMixin, T
             raise ApiError("Failed to fetch wallet info.", rj)
 
         self._wallet_currency = Currency.by_name(rj["user_wallet"]["currency"])
-        self._wallet_balance = int(rj["user_wallet"]["amount"]) / 100
-        return self._wallet_balance, self._wallet_currency
+        return int(rj["user_wallet"]["amount"]) / 100, self._wallet_currency
 
     async def register_new_trade_url(self) -> URL:
         """
@@ -288,11 +258,36 @@ class SteamClient(SteamGuardMixin, ConfirmationMixin, LoginMixin, MarketMixin, T
             inv = await self.get_user_inventory(self.steam_id, game, predicate=predicate, page_size=page_size)
         except ApiError as e:
             raise SessionExpired if e.msg == PRIVATE_USER_EXC_MSG else e  # self inventory can't be private
-
+            # may I need to cache client items?
         return inv
 
 
+class SteamClient(SteamCommunityMixin):
+    """Base class in hierarchy ..."""
+
+    __slots__ = (
+        "_is_logged",
+        "session",
+        "username",
+        "steam_id",
+        "_password",
+        "_shared_secret",
+        "_identity_secret",
+        "_api_key",
+        "trade_token",
+        "_device_id",
+        "_confirmation_storage",
+        "_steam_fee",
+        "_publisher_fee",
+        "_wallet_currency",
+        "_wallet_country",
+        "_trades_storage",
+    )
+
+
 class SteamPublicClient(SteamPublicMixin):
+    """Class for public methods that not requires login."""
+
     __slots__ = ("session", "language", "currency", "country")
 
     def __init__(

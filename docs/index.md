@@ -1,4 +1,4 @@
-# <p align="center">AIOSTEAMPY</p>
+# AIOSTEAMPY
 
 [![Made in Ukraine](https://img.shields.io/badge/made_in-ukraine-ffd700.svg?labelColor=0057b7)](https://stand-with-ukraine.pp.ua)
 [![steam](https://shields.io/badge/steam-1b2838?logo=steam)](https://store.steampowered.com/)
@@ -29,16 +29,15 @@ It uses only requests and steam apis (documented and not), while `steam.py` impl
 websocket
 protobuf, same as [DoctorMcKay/node-steam-user](https://github.com/DoctorMcKay/node-steam-user).
 
-Generally, project inspired most
-by [DoctorMcKay/node-steamcommunity](https://github.com/DoctorMcKay/node-steamcommunity)
-but created with additions and differences, of course.
+> Generally, project inspired most
+> by [DoctorMcKay/node-steamcommunity](https://github.com/DoctorMcKay/node-steamcommunity)
+> but created with additions and differences, of course.
 
 ## Key features
 
 * Stateless: the main idea was a low-middle layer API wrapper of some steam services and methods like market,
   tradeoffers, confirmations, steamguard, etc. But if you want to cache your entities data (listings, confirmations,
-  ...)
-  there is methods to do it easily as possible.
+  ...) there is some methods to help.
 * Declarative: there is models almost for every data.
 * Typed: for editor support most things are typed.
 * Short: I really tried to fit most important for steam trading methods.

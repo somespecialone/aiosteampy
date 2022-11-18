@@ -48,18 +48,33 @@ plugins:
       type: date
 
 markdown_extensions:
+  - admonition
   - pymdownx.highlight:
       anchor_linenums: true
+  - pymdownx.details
+  - pymdownx.superfences
+  - pymdownx.emoji:
+      emoji_index: !!python/name:materialx.emoji.twemoji
+      emoji_generator: !!python/name:materialx.emoji.to_svg
   - toc:
       permalink: true
-#  - pymdownx.emoji:
-#      emoji_index: !!python/name:materialx.emoji.twemoji
-#      emoji_generator: !!python/name:materialx.emoji.to_svg
+  - mkautodoc
 
 nav:
   - Overview: index.md
   - Install: install.md
-  - Getting started 🚀: get_started.md
+  - 'Getting started 🚀': get_started.md
+  - Client: client.md
   - Market: market.md
   - Trade: trade.md
   - Public: public.md
+  - 'Api reference':
+      - client: api_reference/client.md
+      - confirmation: api_reference/confirmation.md
+      - guard: api_reference/guard.md
+      - login: api_reference/login.md
+      - market: api_reference/market.md
+      - trade: api_reference/trade.md
+      - public: api_reference/public.md
+      - exceptions: api_reference/exceptions.md
+      - utils: api_reference/utils.md

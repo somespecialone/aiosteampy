@@ -33,18 +33,11 @@ T_KWARGS: TypeAlias = int | str | float
 class TradeMixin:
     """
     Mixin with trade offers related methods.
-    Depends on :py:class:`aiosteampy.confirmation.ConfirmationMixin`,
-    :py:class:`aiosteampy.public.SteamPublicMixin`.
+    Depends on :class:`aiosteampy.confirmation.ConfirmationMixin`,
+    :class:`aiosteampy.public.SteamPublicMixin`.
     """
 
     __slots__ = ()
-
-    _trades_storage: dict[int, TradeOffer]
-
-    def __init__(self, *args, **kwargs):
-        self._trades_storage = {}
-
-        super().__init__(*args, **kwargs)
 
     async def remove_trade_offer(self, offer_id: int, offer: TradeOffer | None):
         """
@@ -53,16 +46,12 @@ class TradeMixin:
         You can override this method to provide your custom storage.
         """
 
-        self._trades_storage.pop(offer_id, None)
-
     async def store_trade_offer(self, offer_id: int, offer: TradeOffer):
         """
         Cache trade offer to inner store.
 
         You can override this method to provide your custom storage.
         """
-
-        self._trades_storage[offer_id] = offer
 
     async def store_multiple_trade_offers(self, offer_ids: list[int], offers: list[TradeOffer]):
         """
@@ -72,7 +61,7 @@ class TradeMixin:
         """
 
         for index, offer_id in enumerate(offer_ids):
-            self._trades_storage[offer_id] = offers[index]
+            await self.store_trade_offer(offer_id, offers[index])
 
     async def get_trade_offer(self, offer_id: int) -> TradeOffer | None:
         """
@@ -81,17 +70,12 @@ class TradeMixin:
         You can override this method to provide your custom storage.
         """
 
-        return self._trades_storage.get(offer_id)
-
     async def get_trade_offers(self, predicate: PRED = None) -> list[TradeOffer]:
         """
         Cached trade offers.
 
         You can override this method to provide your custom storage.
         """
-
-        trades = self._trades_storage.values()
-        return [t for t in trades if predicate(t)] if predicate else list(trades)
 
     async def get_or_fetch_trade_offer(self, offer_id: int) -> TradeOffer:
         """Get specific trade from cache. Fetch it and store, if there is no one."""
@@ -178,6 +162,7 @@ class TradeMixin:
         time_historical_cutoff: int = ...,
         sent: bool = ...,
         received: bool = ...,
+        **kwargs: T_KWARGS,
     ) -> TRADE_OFFERS:
         ...
 
@@ -189,6 +174,7 @@ class TradeMixin:
         historical_only: Literal[True],
         sent: bool = ...,
         received: bool = ...,
+        **kwargs: T_KWARGS,
     ) -> TRADE_OFFERS:
         ...
 
@@ -203,12 +189,13 @@ class TradeMixin:
         **kwargs: T_KWARGS,
     ) -> TRADE_OFFERS:
         """
+        Fetch trade offers from Steam Web Api.
 
-        :param active_only:
-        :param time_historical_cutoff:
-        :param historical_only:
-        :param sent:
-        :param received:
+        :param active_only: fetch active, changed since `time_historical_cutoff` tradeoffs only or not
+        :param time_historical_cutoff: timestamp for `active_only`
+        :param historical_only: opposite for `active_only`
+        :param sent: include sent offers or not
+        :param received: include received offers or not
         :return: sent trades, received trades lists
         """
 
@@ -264,12 +251,7 @@ class TradeMixin:
         return rj["response"]
 
     async def get_trade_receipt(self: "SteamClient", offer_id: int) -> HistoryTradeOffer:
-        """
-        Fetch single trade offer from history.
-
-        :param offer_id:
-        :return:
-        """
+        """Fetch single trade offer from history."""
 
         params = {
             "key": self._api_key,
@@ -298,9 +280,11 @@ class TradeMixin:
         **kwargs: T_KWARGS,
     ) -> tuple[list[HistoryTradeOffer], int]:
         """
+        Fetch history trades with changed assets data.
+        You can paginate by yourself with this method.
 
-        :param max_trades:
-        :param start_after_time:
+        :param max_trades: page size
+        :param start_after_time: timestamp
         :param start_after_trade_id:
         :param navigating_back:
         :param include_failed:
@@ -419,12 +403,11 @@ class TradeMixin:
         Accept trade offer, yes. Remove offer from cache.
 
         .. note::
-            Fetch :py:class:`aiosteampy.models.TradeOffer` if you not pass ``partner`` arg.
             Auto confirm accepting if needed.
 
-        :param offer:
-        :param partner: partner account id (id32) or steam id (id64)
-        :raises ConfirmationError:
+        :param offer: `TradeOffer` or trade offer id
+        :param partner: partner account id (id32) or steam id (id64). Required when you pass trade offer id
+        :raises ConfirmationError: if confirmation can't be found or while do action with
         """
 
         if isinstance(offer, TradeOffer):
@@ -455,7 +438,7 @@ class TradeMixin:
         r = await self.session.post(url_base / "accept", data=data, headers={"Referer": str(url_base)})
         rj: dict[str, ...] = await r.json()
         if rj.get("needs_mobile_confirmation"):
-            return await self.confirm_trade_offer(offer_id)
+            await self.confirm_trade_offer(offer_id)
 
         await self.remove_trade_offer(offer_id, to_remove)
 
@@ -504,7 +487,7 @@ class TradeMixin:
         .. note::
             Make sure that partner is in friends list if you not pass trade url or trade token.
 
-        :param obj: partner trade url, partner id(id32 or id64), trade token from trade url
+        :param obj: partner trade url, partner id(id32 or id64)
         :param token:
         :param to_give:
         :param to_receive:
@@ -513,7 +496,7 @@ class TradeMixin:
         :param countered_id:
         :param kwargs:
         :return: trade offer id
-        :raises ValueError:
+        :raises ValueError: trade is empty
         """
 
         if not to_give and not to_receive:

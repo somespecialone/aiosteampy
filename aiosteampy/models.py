@@ -395,6 +395,10 @@ class BaseTradeOffer:
     def partner_id64(self) -> int:
         return account_id_to_steam_id(self.partner_id)
 
+    @property
+    def is_active(self) -> bool:
+        return self.status is TradeOfferStatus.ACTIVE
+
 
 @dataclass(eq=False, slots=True)
 class TradeOffer(BaseTradeOffer):

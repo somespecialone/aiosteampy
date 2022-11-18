@@ -17,16 +17,17 @@
     --md-code-bg-color: #2C3746;
     --md-code-hl-name-color: white;
     --md-code-hl-string-color: #0FF1CE;
+    --md-code-hl-punctuation-color: white;
 }
 
-p {
-    color: var(--md-default-fg-color--light);
+/* mkautodoc */
+div.autodoc-docstring {
+  padding-left: 20px;
+  margin-bottom: 30px;
+  border-left: 5px solid rgba(230, 230, 230);
 }
 
-.md-tabs, .md-footer {
-    background-color: rgba( 0, 0, 0, 0.4 );
-}
-
-.md-footer-meta {
-    background-color: black;
+div.autodoc-members {
+  padding-left: 20px;
+  margin-bottom: 15px;
 }

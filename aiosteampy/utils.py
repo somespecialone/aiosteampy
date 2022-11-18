@@ -163,7 +163,7 @@ def async_throttle(
 
 def create_ident_code(obj_id: int | str, app_id: int | str, context_id: int | str = None) -> str:
     """
-    Create unique ident code for :py:class:`aiosteampy.models.EconItem` asset or item class
+    Create unique ident code for :class:`aiosteampy.models.EconItem` asset or item class
     (description) within whole Steam Economy.
 
     https://dev.doctormckay.com/topic/332-identifying-steam-items/

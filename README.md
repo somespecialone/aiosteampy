@@ -44,6 +44,8 @@ poetry
 poetry add aiosteampy
 ```
 
+Also, [aiohttp docs](https://docs.aiohttp.org/en/stable/) recommends install speedups (`aiodns`, `cchardet`, ...)
+
 ---
 
 AIOSTEAMPY use [aiohttp](https://github.com/aio-libs/aiohttp) underneath to get asynchronous requests to steam servers,
@@ -54,16 +56,15 @@ It uses only requests and steam apis (documented and not), while `steam.py` impl
 websocket
 protobuf, same as [DoctorMcKay/node-steam-user](https://github.com/DoctorMcKay/node-steam-user).
 
-Generally, project inspired most
-by [DoctorMcKay/node-steamcommunity](https://github.com/DoctorMcKay/node-steamcommunity)
-but created with additions and differences, of course.
+> Generally, project inspired most
+> by [DoctorMcKay/node-steamcommunity](https://github.com/DoctorMcKay/node-steamcommunity)
+> but created with additions and differences, of course.
 
 ## Key features
 
 * Stateless: the main idea was a low-middle layer API wrapper of some steam services and methods like market,
   tradeoffers, confirmations, steamguard, etc. But if you want to cache your entities data (listings, confirmations,
-  ...)
-  there is methods to do it easily as possible.
+  ...) there is some methods to help.
 * Declarative: there is models almost for every data.
 * Typed: for editor support most things are typed.
 * Short: I really tried to fit most important for steam trading methods.
@@ -95,6 +96,8 @@ To run tests clone repo, install with tests
 ```shell
 poetry install --with test
 ```
+
+> ⚠ You need at least one market item, one inventory item for `CSGO` to pass integration tests.
 
 Create env variables listed in [tests/data](tests/data.py) and run `pytest` from project dir:
 

@@ -35,8 +35,8 @@ class MarketMixin:
     """
     Mixin with market related methods.
 
-    Depends on :py:class:`aiosteampy.confirmation.ConfirmationMixin`,
-    :py:class:`aiosteampy.public.SteamPublicMixin`.
+    Depends on :class:`aiosteampy.confirmation.ConfirmationMixin`,
+    :class:`aiosteampy.public.SteamPublicMixin`.
     """
 
     __slots__ = ()
@@ -352,7 +352,7 @@ class MarketMixin:
         fee: float = None,
     ) -> float:
         """
-        Buy item listing from market. Cache wallet balance.
+        Buy item listing from market.
         Unfortunately, Steam requires referer header to buy item,
         so `market hash name` and `game` is mandatory args.
 
@@ -371,6 +371,7 @@ class MarketMixin:
         :raises ApiError: for regular reasons
         :raises ValueError:
         """
+
         if isinstance(listing, MarketListing):
             if listing.converted_currency is self.currency:
                 raise ValueError(
@@ -413,8 +414,7 @@ class MarketMixin:
                 rj,
             )
 
-        self._wallet_balance = int(rj["wallet_info"]["wallet_balance"]) / 100
-        return self._wallet_balance
+        return int(rj["wallet_info"]["wallet_balance"]) / 100
 
     async def get_my_market_history(
         self: "SteamClient",

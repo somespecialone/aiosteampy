@@ -218,8 +218,9 @@ class SteamPublicMixin:
         """
         Do what described in method name.
 
-        https://github.com/Revadike/InternalSteamWebAPI/wiki/Get-Market-Item-Orders-Activity
-        https://github.com/somespecialone/steam-item-name-ids
+        .. seealso::
+            * https://github.com/Revadike/InternalSteamWebAPI/wiki/Get-Market-Item-Orders-Activity
+            * https://github.com/somespecialone/steam-item-name-ids
 
         :param item_name_id: special id of item class. Can be found only on listings page.
         :param lang:
@@ -275,8 +276,7 @@ class SteamPublicMixin:
         """
         Fetch price data.
 
-        .. warning::
-            This request is rate limited by Steam.
+        .. warning:: This request is rate limited by Steam.
 
         :param obj:
         :param app_id:
@@ -348,9 +348,10 @@ class SteamPublicMixin:
         count: int = 100,
     ) -> ITEM_MARKET_LISTINGS_DATA:
         """
+        Fetch item listings from market.
+        You can paginate by yourself passing ``start`` arg.
 
-        .. warning::
-            This request is rate limited by Steam.
+        .. warning:: This request is rate limited by Steam.
 
         :param obj:
         :param app_id:
@@ -407,11 +408,11 @@ class SteamPublicMixin:
                     )
                 ],
                 currency=Currency(int(l_data["currencyid"]) - 2000),
-                price=int(l_data["price"] / 100),
-                fee=int(l_data["fee"] / 100),
+                price=int(l_data["price"]) / 100,
+                fee=int(l_data["fee"]) / 100,
                 converted_currency=Currency(int(l_data["converted_currencyid"]) - 2000),
-                converted_fee=int(l_data["converted_price"] / 100),
-                converted_price=int(l_data["converted_fee"] / 100),
+                converted_fee=int(l_data["converted_fee"]) / 100,
+                converted_price=int(l_data["converted_price"]) / 100,
             )
             for l_data in rj["listinginfo"].values()
         ], rj["total_count"]

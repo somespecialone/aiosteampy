@@ -60,7 +60,7 @@ class Currency(IntEnum):
     """
     Steam currency enum.
 
-    https://partner.steamgames.com/doc/store/pricing/currencies
+    .. seealso:: https://partner.steamgames.com/doc/store/pricing/currencies
     """
 
     USD = 1  # UnitedStates Dollar
@@ -117,9 +117,6 @@ class Currency(IntEnum):
     def by_name(cls, name: str) -> "Currency":
         return cls._name_map[name]
 
-    def __str__(self):
-        return self.name
-
 
 Currency._name_map = {c.name: c for c in Currency.__members__.values()}
 
@@ -128,7 +125,7 @@ class Language(str, Enum):  # like StrEnum from python 3.11
     """
     Steam languages.
 
-    https://partner.steamgames.com/doc/store/localization/languages
+    .. seealso:: https://partner.steamgames.com/doc/store/localization/languages
     """
 
     ARABIC = "arabic"

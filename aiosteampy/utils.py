@@ -5,24 +5,30 @@ from time import time as time_time
 from hmac import new as hmac_new
 from hashlib import sha1
 from functools import wraps
-from typing import Callable, overload, ParamSpec, TypeVar
+from typing import Callable, overload, ParamSpec, TypeVar, TYPE_CHECKING, TypeAlias
+from http.cookies import SimpleCookie, Morsel
 
 from bs4 import BeautifulSoup
 from aiohttp import ClientSession
 from yarl import URL
 
+if TYPE_CHECKING:
+    from .client import SteamCommunityMixin
 
 __all__ = (
     "gen_two_factor_code",
     "generate_confirmation_key",
     "generate_device_id",
     "do_session_steam_auth",
+    "get_client_cookie_jar",
     "get_cookie_value_from_session",
     "async_throttle",
     "create_ident_code",
     "account_id_to_steam_id",
     "steam_id_to_account_id",
     "to_int_boolean",
+    "restore_from_cookies",
+    "get_jsonable_cookies",
 )
 
 
@@ -86,13 +92,18 @@ async def do_session_steam_auth(session: ClientSession, auth_url: str | URL):
     await session.post("https://steamcommunity.com/openid/login", data=login_data)
 
 
-def get_cookie_value_from_session(session: ClientSession, domain: str, field: str) -> str | None:
-    """
-    This function exists only to hide annoying alert "unresolved _cookies attr reference" from main base code.
-    """
+def get_client_cookie_jar(session: ClientSession) -> dict[str, SimpleCookie]:
+    """This function exists only to hide annoying alert "unresolved _cookies attr reference" from main base code."""
 
-    if field in session.cookie_jar._cookies[domain]:
-        return session.cookie_jar._cookies[domain][field].value
+    return session.cookie_jar._cookies
+
+
+def get_cookie_value_from_session(session: ClientSession, domain: str, field: str) -> str | None:
+    """Just get value from session cookies."""
+
+    jar = get_client_cookie_jar(session)
+    if field in jar[domain]:
+        return jar[domain][field].value
 
 
 _P = ParamSpec("_P")
@@ -195,7 +206,68 @@ def account_id_to_steam_id(account_id: int) -> int:
 
 def to_int_boolean(s):
     """Convert something to 1, 0."""
+
     return 1 if s else 0
 
 
-# TODO load from file cookie helper
+JSONABLE_COOKIE_JAR: TypeAlias = list[dict[str, dict[str, str, None, bool]]]
+
+
+async def restore_from_cookies(
+    cookies: JSONABLE_COOKIE_JAR,
+    client: "SteamCommunityMixin",
+    *,
+    init_data=True,
+    **init_kwargs,
+):
+    """
+    Helper func. Restore client session from cookies.
+    Login if session is not alive.
+    """
+
+    prepared = []
+    for cookie_data in cookies:
+        c = SimpleCookie()
+        for k, v in cookie_data.items():
+            m = Morsel()
+            m._value = v.pop("value")
+            m._key = v.pop("key")
+            m._coded_value = v.pop("coded_value")
+            m.update(v)
+            c[k] = m
+
+        prepared.append(c)
+
+    for c in prepared:
+        client.session.cookie_jar.update_cookies(c)
+    if not (await client.is_session_alive()):
+        await client.login(init_data=init_data, **init_kwargs)
+    else:
+        client._is_logged = True
+        init_data and await client._init_data()
+
+
+def get_jsonable_cookies(session: ClientSession) -> JSONABLE_COOKIE_JAR:
+    """Extract and convert cookies to dict object."""
+
+    cookie_jar = get_client_cookie_jar(session)
+    return [
+        {
+            field_key: {
+                "coded_value": morsel.coded_value,
+                "key": morsel.key,
+                "value": morsel.value,
+                "expires": morsel["expires"],
+                "path": morsel["path"],
+                "comment": morsel["comment"],
+                "domain": morsel["domain"],
+                "max-age": morsel["max-age"],
+                "secure": morsel["secure"],
+                "httponly": morsel["httponly"],
+                "version": morsel["version"],
+                "samesite": morsel["samesite"],
+            }
+            for field_key, morsel in cookie.items()
+        }
+        for cookie in cookie_jar.values()
+    ]

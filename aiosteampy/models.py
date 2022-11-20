@@ -336,6 +336,14 @@ class MarketListing(BaseOrder):
     def listing_id(self) -> int:
         return self.id
 
+    @property
+    def total_price(self) -> float:
+        return self.price + self.fee
+
+    @property
+    def total_converted_price(self) -> float:
+        return self.converted_price + self.converted_fee
+
 
 @dataclass(eq=False, slots=True, kw_only=True)
 class BaseTradeOfferItem(EconItem):

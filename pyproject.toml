@@ -49,6 +49,7 @@ mkautodoc = "^0.2.0"
 
 [tool.pytest.ini_options]
 testpaths = ["tests"]
+asyncio_mode = 'auto'
 
 [tool.coverage.run]
 source = ["aiosteampy"]

@@ -402,8 +402,7 @@ class TradeMixin:
         """
         Accept trade offer, yes. Remove offer from cache.
 
-        .. note::
-            Auto confirm accepting if needed.
+        .. note:: Auto confirm accepting if needed.
 
         :param offer: `TradeOffer` or trade offer id
         :param partner: partner account id (id32) or steam id (id64). Required when you pass trade offer id
@@ -484,8 +483,7 @@ class TradeMixin:
         """
         Make (send) steam trade offer to partner.
 
-        .. note::
-            Make sure that partner is in friends list if you not pass trade url or trade token.
+        .. note:: Make sure that partner is in friends list if you not pass trade url or trade token.
 
         :param obj: partner trade url, partner id(id32 or id64)
         :param token:

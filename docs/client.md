@@ -21,8 +21,11 @@ client = SteamClient(
 await client.login()
 ```
 
-??? note "`client.login` args and data fetching"
-    You can prevent this if pass `init_data=False`. But keep in mind, that methods required missed data will throw errors.
+???+ note "Api key registration"
+    If steam account does obtain  `api key`, it will be automatically registered on `steamcommunity.com` during data initialization.
+
+??? info "`client.login` args and data fetching"
+    You can bypass this if pass `init_data=False`. But keep in mind - methods who are requires missed data will throw errors.
 
 Addition to args above, there is:
 
@@ -44,10 +47,9 @@ Addition to args above, there is:
 For proxies support you can use [aiohttp-socks](https://github.com/romis2012/aiohttp-socks) as you can create `session` by
 yourself.
 
-
 ### Inheritance
 
-In case you need to use multiple inheritance and `__slots__`, you may subclass `SteamCommunityMixin`:
+In case you need to use multiple inheritance and `__slots__`, you can subclass `SteamCommunityMixin`:
 
 ```python
 from aiosteampy.client import SteamCommunityMixin, SteamClient

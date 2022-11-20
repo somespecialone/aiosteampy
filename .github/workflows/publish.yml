@@ -18,7 +18,7 @@ jobs:
           virtualenvs-in-project: true
       - run: poetry install
 
-      - name: "Publish to PyPi"
+      - name: "Publish to PyPI"
         env:
           PYPI_TOKEN: ${{ secrets.PYPI_TOKEN }}
         run: |

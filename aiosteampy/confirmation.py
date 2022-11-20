@@ -27,7 +27,6 @@ class ConfirmationMixin:
 
     __slots__ = ()
 
-    # TODO docs about storage
     async def remove_confirmation(self, id_or_ident: str | int, conf: Confirmation):
         """
         Remove confirmation silently from cache.

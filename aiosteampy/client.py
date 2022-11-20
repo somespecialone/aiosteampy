@@ -39,6 +39,11 @@ class SteamCommunityMixin(SteamGuardMixin, ConfirmationMixin, LoginMixin, Market
 
     __slots__ = ()
 
+    session: ClientSession
+    username: str
+    steam_id: int
+    trade_token: str
+
     def __init__(
         self,
         username: str,

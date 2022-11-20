@@ -19,7 +19,6 @@ jobs:
 
       - name: "Run PyTest with coverage"
         env:
-         TEST_API_KEY: ${{ secrets.TEST_API_KEY }}
          TEST_LOGIN: ${{ secrets.TEST_LOGIN }}
          TEST_PASSWORD: ${{ secrets.TEST_PASSWORD }}
          TEST_STEAMID: ${{ secrets.TEST_STEAMID }}

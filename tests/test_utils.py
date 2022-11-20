@@ -12,7 +12,7 @@ def test_one_time_code():
 def test_confirmation_key():
     ts = 1470838334
     c_key = generate_confirmation_key(MOCK_IDENTITY_SECRET, "conf", ts)
-    assert c_key == b"pWqjnkcwqni+t/n+5xXaEa0SGeA="
+    assert c_key == "pWqjnkcwqni+t/n+5xXaEa0SGeA="
 
 
 def test_generate_device_id():

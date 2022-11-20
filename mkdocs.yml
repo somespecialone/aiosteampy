@@ -68,6 +68,7 @@ nav:
   - Market: market.md
   - Trade: trade.md
   - Public: public.md
+  - States&cache: states.md
   - 'Api reference':
       - client: api_reference/client.md
       - confirmation: api_reference/confirmation.md
@@ -78,3 +79,4 @@ nav:
       - public: api_reference/public.md
       - exceptions: api_reference/exceptions.md
       - utils: api_reference/utils.md
+  - 'Testing 🧪': tests.md

@@ -60,6 +60,11 @@ protobuf, same as [DoctorMcKay/node-steam-user](https://github.com/DoctorMcKay/n
 * Edit profile, social interaction(groups, clans).
 * Handle entities(listings, items, tradeoffers) lifecycle for easy if you need to store it.
 
+## Contribution 💛
+
+There is no rules or requirements to contribute. Feedbacks, suggests, other are welcome.
+I will be very grateful for helping me get the things right.
+
 ## Credits
 
 * [DoctorMcKay/node-steamcommunity](https://github.com/DoctorMcKay/node-steamcommunity)

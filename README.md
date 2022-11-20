@@ -20,7 +20,7 @@
 
 ---
 
-### **See full documentation [here](https://github.com/somespecialone/aiosteampy) 📖**
+### **See full documentation [here](https://somespecialone.github.io/aiosteampy) 📖**
 
 ---
 
@@ -45,6 +45,8 @@ poetry add aiosteampy
 ```
 
 Also, [aiohttp docs](https://docs.aiohttp.org/en/stable/) recommends install speedups (`aiodns`, `cchardet`, ...)
+
+> Old version still available on PyPI: [asyncsteampy](https://pypi.org/project/asyncsteampy/)
 
 ---
 
@@ -91,19 +93,12 @@ protobuf, same as [DoctorMcKay/node-steam-user](https://github.com/DoctorMcKay/n
 
 ## Tests 🧪
 
-To run tests clone repo, install with tests
+### **Read [documentation](https://somespecialone.github.io/aiosteampy/tests/) 📖**
 
-```shell
-poetry install --with test
-```
+## Contribution 💛
 
-> ⚠ You need at least one market item, one inventory item for `CSGO` to pass integration tests.
-
-Create env variables listed in [tests/data](tests/data.py) and run `pytest` from project dir:
-
-```shell
-pytest
-```
+There is no rules or requirements to contribute. Feedbacks, suggests, other are welcome.
+I will be very grateful for helping me get the things right.
 
 ## Credits
 

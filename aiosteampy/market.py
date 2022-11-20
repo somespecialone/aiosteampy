@@ -165,15 +165,16 @@ class MarketMixin:
         :return: buy order id
         :raises ApiError:
         """
+
         if isinstance(obj, ItemClass):
-            name = ItemClass.market_hash_name
-            game = ItemClass.game
+            name = obj.market_hash_name
+            game = obj.game
         else:
             name = obj
 
         data = {
             "sessionid": self.session_id,
-            "currency": self._wallet_currency,
+            "currency": self._wallet_currency.value,
             "appid": game[0],
             "market_hash_name": name,
             "price_total": int(price * quantity * 100),
@@ -356,8 +357,7 @@ class MarketMixin:
         Unfortunately, Steam requires referer header to buy item,
         so `market hash name` and `game` is mandatory args.
 
-        .. note::
-            Make sure that listing converted currency is wallet currency!
+        .. note:: Make sure that listing converted currency is wallet currency!
 
         :param listing: id for listing itself (aka market id) or `MarketListing`
         :param price: price in `1.24` format, can be found on listing data in
@@ -398,7 +398,7 @@ class MarketMixin:
         total = price + fee
         data = {
             "sessionid": self.session_id,
-            "currency": self._wallet_currency,
+            "currency": self._wallet_currency.value,
             "subtotal": price,
             "fee": fee,
             "total": total,
@@ -410,7 +410,7 @@ class MarketMixin:
         if not rj.get("wallet_info", {}).get("success"):
             raise ApiError(
                 f"Failed to buy listing [{listing_id}] of `{market_hash_name}` "
-                f"for {total / 100} {self._wallet_currency}.",
+                f"for {total / 100} {self._wallet_currency.name}.",
                 rj,
             )
 
@@ -548,16 +548,16 @@ class MarketMixin:
         Fetch price history.
         Prices always will be same currency as a wallet.
 
-        https://github.com/Revadike/InternalSteamWebAPI/wiki/Get-Market-Price-History
+        .. seealso:: https://github.com/Revadike/InternalSteamWebAPI/wiki/Get-Market-Price-History
 
-        .. warning::
-            This request is rate limited by Steam.
+        .. warning:: This request is rate limited by Steam.
 
         :param obj: `EconItem` or `ItemClass` or market hash name
         :param app_id:
         :return: list of `PriceHistoryEntry`
         :raises ApiError:
         """
+
         if isinstance(obj, EconItem):
             name = obj.class_.market_hash_name
             app_id = obj.class_.game.app_id

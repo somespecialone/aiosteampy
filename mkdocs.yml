@@ -4,7 +4,7 @@ site_url: https://somespecialone.github.io/aiosteampy
 repo_name: somespecialone/aiosteampy
 repo_url: https://github.com/somespecialone/aiosteampy
 
-copyright: Copyright &copy; 2022 Dmytro Tkachenko
+copyright: Copyright &copy; 2022-2023 Dmytro Tkachenko
 
 theme:
   name: material

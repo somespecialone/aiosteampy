@@ -12,6 +12,9 @@
 ::: aiosteampy.utils.do_session_steam_auth
     :docstring:
 
+::: aiosteampy.utils.get_session_cookie_jar
+    :docstring:
+
 ::: aiosteampy.utils.get_cookie_value_from_session
     :docstring:
 
@@ -28,4 +31,10 @@
     :docstring:
 
 ::: aiosteampy.utils.to_int_boolean
+    :docstring:
+
+::: aiosteampy.utils.restore_from_cookies
+    :docstring:
+
+::: aiosteampy.utils.get_jsonable_cookies
     :docstring:

@@ -78,7 +78,11 @@ class TradeMixin:
         """
 
     async def get_or_fetch_trade_offer(self, offer_id: int) -> TradeOffer:
-        """Get specific trade from cache. Fetch it and store, if there is no one."""
+        """
+        Get specific trade from cache. Fetch it and store, if there is no one.
+
+        :raises ApiError: if there is error when trying to fetch `TradeOffer`
+        """
 
         trade = await self.get_trade_offer(offer_id)
         if not trade:
@@ -120,7 +124,9 @@ class TradeMixin:
                 classes_map[key] = cls._create_item_class_from_data(desc, (desc,))
 
     def _create_trade_offer_from_data(
-        self: "SteamClient", data: dict[str, ...], classes_map: dict[str, ItemClass]
+        self: "SteamClient",
+        data: dict[str, ...],
+        classes_map: dict[str, ItemClass],
     ) -> TradeOffer:
         return TradeOffer(
             id=int(data["tradeofferid"]),
@@ -402,11 +408,16 @@ class TradeMixin:
         """
         Accept trade offer, yes. Remove offer from cache.
 
-        .. note:: Auto confirm accepting if needed.
+        .. note::
+            Auto confirm accepting if needed.
+
+            If you not pass ``partner`` but pass `trade offer id` -
+            fetches :class:`aiosteampy.models.TradeOffer` from `Steam`.
 
         :param offer: `TradeOffer` or trade offer id
-        :param partner: partner account id (id32) or steam id (id64). Required when you pass trade offer id
+        :param partner: partner account id (id32) or steam id (id64)
         :raises ConfirmationError: if confirmation can't be found or while do action with
+        :raises ApiError: if there is error when trying to fetch `TradeOffer`
         """
 
         if isinstance(offer, TradeOffer):
@@ -415,16 +426,14 @@ class TradeMixin:
             offer_id = offer.id
             partner = offer.partner_id64
             to_remove = TradeOffer
-        else:
+        else:  # int
+            if not partner:
+                fetched = await self.get_or_fetch_trade_offer(offer)
+                return await self.accept_trade_offer(fetched)
+
             offer_id = offer
+            partner = account_id_to_steam_id(partner) if partner < 4294967296 else partner  # 2**32
             to_remove = None
-            if partner:
-                partner = account_id_to_steam_id(partner) if partner < 4294967296 else partner  # 2**32
-            else:
-                fetched = await self.get_or_fetch_trade_offer(offer_id)
-                if fetched.is_our_offer:
-                    raise ValueError(ERROR_MSG)
-                partner = fetched.partner_id64
 
         data = {
             "sessionid": self.session_id,

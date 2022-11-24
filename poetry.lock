@@ -312,6 +312,18 @@ GitPython = "*"
 mkdocs = ">=1.0"
 
 [[package]]
+name = "mkdocs-include-markdown-plugin"
+version = "3.9.1"
+description = "Mkdocs Markdown includer plugin."
+category = "dev"
+optional = false
+python-versions = ">=3.6"
+
+[package.extras]
+dev = ["bump2version (==1.0.1)", "mkdocs (==1.4.0)", "pre-commit", "pytest (==7.1.3)", "pytest-cov (==3.0.0)", "tox"]
+test = ["mkdocs (==1.4.0)", "pytest (==7.1.3)", "pytest-cov (==3.0.0)"]
+
+[[package]]
 name = "mkdocs-material"
 version = "8.5.8"
 description = "Documentation that simply works"
@@ -617,7 +629,7 @@ multidict = ">=4.0"
 [metadata]
 lock-version = "1.1"
 python-versions = "^3.10"
-content-hash = "acfd80c31d03daac2149dc304ba00b44a0d1e69f98aa2410e2bea62837efab19"
+content-hash = "938830c60f0730878e210927501146f078bdf30f0d60b30ed43bff93ff5dace9"
 
 [metadata.files]
 aiodns = [
@@ -1016,6 +1028,10 @@ mkdocs = [
 mkdocs-git-revision-date-localized-plugin = [
     {file = "mkdocs-git-revision-date-localized-plugin-1.1.0.tar.gz", hash = "sha256:38517e2084229da1a1b9460e846c2748d238c2d79efd405d1b9174a87bd81d79"},
     {file = "mkdocs_git_revision_date_localized_plugin-1.1.0-py3-none-any.whl", hash = "sha256:4ba0e49abea3e9f6ee26e2623ff7283873da657471c61f1d0cfbb986f403316d"},
+]
+mkdocs-include-markdown-plugin = [
+    {file = "mkdocs_include_markdown_plugin-3.9.1-py3-none-any.whl", hash = "sha256:f33687e29ac66d045ba181ea50f054646b0090b42b0a4318f08e7f1d1235e6f6"},
+    {file = "mkdocs_include_markdown_plugin-3.9.1.tar.gz", hash = "sha256:5e5698e78d7fea111be9873a456089daa333497988405acaac8eba2924a19152"},
 ]
 mkdocs-material = [
     {file = "mkdocs_material-8.5.8-py3-none-any.whl", hash = "sha256:7ff092299e3a63cef99cd87e4a6cc7e7d9ec31fd190d766fd147c35572e6d593"},

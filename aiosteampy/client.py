@@ -89,7 +89,7 @@ class SteamCommunityMixin(SteamGuardMixin, ConfirmationMixin, LoginMixin, Market
 
     @property
     def trade_url(self) -> URL:
-        return (STEAM_URL.TRADE / "tradeoffer/new/") % {"partner": self.account_id, "token": self.trade_token or ""}
+        return STEAM_URL.TRADE / "new/" % {"partner": self.account_id, "token": self.trade_token or ""}
 
     @property
     def profile_url(self) -> URL:
@@ -207,11 +207,12 @@ class SteamCommunityMixin(SteamGuardMixin, ConfirmationMixin, LoginMixin, Market
         search = API_KEY_RE.search(rt)
         return search["api_key"] if search else None
 
-    async def register_new_api_key(self, domain: str = str(STEAM_URL.COMMUNITY)) -> str:
+    async def register_new_api_key(self, domain="https://github.com/somespecialone/aiosteampy") -> str:
         """
         Register new api key, cache it and return.
 
-        :param domain: On which domain api key will be registered. Default - "steamcommunity"
+        :param domain: On which domain api key will be registered.
+            Default - "https://github.com/somespecialone/aiosteampy"
         :return: api key
         """
 
@@ -235,9 +236,14 @@ class SteamCommunityMixin(SteamGuardMixin, ConfirmationMixin, LoginMixin, Market
         rj = await r.json()
         return Notifications(*(rj["notifications"][str(i)] for i in range(1, 12) if i != 7))
 
-    # https://github.com/DoctorMcKay/node-steamcommunity/blob/851c14bd93008579e7a308ea8ecda873996baa1f/index.js#L405
+    # TODO check primary events resetting conditions.
     def reset_items_notifications(self) -> CORO[_RequestContextManager]:
-        """Fetching your inventory page, which resets new items notifications to 0."""
+        """
+        Fetching your inventory page, which resets new items notifications to 0.
+
+        .. seealso:: https://github.com/DoctorMcKay/node-steamcommunity/blob/851c14bd93008579e7a308ea8ecda873996baa1f/index.js#L405
+
+        """
 
         return self.session.get(self.profile_url / "inventory/")
 

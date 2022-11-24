@@ -18,7 +18,7 @@ await client.login()
 ```
 
 ??? info "Client args"
-    Client will retrieve needed data from `steam` if you not pass it. Details [there](client.md#init).
+    Client will retrieve needed data from `steam` if you not pass it. Details [there](client.md#init--login).
 
 ### Do work
 

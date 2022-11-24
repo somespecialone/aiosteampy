@@ -52,8 +52,7 @@ def pytest_runtest_setup(item):
 @pytest.fixture(scope="session")
 def event_loop():
     # Prevent warning on Windows
-    if platform.system() == "Windows":
-        asyncio.set_event_loop_policy(asyncio.WindowsSelectorEventLoopPolicy())
+    platform.system() == "Windows" and asyncio.set_event_loop_policy(asyncio.WindowsSelectorEventLoopPolicy())
 
     loop = asyncio.get_event_loop_policy().new_event_loop()
     yield loop

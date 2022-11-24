@@ -196,6 +196,7 @@ class MarketMixin:
         :param order: `BuyOrder` or buy order id
         :raises ApiError:
         """
+
         if isinstance(order, BuyOrder):
             order_id = order.id
         else:

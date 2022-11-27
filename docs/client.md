@@ -22,7 +22,8 @@ await client.login()
 ```
 
 ???+ note "Api key registration"
-    If steam account does obtain  `api key`, it will be automatically registered on `steamcommunity.com` during data initialization.
+    If steam account does obtain `api key`, it will be automatically registered on
+    `https://github.com/somespecialone/aiosteampy` during data initialization.
 
 ??? info "`client.login` args and data fetching"
     You can bypass this if pass `init_data=False`. But keep in mind - methods who are requires missed data will throw errors.

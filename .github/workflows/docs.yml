@@ -2,9 +2,8 @@ name: Docs
 
 on:
   push:
-    branches:
-      - master
-    paths: ["mkdocs.yml", "docs/**"]
+    branches: [ master ]
+    paths: [ "mkdocs.yml", "docs/**", "README.md" ]
 
 jobs:
   deploy:

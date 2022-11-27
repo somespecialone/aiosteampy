@@ -1,4 +1,6 @@
-# <p align="center">AIOSTEAMPY</p>
+<!--header-start-->
+
+# AIOSTEAMPY
 
 [![Made in Ukraine](https://img.shields.io/badge/made_in-ukraine-ffd700.svg?labelColor=0057b7)](https://stand-with-ukraine.pp.ua)
 [![steam](https://shields.io/badge/steam-1b2838?logo=steam)](https://store.steampowered.com/)
@@ -12,18 +14,23 @@
 [![CodeFactor](https://www.codefactor.io/repository/github/somespecialone/aiosteampy/badge)](https://www.codefactor.io/repository/github/somespecialone/aiosteampy)
 [![black](https://img.shields.io/badge/code%20style-black-000000.svg)](https://github.com/psf/black)
 
-> ### Previously this library was a soft fork of [bukson/steampy](https://github.com/bukson/steampy) and created only to provide asynchronous methods and proxies support.
-> ### But now it standalone project. Created by myself for steam trading purposes mostly.
+Previously this library was a soft fork of [bukson/steampy](https://github.com/bukson/steampy) and created only to
+provide asynchronous methods and proxies support.
+But now it standalone project. Created by myself for steam trading purposes mostly.
 
 ---
 
 [![Stand With Ukraine](https://raw.githubusercontent.com/vshymanskyy/StandWithUkraine/main/banner-direct-single.svg)](https://stand-with-ukraine.pp.ua)
 
----
-
-### **See full documentation [here](https://somespecialone.github.io/aiosteampy) 📖**
+<!--header-end-->
 
 ---
+
+> **See full documentation [here](https://somespecialone.github.io/aiosteampy) 📖**
+
+---
+
+<!--install-start-->
 
 ## Installation
 
@@ -45,11 +52,16 @@ poetry
 poetry add aiosteampy
 ```
 
-Also, [aiohttp docs](https://docs.aiohttp.org/en/stable/) recommends install speedups (`aiodns`, `cchardet`, ...)
+<!--install-end-->
+
+Also, [aiohttp docs](https://docs.aiohttp.org/en/stable/#library-installation) recommends install speedups (`aiodns`
+, `cchardet`, ...)
 
 > Old version still available on PyPI: [asyncsteampy](https://pypi.org/project/asyncsteampy/)
 
 ---
+
+<!--intro-start-->
 
 AIOSTEAMPY use [aiohttp](https://github.com/aio-libs/aiohttp) underneath to get asynchronous requests to steam servers,
 with modern (not really for current moment 😊) async/await syntax.
@@ -90,11 +102,17 @@ protobuf, same as [DoctorMcKay/node-steam-user](https://github.com/DoctorMcKay/n
 * Edit profile, social interaction(groups, clans).
 * Handle entities(listings, items, tradeoffers) lifecycle for easy if you need to store it.
 
+<!--intro-end-->
+
 ---
 
 ## Tests 🧪
 
-### **Read [documentation](https://somespecialone.github.io/aiosteampy/tests/) 📖**
+**Read [test documentation](https://somespecialone.github.io/aiosteampy/tests/) 📖**
+
+---
+
+<!--footer-start-->
 
 ## Contribution 💛
 
@@ -109,3 +127,5 @@ I will be very grateful for helping me get the things right.
 * [Gobot1234/steam.py](https://github.com/Gobot1234/steam.py)
 * [somespecialone/steam-item-name-ids](https://github.com/somespecialone/steam-item-name-ids)
 * [steamapi.xpaw.me](https://steamapi.xpaw.me/)
+
+<!--footer-end-->

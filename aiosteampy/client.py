@@ -29,6 +29,7 @@ API_KEY_CHECK_STR = "<h2>Access Denied</h2>"
 API_KEY_CHECK_STR1 = "You must have a validated email address to create a Steam Web API key"
 STEAM_LANG_COOKIE = "Steam_Language"
 DEF_COUNTRY = "UA"
+DEF_DOMAIN = "https://github.com/somespecialone/aiosteampy"
 
 
 class SteamCommunityMixin(SteamGuardMixin, ConfirmationMixin, LoginMixin, MarketMixin, TradeMixin, SteamPublicMixin):
@@ -207,7 +208,7 @@ class SteamCommunityMixin(SteamGuardMixin, ConfirmationMixin, LoginMixin, Market
         search = API_KEY_RE.search(rt)
         return search["api_key"] if search else None
 
-    async def register_new_api_key(self, domain="https://github.com/somespecialone/aiosteampy") -> str:
+    async def register_new_api_key(self, domain=DEF_DOMAIN) -> str:
         """
         Register new api key, cache it and return.
 
@@ -242,7 +243,6 @@ class SteamCommunityMixin(SteamGuardMixin, ConfirmationMixin, LoginMixin, Market
         Fetching your inventory page, which resets new items notifications to 0.
 
         .. seealso:: https://github.com/DoctorMcKay/node-steamcommunity/blob/851c14bd93008579e7a308ea8ecda873996baa1f/index.js#L405
-
         """
 
         return self.session.get(self.profile_url / "inventory/")
@@ -287,12 +287,10 @@ class SteamClient(SteamCommunityMixin):
         "_api_key",
         "trade_token",
         "_device_id",
-        "_confirmation_storage",
         "_steam_fee",
         "_publisher_fee",
         "_wallet_currency",
         "_wallet_country",
-        "_trades_storage",
     )
 
 

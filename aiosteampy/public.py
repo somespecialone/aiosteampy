@@ -4,15 +4,16 @@ from aiohttp import ClientSession, ClientResponseError
 from yarl import URL
 
 from .models import (
-    ItemDescription,
+    ItemDescriptionEntry,
     ItemTag,
-    ItemClass,
+    ItemDescription,
     EconItem,
     ItemAction,
     MarketListing,
     MarketListingItem,
+    ITEM_DESCR_TUPLE,
 )
-from .constants import STEAM_URL, Game, Currency, GameType, Language
+from .constants import STEAM_URL, Game, Currency, GameType, Language, T_KWARGS
 from .typed import ItemOrdersHistogram, ItemOrdersActivity, PriceOverview
 from .exceptions import ApiError
 from .utils import create_ident_code
@@ -41,6 +42,7 @@ class SteamPublicMixin:
         *,
         predicate: PREDICATE = None,
         page_size=INV_PAGE_SIZE,
+        **kwargs: T_KWARGS,
     ) -> list[EconItem]:
         """
         Fetches inventory of user.
@@ -54,11 +56,11 @@ class SteamPublicMixin:
         """
 
         inv_url = INVENTORY_URL / f"{steam_id}/"
-        params = {"l": self.language, "count": page_size}
+        params = {"l": self.language, "count": page_size, **kwargs}
         headers = {"Referer": str(inv_url)}
         url = inv_url / f"{game[0]}/{game[1]}"
 
-        classes_map = {}  # shared classes within whole game context inventory
+        item_descrs_map = {}
         items = []
         more_items = True
         last_assetid = None
@@ -69,7 +71,7 @@ class SteamPublicMixin:
             if more_items:
                 last_assetid = data.get("last_assetid")
 
-            items.extend(self._parse_items(data, steam_id, classes_map))
+            items.extend(self._parse_items(data, steam_id, item_descrs_map))
 
         return [i for i in items if predicate(i)] if predicate else items
 
@@ -104,27 +106,55 @@ class SteamPublicMixin:
         cls,
         data: dict[str, list[dict]],
         steam_id: int,
-        classes_map: dict[str, ItemClass],
-    ) -> tuple[EconItem, ...]:
+        item_descrs_map: dict[str, dict],
+    ) -> list[EconItem]:
         for d_data in data["descriptions"]:
             key = d_data["classid"]
-            if key not in classes_map:
-                classes_map[key] = cls._create_item_class_from_data(d_data, data["assets"])
+            if key not in item_descrs_map:
+                item_descrs_map[key] = cls._create_item_description_kwargs(d_data, data["assets"])
 
-        return tuple(
+        return [
             EconItem(
-                id=int(asset_data["assetid"]),
+                asset_id=int(asset_data["assetid"]),
                 owner_id=steam_id,
-                class_=classes_map[asset_data["classid"]],
                 amount=int(asset_data["amount"]),
+                **item_descrs_map[asset_data["classid"]],
             )
             for asset_data in data["assets"]
-        )
+        ]
 
     @classmethod
-    def _create_item_class_from_data(cls, data: dict, assets: list[dict[str, int | str]]) -> ItemClass:
-        return ItemClass(
-            id=int(data["classid"]),
+    def _create_item_actions(cls, actions: list[dict]) -> list[ItemAction]:
+        return [ItemAction(a_data["link"], a_data["name"]) for a_data in actions]
+
+    @classmethod
+    def _create_item_tags(cls, tags: list[dict]) -> list[ItemTag]:
+        return [
+            ItemTag(
+                category=t_data["category"],
+                internal_name=t_data["internal_name"],
+                localized_category_name=t_data["localized_category_name"],
+                localized_tag_name=t_data["localized_tag_name"],
+                color=t_data.get("color"),
+            )
+            for t_data in tags
+        ]
+
+    @classmethod
+    def _create_item_description_entries(cls, descriptions: list[dict]) -> list[ItemDescriptionEntry]:
+        return [
+            ItemDescriptionEntry(
+                value=de_data["value"],
+                color=de_data.get("color"),
+            )
+            for de_data in descriptions
+            if de_data["value"] != " "  # ha, surprise!
+        ]
+
+    @classmethod
+    def _create_item_description_kwargs(cls, data: dict, assets: list[dict[str, int | str]]) -> dict:
+        return dict(
+            class_id=int(data["classid"]),
             instance_id=int(data["instanceid"]),
             game=cls._find_game_for_asset(data, assets),
             name=data["name"],
@@ -142,30 +172,13 @@ class SteamPublicMixin:
             market_buy_country_restriction=data.get("market_buy_country_restriction"),
             market_fee_app=data.get("market_fee_app"),
             market_marketable_restriction=data.get("market_marketable_restriction"),
-            actions=tuple(ItemAction(a_data["link"], a_data["name"]) for a_data in data.get("actions", ())),
-            market_actions=tuple(
-                ItemAction(a_data["link"], a_data["name"]) for a_data in data.get("market_actions", ())
-            ),
-            owner_actions=tuple(ItemAction(a_data["link"], a_data["name"]) for a_data in data.get("owner_actions", ())),
-            tags=tuple(
-                ItemTag(
-                    category=t_data["category"],
-                    internal_name=t_data["internal_name"],
-                    localized_category_name=t_data["localized_category_name"],
-                    localized_tag_name=t_data["localized_tag_name"],
-                    color=t_data.get("color"),
-                )
-                for t_data in data.get("tags", ())
-            ),
-            descriptions=tuple(
-                ItemDescription(
-                    value=de_data["value"],
-                    color=de_data.get("color"),
-                )
-                for de_data in data.get("descriptions", ())
-                if de_data["value"] != " "  # ha, surprise!
-            ),
-            fraud_warnings=tuple(data.get("fraudwarnings", ())),
+            actions=cls._create_item_actions(data.get("actions", ())),
+            market_actions=cls._create_item_actions(data.get("market_actions", ())),
+            owner_actions=cls._create_item_actions(data.get("owner_actions", ())),
+            tags=cls._create_item_tags(data.get("tags", ())),
+            descriptions=cls._create_item_description_entries(data.get("descriptions", ())),
+            owner_descriptions=cls._create_item_description_entries(data.get("owner_descriptions", ())),
+            fraud_warnings=[*data.get("fraudwarnings", ())],
         )
 
     async def fetch_item_orders_histogram(
@@ -175,6 +188,7 @@ class SteamPublicMixin:
         lang: Language = None,
         country: str = None,
         currency: Currency = None,
+        **kwargs: T_KWARGS,
     ) -> ItemOrdersHistogram:
         """
         Do what described in method name.
@@ -199,6 +213,7 @@ class SteamPublicMixin:
             "country": country or self.country,
             "currency": currency or self.currency,
             "item_nameid": item_nameid,
+            **kwargs,
         }
         r = await self.session.get(STEAM_URL.MARKET / "itemordershistogram", params=params)
         rj: ItemOrdersHistogram = await r.json()
@@ -214,6 +229,7 @@ class SteamPublicMixin:
         lang: Language = None,
         country: str = None,
         currency: Currency = None,
+        **kwargs: T_KWARGS,
     ) -> ItemOrdersActivity:
         """
         Do what described in method name.
@@ -236,6 +252,7 @@ class SteamPublicMixin:
             "country": country or self.country,
             "currency": currency or self.currency,
             "item_nameid": item_name_id,
+            **kwargs,
         }
         r = await self.session.get(STEAM_URL.MARKET / "itemordersactivity", params=params)
         rj: ItemOrdersActivity = await r.json()
@@ -247,7 +264,7 @@ class SteamPublicMixin:
     @overload
     async def fetch_price_overview(
         self,
-        obj: EconItem | ItemClass,
+        obj: EconItem | ItemDescription,
         *,
         country: str = ...,
         currency: Currency = ...,
@@ -267,11 +284,12 @@ class SteamPublicMixin:
 
     async def fetch_price_overview(
         self,
-        obj: str | EconItem | ItemClass,
+        obj: str | EconItem | ItemDescription,
         app_id: int = None,
         *,
         country: str = None,
         currency: Currency = None,
+        **kwargs: T_KWARGS,
     ) -> PriceOverview:
         """
         Fetch price data.
@@ -286,10 +304,7 @@ class SteamPublicMixin:
         :raises ApiError:
         """
 
-        if isinstance(obj, EconItem):
-            name = obj.class_.market_hash_name
-            app_id = obj.class_.game.app_id
-        elif isinstance(obj, ItemClass):
+        if isinstance(obj, ITEM_DESCR_TUPLE):
             name = obj.market_hash_name
             app_id = obj.game.app_id
         else:  # str
@@ -300,6 +315,7 @@ class SteamPublicMixin:
             "currency": currency or self.currency,
             "market_hash_name": name,
             "appid": app_id,
+            **kwargs,
         }
         r = await self.session.get(STEAM_URL.MARKET / "priceoverview", params=params)
         rj: PriceOverview = await r.json()
@@ -311,7 +327,7 @@ class SteamPublicMixin:
     @overload
     async def get_item_listings(
         self,
-        obj: EconItem | ItemClass,
+        obj: EconItem | ItemDescription,
         *,
         country: str = ...,
         currency: Currency = ...,
@@ -327,17 +343,17 @@ class SteamPublicMixin:
         obj: str,
         app_id: int,
         *,
-        country: str = None,
-        currency: Currency = None,
-        query: str = None,
-        start: int = 0,
-        count: int = 100,
+        country: str = ...,
+        currency: Currency = ...,
+        query: str = ...,
+        start: int = ...,
+        count: int = ...,
     ) -> ITEM_MARKET_LISTINGS_DATA:
         ...
 
     async def get_item_listings(
         self,
-        obj: str | EconItem | ItemClass,
+        obj: str | EconItem | ItemDescription,
         app_id: int = None,
         *,
         country: str = None,
@@ -345,7 +361,8 @@ class SteamPublicMixin:
         lang: str = None,
         query: str = None,
         start: int = 0,
-        count: int = 100,
+        count: int = 10,
+        **kwargs: T_KWARGS,
     ) -> ITEM_MARKET_LISTINGS_DATA:
         """
         Fetch item listings from market.
@@ -365,12 +382,9 @@ class SteamPublicMixin:
         :raises ApiError:
         """
 
-        if isinstance(obj, EconItem):
-            name = obj.class_.market_hash_name
-            app_id = obj.class_.game.app_id
-        elif isinstance(obj, ItemClass):
+        if isinstance(obj, ITEM_DESCR_TUPLE):
             name = obj.market_hash_name
-            app_id = obj.game.app_id
+            app_id = obj.game[0]
         else:  # str
             name = obj
 
@@ -382,6 +396,7 @@ class SteamPublicMixin:
             "start": start,
             "count": count,
             "language": lang or self.language,
+            **kwargs,
         }
         headers = {"Referer": str(base_url)}
         r = await self.session.get(base_url / "render", params=params, headers=headers)
@@ -391,16 +406,15 @@ class SteamPublicMixin:
         if not rj["total_count"] or not rj["assets"]:
             return [], 0
 
-        # all listings on page DOES NOT have single item class, because Steam
-        classes_map = {}
-        assets_map = {}
-        self._update_classes_map_for_public(rj["assets"], classes_map)
-        self._parse_assets_for_listings(rj["assets"], classes_map, assets_map)
+        item_descrs_map = {}
+        econ_items_map = {}
+        self._update_item_descrs_map_for_public(rj["assets"], item_descrs_map)
+        self._parse_items_for_listings(rj["assets"], item_descrs_map, econ_items_map)
 
         return [
             MarketListing(
                 id=int(l_data["listingid"]),
-                item=assets_map[
+                item=econ_items_map[
                     create_ident_code(
                         l_data["asset"]["id"],
                         l_data["asset"]["appid"],
@@ -418,32 +432,32 @@ class SteamPublicMixin:
         ], rj["total_count"]
 
     @classmethod
-    def _update_classes_map_for_public(
+    def _update_item_descrs_map_for_public(
         cls,
         assets: dict[str, dict[str, dict[str, dict[str, ...]]]],
-        classes_map: dict[str, ItemClass],
+        item_descrs_map: dict[str, dict],
     ):
         for app_id, app_data in assets.items():
             for context_id, context_data in app_data.items():
                 for asset_id, a_data in context_data.items():
                     key = create_ident_code(a_data["classid"], app_id)
-                    classes_map[key] = cls._create_item_class_from_data(a_data, (a_data,))
+                    item_descrs_map[key] = cls._create_item_description_kwargs(a_data, [a_data])
 
     @staticmethod
-    def _parse_assets_for_listings(
+    def _parse_items_for_listings(
         data: dict[str, dict[str, dict[str, dict[str, ...]]]],
-        classes_map: dict[str, ItemClass],
-        assets_map: dict[str, MarketListingItem],
+        item_descrs_map: dict[str, dict],
+        econ_items_map: dict[str, MarketListingItem],
     ):
         for app_id, app_data in data.items():
             for context_id, context_data in app_data.items():
                 for a_data in context_data.values():
                     key = create_ident_code(a_data["id"], app_id, context_id)
-                    if key not in assets_map:
-                        assets_map[key] = MarketListingItem(
-                            id=int(a_data["id"]),
+                    if key not in econ_items_map:
+                        econ_items_map[key] = MarketListingItem(
+                            asset_id=int(a_data["id"]),
                             market_id=0,  # market listing post init
-                            class_=classes_map[create_ident_code(a_data["classid"], app_id)],
                             unowned_id=int(a_data["unowned_id"]),
                             unowned_context_id=int(a_data["unowned_contextid"]),
+                            **item_descrs_map[create_ident_code(a_data["classid"], app_id)],
                         )

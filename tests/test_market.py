@@ -23,15 +23,15 @@ class TestMarketInteractions:
         listings: list[MarketListing] = context["listings"]
         # place sell listing with price of 4 times more than the cheapest listing to ensure that
         # no one will buy our listing during test case time
-        listings_id = await client.place_sell_listing(inventory[0], to_receive=listings[0].total_converted_price * 4)
+        listings_id = await client.place_sell_listing(inventory[0], to_receive=listings[0].total_converted_cost * 4)
         context["sell_listings_id"] = listings_id
 
     async def test_place_buy_order(self, client, inventory, context):
         listings: list[MarketListing] = context["listings"]
         # place buy order with price 2 times less than the cheapest listing
         buy_order_id = await client.place_buy_order(
-            inventory[0].class_,
-            price=listings[0].total_converted_price / 2,
+            inventory[0],
+            price=listings[0].total_converted_cost / 2,
             quantity=1,
         )
 

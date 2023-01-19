@@ -13,6 +13,8 @@ from .constants import (
 )
 from .utils import create_ident_code, account_id_to_steam_id
 
+TRADABLE_AFTER_DATE_FORMAT = "Tradable After %b %d, %Y (%H:%M:%S) %Z"
+
 
 @dataclass(eq=False, slots=True)
 class ItemAction:
@@ -21,7 +23,7 @@ class ItemAction:
 
 
 @dataclass(eq=False, slots=True)
-class ItemDescription:
+class ItemDescriptionEntry:
     value: str
     type: Literal["html"] = "html"  # just because
     color: str | None = None  # hexadecimal
@@ -36,15 +38,19 @@ class ItemTag:
     color: str | None = None  # hexadecimal
 
 
-@dataclass(eq=False, slots=True)
-class ItemClass:
+@dataclass(eq=False, slots=True, kw_only=True)
+class ItemDescription:
     """
     `EconItem` description representation.
-    `ident_code` field is guaranteed unique within whole Steam Economy.
+    `id` or `ident_code` field is guaranteed unique within whole Steam Economy.
     """
 
-    id: int  # classid
+    id: str = field(init=False, default="")  # optimization 🚀
+
+    class_id: int
     instance_id: int
+
+    d_id: int | None = field(init=False, default=None)  # optional CSGO inspect id
 
     game: GameType
 
@@ -60,40 +66,41 @@ class ItemClass:
     icon: str
     icon_large: str | None
 
-    actions: tuple[ItemAction, ...]
-    market_actions: tuple[ItemAction, ...]
-    owner_actions: tuple[ItemAction, ...]
-    tags: tuple[ItemTag, ...]
-    descriptions: tuple[ItemDescription, ...]
+    # maybe I should prefer tuples here? For the sake of immutability & safety & memory
+    actions: list[ItemAction]
+    market_actions: list[ItemAction]
+    owner_actions: list[ItemAction]
+    tags: list[ItemTag]
+    descriptions: list[ItemDescriptionEntry]
+    owner_descriptions: list[ItemDescriptionEntry]
 
-    fraud_warnings: tuple[str]
+    fraud_warnings: list[str]
 
-    commodity: bool  # ?
-    tradable: bool
+    commodity: bool  # item use buy orders on market
+    tradable: bool  # item can be traded
     marketable: bool
+    # days for which the item will be untradable after being sold on the market.
     market_tradable_restriction: int | None = None
     market_buy_country_restriction: str | None = None
     market_fee_app: int | None = None
-    market_marketable_restriction: int | None = None
-
-    # optimization 🚀
-    ident_code: str = field(init=False, default=None)
+    market_marketable_restriction: int | None = None  # same as `market_tradable_restriction` but for market
 
     def __post_init__(self):
         self._set_ident_code()
+        self._set_d_id()
 
     def _set_ident_code(self):
-        self.ident_code = create_ident_code(self.id, self.game[0])
+        self.id = create_ident_code(self.class_id, self.game[0])
+
+    def _set_d_id(self):
+        if self.game[0] == 730:
+            i_action = next(filter(lambda a: "Inspect" in a.name, self.actions), None)
+            if i_action is not None:
+                self.d_id = int(i_action.link.split("%D")[1])
 
     @property
-    def d_id(self) -> int | None:
-        """Optional CSGO attr"""
-        for action in self.actions:
-            if "Inspect" in action.name:
-                return int(action.link.split("%D")[1])
-
-    @property
-    def class_id(self) -> int:
+    def ident_code(self) -> str:
+        """Alias for `id`."""
         return self.id
 
     @property
@@ -104,52 +111,55 @@ class ItemClass:
     def icon_large_url(self) -> str | None:
         return str(STEAM_URL.STATIC / f"economy/image/{self.icon_large}/330x192") if self.icon_large else None
 
-    def __eq__(self, other: "ItemClass"):
-        return (self.id == other.id) and (self.game[0] == other.game[0]) and (self.game[1] == other.game[1])
+    def __eq__(self, other: "ItemDescription"):
+        return self.id == other.id
 
     def __hash__(self):
-        return self.id
+        return hash(self.ident_code)
 
 
 EconItemTuple: TypeAlias = tuple[int, int, int, int]
 
 
 @dataclass(eq=False, slots=True, kw_only=True)
-class EconItem:
+class EconItem(ItemDescription):
     """
     Represents Steam economy item (inventories).
-    `ident_code` field is guaranteed unique within whole Steam Economy.
+    `id` or `ident_code` field is guaranteed unique within whole Steam Economy.
     """
 
-    id: int  # The item's unique ID within its app+context.
+    asset_id: int  # The item's unique ID within its app+context
     owner_id: int
-
-    class_: ItemClass
 
     amount: int
 
-    ident_code: str = field(init=False, default=None)  # optimization 🚀
+    tradable_after: datetime | None = field(init=False, default=None)
+
     _args_tuple_: EconItemTuple = field(init=False, default=(), repr=False)
 
     def __post_init__(self):
         self._set_ident_code()
+        self._set_d_id()
         self._set_args_tuple()
 
     def _set_ident_code(self):
-        self.ident_code = create_ident_code(self.id, *self.class_.game)
+        self.id = create_ident_code(self.asset_id, *self.game)
 
     def _set_args_tuple(self):
-        self._args_tuple_ = (self.class_.game[0], self.class_.game[1], self.amount, self.id)
+        self._args_tuple_ = (self.game[0], self.game[1], self.amount, self.asset_id)
+
+    def _set_tradable_after(self):
+        if self.market_tradable_restriction:
+            sep = "Tradable After "
+            t_a_descr = next(filter(lambda d: sep in d.value, self.owner_descriptions or ()), None)
+            if t_a_descr is not None:
+                self.tradable_after = datetime.strptime(t_a_descr.value, TRADABLE_AFTER_DATE_FORMAT)
 
     @property
     def inspect_link(self) -> str | None:
-        for action in self.class_.actions:
-            if "Inspect" in action.name:
-                return action.link.replace("%assetid%", str(self.id)).replace("%owner_steamid%", str(self.owner_id))
-
-    @property
-    def asset_id(self) -> int:
-        return self.id
+        """Optional CSGO attr."""
+        if self.d_id:
+            return f"steam://rungame/730/76561202255233023/+csgo_econ_action_preview%20S{self.owner_id}A{self.asset_id}{self.d_id}"
 
     def __getitem__(self, index: int) -> int:  # some magic
         return self._args_tuple_[index]
@@ -158,12 +168,10 @@ class EconItem:
         return iter(self._args_tuple_)
 
     def __eq__(self, other: "EconItem"):
-        return (self.id == other.id) and (self.class_ == other.class_)
-
-    def __hash__(self):
-        return hash(self.ident_code)
+        return self.asset_id == other.asset_id and super().__eq__(other)
 
 
+ITEM_DESCR_TUPLE = (EconItem, ItemDescription)
 EconItemType: TypeAlias = EconItem | EconItemTuple
 
 
@@ -203,20 +211,21 @@ class Notifications:
 
 @dataclass(eq=False, slots=True, kw_only=True)
 class MarketListingItem(EconItem):
-    # presented only on active listing
+    """Presented only on active listing."""
+
     market_id: int  # listing id
 
     unowned_id: int | None
     unowned_context_id: int | None
 
-    amount: int = 1  # item on listing always have 1 amount
+    amount: int = 1  # item on listing always have amount eq 1
     owner_id: int = 0
 
     @property
     def inspect_link(self) -> str | None:
-        for action in self.class_.market_actions:
-            if "Inspect" in action.name:
-                return action.link.replace("%assetid%", str(self.id)).replace("%listingid%", str(self.market_id))
+        """Optional CSGO attr."""
+        if self.d_id:
+            return f"steam://rungame/730/76561202255233023/+csgo_econ_action_preview%20M{self.market_id}A{self.asset_id}{self.d_id}"
 
 
 @dataclass(eq=False, slots=True)
@@ -251,7 +260,7 @@ class MyMarketListing(BaseOrder):
 
 @dataclass(eq=False, slots=True)
 class BuyOrder(BaseOrder):
-    item_class: ItemClass
+    item_description: ItemDescription
 
     quantity: int
     quantity_remaining: int
@@ -266,9 +275,9 @@ class MarketHistoryListingItem(MarketListingItem):
     market_id: None = None
 
     # purchase fields
-    new_id: int | None = None
+    new_asset_id: int | None = None
     new_context_id: int | None = None
-    rollback_new_id: int | None = None
+    rollback_new_asset_id: int | None = None
     rollback_new_context_id: int | None = None
 
     @property
@@ -337,27 +346,16 @@ class MarketListing(BaseOrder):
         return self.id
 
     @property
-    def total_price(self) -> float:
+    def total_cost(self) -> float:
         return self.price + self.fee
 
     @property
-    def total_converted_price(self) -> float:
+    def total_converted_cost(self) -> float:
         return self.converted_price + self.converted_fee
 
 
 @dataclass(eq=False, slots=True, kw_only=True)
 class BaseTradeOfferItem(EconItem):
-    class_id: int
-    game: GameType
-
-    class_: ItemClass | None  # old trades don't have descriptions for asset due to Steam :)
-
-    def _set_ident_code(self):
-        self.ident_code = create_ident_code(self.id, *self.game)
-
-    def _set_args_tuple(self):
-        self._args_tuple_ = (self.game[0], self.game[1], self.amount, self.id)
-
     @property
     def inspect_link(self) -> None:
         return None
@@ -370,27 +368,12 @@ class TradeOfferItem(BaseTradeOfferItem):
 
     owner_id: int = 0
 
-    def __eq__(self, other: "EconItem | TradeOfferItem"):
-        if isinstance(other, EconItem):
-            game = other.class_.game
-            class_id = other.class_.id
-        else:
-            game = other.game
-            class_id = other.class_id
-
-        return (
-            (self.id == other.id)
-            and (self.game[0] == game[0])
-            and (self.game[1] == game[1])
-            and (self.class_id == class_id)
-        )
-
 
 @dataclass(eq=False, slots=True)
 class BaseTradeOffer:
     id: int
 
-    owner: int  # steam id64 of entity owner acc (SteamClient)
+    owner_id: int  # steam id64 of entity owner acc (SteamClient)
     partner_id: int  # id32
 
     status: TradeOfferStatus
@@ -406,6 +389,12 @@ class BaseTradeOffer:
     @property
     def is_active(self) -> bool:
         return self.status is TradeOfferStatus.ACTIVE
+
+    def __eq__(self, other: "BaseTradeOffer"):
+        return self.id == other.id
+
+    def __hash__(self):
+        return self.id
 
 
 @dataclass(eq=False, slots=True)
@@ -425,7 +414,7 @@ class TradeOffer(BaseTradeOffer):
 
     def __post_init__(self):
         for i in self.items_to_give:
-            i.owner_id = self.owner
+            i.owner_id = self.owner_id
 
         for i in self.items_to_receive:
             i.owner_id = self.partner_id64
@@ -433,12 +422,12 @@ class TradeOffer(BaseTradeOffer):
     @property
     def sender(self) -> int:
         """Steam id64 of sender."""
-        return self.owner if self.is_our_offer else self.partner_id64
+        return self.owner_id if self.is_our_offer else self.partner_id64
 
     @property
     def receiver(self) -> int:
         """Steam id64 of receiver."""
-        return self.partner_id64 if self.is_our_offer else self.owner
+        return self.partner_id64 if self.is_our_offer else self.owner_id
 
 
 @dataclass(eq=False, slots=True, kw_only=True)
@@ -453,5 +442,5 @@ class HistoryTradeOfferItem(BaseTradeOfferItem):
 class HistoryTradeOffer(BaseTradeOffer):
     time_init: datetime
 
-    assets_received: tuple[HistoryTradeOfferItem, ...]
-    assets_given: tuple[HistoryTradeOfferItem, ...]
+    assets_received: list[HistoryTradeOfferItem]
+    assets_given: list[HistoryTradeOfferItem]

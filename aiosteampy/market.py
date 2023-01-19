@@ -10,15 +10,16 @@ from .models import (
     EconItem,
     MyMarketListing,
     BuyOrder,
-    ItemClass,
+    ItemDescription,
     MarketListingItem,
     MarketHistoryEvent,
     MarketHistoryListing,
     MarketHistoryListingItem,
     PriceHistoryEntry,
     MarketListing,
+    ITEM_DESCR_TUPLE,
 )
-from .constants import STEAM_URL, GameType, MarketListingStatus, MarketHistoryEventType
+from .constants import STEAM_URL, GameType, MarketListingStatus, MarketHistoryEventType, T_KWARGS
 from .utils import create_ident_code
 
 if TYPE_CHECKING:
@@ -73,7 +74,12 @@ class MarketMixin:
 
     @overload
     async def place_sell_listing(
-        self, asset: int, game: GameType, *, to_receive: float, confirm: Literal[False] = ...
+        self,
+        asset: int,
+        game: GameType,
+        *,
+        to_receive: float,
+        confirm: Literal[False] = ...,
     ) -> None:
         ...
 
@@ -85,6 +91,7 @@ class MarketMixin:
         price: float = None,
         to_receive: float = None,
         confirm=True,
+        **kwargs: T_KWARGS,
     ) -> int | None:
         """
         Create and place sell listing.
@@ -102,8 +109,8 @@ class MarketMixin:
         """
 
         if isinstance(asset, EconItem):
-            asset_id = asset.id
-            game = asset.class_.game
+            asset_id = asset.asset_id
+            game = asset.game
         else:
             asset_id = asset
 
@@ -117,6 +124,7 @@ class MarketMixin:
             "appid": game[0],
             "amount": 1,
             "price": int(to_receive * 100),
+            **kwargs,
         }
         headers = {"Referer": str(STEAM_URL.COMMUNITY / f"profiles/{self.steam_id}/inventory")}
         r = await self.session.post(STEAM_URL.MARKET / "sellitem/", data=data, headers=headers)
@@ -140,48 +148,50 @@ class MarketMixin:
         return self.session.post(STEAM_URL.MARKET / f"removelisting/{listing_id}", data=data, headers=headers)
 
     @overload
-    async def place_buy_order(self, obj: ItemClass, *, price: float, quantity: int) -> int:
+    async def place_buy_order(self, obj: ItemDescription, *, price: float, quantity: int = ...) -> int:
         ...
 
     @overload
-    async def place_buy_order(self, obj: str, game: GameType, *, price: float, quantity: int) -> int:
+    async def place_buy_order(self, obj: str, app_id: int, *, price: float, quantity: int = ...) -> int:
         ...
 
     async def place_buy_order(
         self: "SteamClient",
-        obj: str | ItemClass,
-        game: GameType = None,
+        obj: str | ItemDescription,
+        app_id: int = None,
         *,
         price: float,
-        quantity: int,
+        quantity=1,
+        **kwargs: T_KWARGS,
     ) -> int:
         """
         Place buy order on market.
 
-        :param obj: `ItemClass` or market hash name
-        :param game: `Game` if `obj` is market hash name
+        :param obj: `ItemDescription` or market hash name
+        :param app_id: app id if `obj` is market hash name
         :param price: price of single item
         :param quantity: just quantity
         :return: buy order id
         :raises ApiError:
         """
 
-        if isinstance(obj, ItemClass):
+        if isinstance(obj, ItemDescription):
             name = obj.market_hash_name
-            game = obj.game
+            app_id = obj.game[0]
         else:
             name = obj
 
         data = {
             "sessionid": self.session_id,
             "currency": self._wallet_currency.value,
-            "appid": game[0],
+            "appid": app_id,
             "market_hash_name": name,
             "price_total": int(price * quantity * 100),
             "quantity": quantity,
+            **kwargs,
         }
 
-        headers = {"Referer": str(STEAM_URL.MARKET / f"listings/{game[0]}/{name}")}
+        headers = {"Referer": str(STEAM_URL.MARKET / f"listings/{app_id}/{name}")}
         r = await self.session.post(STEAM_URL.MARKET / "createbuyorder/", data=data, headers=headers)
         rj: dict[str, ...] = await r.json()
         if not rj.get("success"):
@@ -209,7 +219,7 @@ class MarketMixin:
         if not rj.get("success"):
             raise ApiError(f"Failed to cancel buy order [{order_id}].", rj)
 
-    async def get_my_listings(self: "SteamClient", *, page_size=100) -> MY_LISTINGS:
+    async def get_my_listings(self: "SteamClient", *, page_size=100, **kwargs: T_KWARGS) -> MY_LISTINGS:
         """
         Fetch users market listings.
 
@@ -220,11 +230,11 @@ class MarketMixin:
         """
 
         url = STEAM_URL.MARKET / "mylistings"
-        params = {"norender": 1, "start": 0, "count": page_size}
+        params = {"norender": 1, "start": 0, "count": page_size, **kwargs}
         active = []
         to_confirm = []
         buy_orders = []
-        classes_map = {}  # ident code: ... , shared classes within whole listings
+        item_descrs_map = {}  # ident code: ... , shared classes within whole listings
 
         # pagination only for active listings. Don't know how to be with others
         more_listings = True
@@ -237,10 +247,10 @@ class MarketMixin:
             else:
                 more_listings = False
 
-            self._parse_item_classes_for_listings(data["assets"], classes_map)
-            active.extend(self._parse_listings(data["listings"], classes_map))
-            to_confirm.extend(self._parse_listings(data["listings_to_confirm"], classes_map))
-            buy_orders.extend(self._parse_buy_orders(data["buy_orders"], classes_map))
+            self._parse_item_descriptions_for_listings(data["assets"], item_descrs_map)
+            active.extend(self._parse_listings(data["listings"], item_descrs_map))
+            to_confirm.extend(self._parse_listings(data["listings_to_confirm"], item_descrs_map))
+            buy_orders.extend(self._parse_buy_orders(data["buy_orders"], item_descrs_map))
 
         return active, to_confirm, buy_orders
 
@@ -257,39 +267,39 @@ class MarketMixin:
         return rj
 
     @classmethod
-    def _parse_item_classes_for_listings(
+    def _parse_item_descriptions_for_listings(
         cls: Type["SteamClient"],
         assets: dict[str, dict[str, dict[str, dict[str, ...]]]],
-        classes_map: dict[str, ItemClass],
+        item_descrs_map: dict[str, dict],
     ):
         for app_id, app_data in assets.items():
             for context_id, context_data in app_data.items():
                 for a_data in context_data.values():
                     key = create_ident_code(a_data["classid"], app_id)
-                    if key not in classes_map:
-                        classes_map[key] = cls._create_item_class_from_data(a_data, (a_data,))  # some trick
+                    if key not in item_descrs_map:
+                        item_descrs_map[key] = cls._create_item_description_kwargs(a_data, [a_data])
 
     def _parse_listings(
         self: "SteamClient",
         listings: list[dict[str, ...]],
-        classes_map: dict[str, ItemClass],
-    ) -> tuple[MyMarketListing, ...]:
-        return tuple(
+        item_descrs_map: dict[str, dict],
+    ) -> list[MyMarketListing]:
+        return [
             MyMarketListing(
                 id=int(l_data["listingid"]),
                 price=l_data["price"] / 100,
                 lister_steam_id=self.steam_id,
                 time_created=datetime.fromtimestamp(l_data["time_created"]),
                 item=MarketListingItem(
-                    id=int(l_data["asset"]["id"]),
+                    asset_id=int(l_data["asset"]["id"]),
                     unowned_id=int(l_data["asset"]["unowned_id"]) if "unowned_id" in l_data["asset"] else None,
                     owner_id=self.steam_id,
                     market_id=int(l_data["listingid"]),
                     unowned_context_id=int(l_data["asset"]["unowned_contextid"])
                     if "unowned_contextid" in l_data["asset"]
                     else None,
-                    class_=classes_map[create_ident_code(l_data["asset"]["classid"], l_data["asset"]["appid"])],
                     amount=int(l_data["asset"]["amount"]),
+                    **item_descrs_map[create_ident_code(l_data["asset"]["classid"], l_data["asset"]["appid"])],
                 ),
                 status=MarketListingStatus(l_data["status"]),
                 active=bool(l_data["active"]),
@@ -298,26 +308,26 @@ class MarketMixin:
                 time_finish_hold=l_data["time_finish_hold"],
             )
             for l_data in listings
-        )
+        ]
 
     @classmethod
     def _parse_buy_orders(
         cls: Type["SteamClient"],
         orders: list[dict[str, ...]],
-        classes_map: dict[str, ItemClass],
-    ) -> list[BuyOrder, ...]:
+        item_descrs_map: dict[str, dict],
+    ) -> list[BuyOrder]:
         orders_list = []
         for o_data in orders:
             class_ident_key = create_ident_code(o_data["description"]["classid"], o_data["description"]["appid"])
-            if class_ident_key not in classes_map:
-                classes_map[class_ident_key] = cls._create_item_class_from_data(
-                    o_data["description"], (o_data["description"],)
-                )  # same some trick
+            if class_ident_key not in item_descrs_map:
+                item_descrs_map[class_ident_key] = cls._create_item_description_kwargs(
+                    o_data["description"], [o_data["description"]]
+                )
             orders_list.append(
                 BuyOrder(
                     id=int(o_data["buy_orderid"]),
                     price=int(o_data["price"]) / 100,
-                    item_class=classes_map[class_ident_key],
+                    item_description=ItemDescription(**item_descrs_map[class_ident_key]),
                     quantity=int(o_data["quantity"]),
                     quantity_remaining=int(o_data["quantity_remaining"]),
                 )
@@ -374,7 +384,7 @@ class MarketMixin:
         """
 
         if isinstance(listing, MarketListing):
-            if listing.converted_currency is self.currency:
+            if listing.converted_currency is not self.currency:
                 raise ValueError(
                     f"Currency of listing [{listing.converted_currency}] is "
                     f"different from wallet [{self.currency}] one!"
@@ -383,8 +393,8 @@ class MarketMixin:
             listing_id = listing.id
             price = listing.converted_price
             fee = listing.converted_fee
-            market_hash_name = listing.item.class_.market_hash_name
-            game = listing.item.class_.game
+            market_hash_name = listing.item.market_hash_name
+            game = listing.item.game
         else:
             listing_id = listing
 
@@ -426,8 +436,8 @@ class MarketMixin:
         url = STEAM_URL.MARKET / "myhistory"
         params = {"norender": 1, "start": 0, "count": page_size}
         events = []
-        classes_map = {}  # ident code: ... , shared classes within whole listings
-        assets_map = {}  # ident code: ...
+        item_descrs_map = {}  # ident code: ... , shared classes within whole listings
+        econ_item_map = {}  # ident code: ...
         listings_map = {}  # listings id / listing_purchase id
 
         more_listings = True
@@ -440,9 +450,9 @@ class MarketMixin:
             else:
                 more_listings = False
 
-            self._parse_item_classes_for_listings(data["assets"], classes_map)
-            self._parse_assets_for_history_listings(data["assets"], classes_map, assets_map)
-            self._parse_history_listings(data, assets_map, listings_map)
+            self._parse_item_descriptions_for_listings(data["assets"], item_descrs_map)
+            self._parse_assets_for_history_listings(data["assets"], item_descrs_map, econ_item_map)
+            self._parse_history_listings(data, econ_item_map, listings_map)
             events.extend(self._parse_history_events(data, listings_map))
 
         return list(e for e in events if predicate(e)) if predicate else events
@@ -450,29 +460,31 @@ class MarketMixin:
     @staticmethod
     def _parse_assets_for_history_listings(
         data: dict[str, dict[str, dict[str, dict[str, ...]]]],
-        classes_map: dict[str, ItemClass],
-        assets_map: dict[str, MarketHistoryListingItem],
+        item_descrs_map: dict[str, dict],
+        econ_item_map: dict[str, MarketHistoryListingItem],
     ):
         for app_id, app_data in data.items():
             for context_id, context_data in app_data.items():
                 for a_data in context_data.values():
                     key = create_ident_code(a_data["id"], app_id, context_id)
-                    if key not in assets_map:
-                        assets_map[key] = MarketHistoryListingItem(
-                            id=int(a_data["id"]),
-                            class_=classes_map[create_ident_code(a_data["classid"], app_id)],
+                    if key not in econ_item_map:
+                        econ_item_map[key] = MarketHistoryListingItem(
+                            asset_id=int(a_data["id"]),
                             unowned_id=int(a_data["unowned_id"]),
                             unowned_context_id=int(a_data["unowned_contextid"]),
-                            rollback_new_id=int(a_data["rollback_new_id"]) if "rollback_new_id" in a_data else None,
+                            rollback_new_asset_id=int(a_data["rollback_new_id"])
+                            if "rollback_new_id" in a_data
+                            else None,
                             rollback_new_context_id=int(a_data["rollback_new_contextid"])
                             if "rollback_new_contextid" in a_data
                             else None,
+                            **item_descrs_map[create_ident_code(a_data["classid"], app_id)],
                         )
 
     @staticmethod
     def _parse_history_listings(
         data: dict[str, dict[str, dict[str, ...]]],
-        assets_map: dict[str, MarketHistoryListingItem],
+        econ_item_map: dict[str, MarketHistoryListingItem],
         listings_map: dict[str, MarketHistoryListing],
     ):
         for l_id, l_data in data["listings"].items():
@@ -480,7 +492,7 @@ class MarketMixin:
                 listings_map[l_id] = MarketHistoryListing(
                     id=int(l_data["listingid"]),
                     price=int(l_data["price"]) / 100,
-                    item=assets_map[
+                    item=econ_item_map[
                         create_ident_code(
                             l_data["asset"]["id"],
                             l_data["asset"]["appid"],
@@ -495,7 +507,7 @@ class MarketMixin:
             if p_id not in listings_map:
                 listing = MarketHistoryListing(
                     id=int(p_data["listingid"]),
-                    item=assets_map[
+                    item=econ_item_map[
                         create_ident_code(
                             p_data["asset"]["id"],
                             p_data["asset"]["appid"],
@@ -506,7 +518,7 @@ class MarketMixin:
                     steamid_purchaser=int(p_data["steamid_purchaser"]),
                     received_amount=int(p_data["received_amount"]) / 100,
                 )
-                listing.item.new_id = int(p_data["asset"]["new_id"])
+                listing.item.new_asset_id = int(p_data["asset"]["new_id"])
                 listing.item.new_context_id = int(p_data["asset"]["new_contextid"])
 
                 listings_map[p_id] = listing
@@ -533,11 +545,7 @@ class MarketMixin:
         return events
 
     @overload
-    async def fetch_price_history(self, obj: EconItem) -> list[PriceHistoryEntry]:
-        ...
-
-    @overload
-    async def fetch_price_history(self, obj: ItemClass) -> list[PriceHistoryEntry]:
+    async def fetch_price_history(self, obj: ItemDescription | EconItem) -> list[PriceHistoryEntry]:
         ...
 
     @overload
@@ -553,18 +561,15 @@ class MarketMixin:
 
         .. warning:: This request is rate limited by Steam.
 
-        :param obj: `EconItem` or `ItemClass` or market hash name
+        :param obj: `EconItem` or `ItemDescription` or market hash name
         :param app_id:
         :return: list of `PriceHistoryEntry`
         :raises ApiError:
         """
 
-        if isinstance(obj, EconItem):
-            name = obj.class_.market_hash_name
-            app_id = obj.class_.game.app_id
-        elif isinstance(obj, ItemClass):
+        if isinstance(obj, ITEM_DESCR_TUPLE):
             name = obj.market_hash_name
-            app_id = obj.game.app_id
+            app_id = obj.game[0]
         else:  # str
             name = obj
 

@@ -10,6 +10,7 @@ _T = TypeVar("_T")
 CORO: TypeAlias = Coroutine[Any, Any, _T]
 
 
+# TODO convert to namedtuple or smth
 # https://stackoverflow.com/a/54732120/19419998
 class Game(Enum):
     CSGO = 730, 2
@@ -230,3 +231,6 @@ class STEAM_URL:
             GetTradeOffers = _IBase / "GetTradeOffers" / _v
             GetTradeOffersSummary = _IBase / "GetTradeOffersSummary" / _v
             GetTradeStatus = _IBase / "GetTradeStatus" / _v
+
+
+T_KWARGS: TypeAlias = int | str | float

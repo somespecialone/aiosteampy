@@ -83,7 +83,7 @@ async def inventory(client):
 
     def predicate(i: EconItem):
         # get all marketable items and passed asset id if possible
-        return i.class_.marketable and (i.id == ASSET_ID) if ASSET_ID else True
+        return i.marketable and (i.asset_id == ASSET_ID) if ASSET_ID else True
 
     inv = await client.get_inventory(GAME, predicate=predicate)
     assert inv

@@ -4,13 +4,13 @@ site_url: https://somespecialone.github.io/aiosteampy
 repo_name: somespecialone/aiosteampy
 repo_url: https://github.com/somespecialone/aiosteampy
 
-copyright: Copyright &copy; 2022 Dmytro Tkachenko
+copyright: Copyright &copy; 2023 Dmytro Tkachenko
 
 theme:
   name: material
   custom_dir: docs/theme
   logo: logo.svg
-  favicon: favicon.png
+  favicon: logo.svg
   icon:
     repo: fontawesome/brands/github
     edit: material/file-document-edit-outline
@@ -27,12 +27,12 @@ extra_css:
 
 extra:
   social:
+    - icon: fontawesome/brands/yahoo
+      link: mailto:tkachenkodmitriy@yahoo.com
+    - icon: fontawesome/brands/linkedin
+      link: https://www.linkedin.com/in/somespecialone/
     - icon: fontawesome/solid/globe
       link: https://somespecial.one
-    - icon: fontawesome/brands/github
-      link: https://github.com/somespecialone
-    - icon: fontawesome/brands/docker
-      link: https://hub.docker.com/u/somespecialone
 
 plugins:
   - search
@@ -62,7 +62,7 @@ nav:
   - Trade: trade.md
   - Public: public.md
   - States&cache: states.md
-  - Exapmles:
+  - Examples:
       - 'states mixin': examples/states.md
       - 'session persistence': examples/session.md
   - 'Api reference':

@@ -14,7 +14,7 @@ if TYPE_CHECKING:
 
 __all__ = ("LoginMixin", "LOGIN_URL")
 
-LOGIN_URL = STEAM_URL.STORE / "login"
+LOGIN_URL = STEAM_URL.COMMUNITY / "login"
 
 
 class LoginMixin:

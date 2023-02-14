@@ -121,6 +121,7 @@ I will be very grateful for helping me get the things right.
 
 ## Credits
 
+* [bukson/steampy](https://github.com/bukson/steampy)
 * [DoctorMcKay/node-steamcommunity](https://github.com/DoctorMcKay/node-steamcommunity)
 * [Identifying Steam items](https://dev.doctormckay.com/topic/332-identifying-steam-items/)
 * [Revadike/InternalSteamWebAPI](https://github.com/Revadike/InternalSteamWebAPI)

@@ -370,14 +370,14 @@ class SteamPublicMixin:
 
         .. warning:: This request is rate limited by Steam.
 
-        :param obj:
+        :param obj: market hash name or `EconItem` or `ItemDescription`
         :param app_id:
         :param country:
         :param currency:
         :param lang:
-        :param count:
-        :param start:
-        :param query:
+        :param count: page size, Steam limit this size to 10 for now
+        :param start: offset position
+        :param query: raw search query
         :return: list of `MarketListing`, total listings count
         :raises ApiError:
         """

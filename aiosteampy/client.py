@@ -15,6 +15,7 @@ from .market import MarketMixin
 from .public import SteamPublicMixin, INV_PAGE_SIZE, PREDICATE, PRIVATE_USER_EXC_MSG
 
 from .models import Notifications, EconItem
+from .typed import WalletInfo
 from .constants import STEAM_URL, Currency, GameType, Language, CORO
 from .exceptions import ApiError, SessionExpired
 from .utils import get_cookie_value_from_session, steam_id_to_account_id, account_id_to_steam_id
@@ -151,7 +152,7 @@ class SteamCommunityMixin(SteamGuardMixin, ConfirmationMixin, LoginMixin, Market
             if not self._wallet_currency:
                 self._wallet_currency = Currency(wallet_info["wallet_currency"])
 
-    async def _fetch_wallet_info(self) -> dict[str, str | int]:
+    async def _fetch_wallet_info(self) -> WalletInfo:
         # fetching inventory may reset new items notifs count
         r = await self.session.get(self.profile_url / "inventory", headers={"Referer": str(self.profile_url)})
         rt = await r.text()
@@ -269,7 +270,6 @@ class SteamCommunityMixin(SteamGuardMixin, ConfirmationMixin, LoginMixin, Market
             inv = await self.get_user_inventory(self.steam_id, game, predicate=predicate, page_size=page_size)
         except ApiError as e:
             raise SessionExpired if e.msg == PRIVATE_USER_EXC_MSG else e  # self inventory can't be private
-            # may I need to cache client items?
         return inv
 
 

@@ -19,6 +19,7 @@ from .models import (
     MarketListing,
     ITEM_DESCR_TUPLE,
 )
+from .typed import WalletInfo
 from .constants import STEAM_URL, GameType, MarketListingStatus, MarketHistoryEventType, T_KWARGS
 from .utils import create_ident_code
 
@@ -339,7 +340,7 @@ class MarketMixin:
     async def buy_market_listing(
         self,
         listing: MarketListing,
-    ) -> float:
+    ) -> WalletInfo:
         ...
 
     @overload
@@ -351,7 +352,7 @@ class MarketMixin:
         game: GameType,
         *,
         fee: int = ...,
-    ) -> float:
+    ) -> WalletInfo:
         ...
 
     async def buy_market_listing(
@@ -362,7 +363,7 @@ class MarketMixin:
         game: GameType = None,
         *,
         fee: float = None,
-    ) -> float:
+    ) -> WalletInfo:
         """
         Buy item listing from market.
         Unfortunately, Steam requires referer header to buy item,
@@ -378,7 +379,7 @@ class MarketMixin:
         :param fee: if fee of listing is different from default one,
             can be found on listing data in Steam under field `converted_fee` divided by 100.
             If you don't know what is this - then you definitely do not need it
-        :return: wallet balance
+        :return: wallet info
         :raises ApiError: for regular reasons
         :raises ValueError:
         """
@@ -425,7 +426,7 @@ class MarketMixin:
                 rj,
             )
 
-        return int(rj["wallet_info"]["wallet_balance"]) / 100
+        return rj["wallet_info"]
 
     async def get_my_market_history(
         self: "SteamClient",

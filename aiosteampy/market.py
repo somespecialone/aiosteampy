@@ -65,7 +65,12 @@ class MarketMixin:
 
     @overload
     async def place_sell_listing(
-        self, asset: int, game: GameType, *, price: float, confirm: Literal[False] = ...
+        self,
+        asset: int,
+        game: GameType,
+        *,
+        price: float,
+        confirm: Literal[False] = ...,
     ) -> None:
         ...
 
@@ -337,10 +342,7 @@ class MarketMixin:
         return orders_list
 
     @overload
-    async def buy_market_listing(
-        self,
-        listing: MarketListing,
-    ) -> WalletInfo:
+    async def buy_market_listing(self, listing: MarketListing) -> WalletInfo:
         ...
 
     @overload

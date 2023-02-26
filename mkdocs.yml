@@ -27,7 +27,7 @@ extra_css:
 
 extra:
   social:
-    - icon: fontawesome/brands/yahoo
+    - icon: fontawesome/solid/envelope
       link: mailto:tkachenkodmitriy@yahoo.com
     - icon: fontawesome/brands/linkedin
       link: https://www.linkedin.com/in/somespecialone/

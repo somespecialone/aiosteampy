@@ -43,6 +43,21 @@ Addition to args above, there is:
     `ClientSession(..., raise_for_status=True)`. If not, errors will be not handled right and this will cause strange
     behavior.
 
+
+### Public methods client
+
+Have methods that doesn't require authentication.
+[Docs here](public.md)
+
+```python
+from aiosteampy import SteamPublicClient
+
+client = SteamPublicClient()
+
+await client.fetch_item_orders_histogram(12345687)
+await client.get_something_else()
+```
+
 ### Proxies
 
 For proxies support you can use [aiohttp-socks](https://github.com/romis2012/aiohttp-socks) as you can create `session` by

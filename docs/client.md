@@ -26,13 +26,10 @@ await client.login()
     `https://github.com/somespecialone/aiosteampy` during data initialization.
 
 ??? info "`client.login` args and data fetching"
-    You can bypass this if pass `init_data=False`. But keep in mind - methods who are requires missed data will throw errors.
+    You can bypass this if pass `init_data=False`. But keep in mind - methods which requires missed data will throw errors.
 
 Addition to args above, there is:
 
-* `steam_fee` - fee of steam. Don't know may it change or not, but for flexibility it exists.
-  If you pass `None` - data will be fetched.
-* `publisher_fee` - same as `steam_fee`, fetched in single request.
 * `lang` - language of requests data. Do not recommend to change this until you know what you're doing.
 * `tz_offset` - just time zone offset that will be set to cookie.
 * `session` - [aiohttp.ClientSession](https://docs.aiohttp.org/en/stable/client_advanced.html#client-session).
@@ -54,8 +51,8 @@ from aiosteampy import SteamPublicClient
 
 client = SteamPublicClient()
 
-await client.fetch_item_orders_histogram(12345687)
-await client.get_something_else()
+histogram = await client.fetch_item_orders_histogram(12345687)
+...
 ```
 
 ### Proxies

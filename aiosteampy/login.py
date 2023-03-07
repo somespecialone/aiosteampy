@@ -102,7 +102,7 @@ class LoginMixin:
 
         return rj
 
-    async def _fetch_rsa_params(self: "SteamClient", rsa_retries) -> tuple[PublicKey, int]:
+    async def _fetch_rsa_params(self: "SteamClient", rsa_retries: int) -> tuple[PublicKey, int]:
         rj = {}
         for _ in range(rsa_retries):
             r = await self.session.post(LOGIN_URL / "getrsakey/", data={"username": self.username})

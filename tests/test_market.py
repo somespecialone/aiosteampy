@@ -15,7 +15,7 @@ class TestMarketInteractions:
     async def test_get_wallet_balance(self, client, context):
         listings: list[MarketListing] = context["listings"]
         # make sure that wallet balance is enough to place orders
-        balance, cur = await client.get_wallet_balance()
+        balance = await client.get_wallet_balance()
 
         assert balance > listings[0].converted_price / 1.5
 

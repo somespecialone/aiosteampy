@@ -30,7 +30,6 @@ API_KEY_CHECK_STR = "<h2>Access Denied</h2>"
 API_KEY_CHECK_STR1 = "You must have a validated email address to create a Steam Web API key"
 STEAM_LANG_COOKIE = "Steam_Language"
 DEF_COUNTRY = "UA"
-DEF_DOMAIN = "https://github.com/somespecialone/aiosteampy"
 
 
 class SteamCommunityMixin(SteamGuardMixin, ConfirmationMixin, LoginMixin, MarketMixin, TradeMixin, SteamPublicMixin):
@@ -58,13 +57,10 @@ class SteamCommunityMixin(SteamGuardMixin, ConfirmationMixin, LoginMixin, Market
         trade_token: str = None,
         wallet_currency: Currency = None,
         wallet_country=DEF_COUNTRY,
-        steam_fee=0.05,
-        publisher_fee=0.1,
         lang=Language.ENGLISH,
         tz_offset=0.0,
         session: ClientSession = None,
     ):
-
         self.session = session or ClientSession(raise_for_status=True)
         self.username = username
         self.steam_id = account_id_to_steam_id(steam_id) if steam_id < 4294967296 else steam_id  # steam id64
@@ -74,8 +70,6 @@ class SteamCommunityMixin(SteamGuardMixin, ConfirmationMixin, LoginMixin, Market
         self._shared_secret = shared_secret
         self._identity_secret = identity_secret
         self._api_key = api_key
-        self._steam_fee = steam_fee
-        self._publisher_fee = publisher_fee
         self._wallet_currency = wallet_currency
 
         self._wallet_country = wallet_country
@@ -142,18 +136,21 @@ class SteamCommunityMixin(SteamGuardMixin, ConfirmationMixin, LoginMixin, Market
             self.trade_token = await self._fetch_trade_token()
             not self.trade_token and await self.register_new_trade_url()
 
-        if not self._steam_fee or not self._publisher_fee or not self._wallet_currency:
-            wallet_info = await self._fetch_wallet_info()
+        if not self._wallet_currency:
+            wallet_info = await self.fetch_wallet_info()
             self._wallet_country = wallet_info["wallet_country"]
-            if not self._steam_fee:
-                self._steam_fee = float(wallet_info["wallet_fee_percent"])
-            if not self._publisher_fee:
-                self._publisher_fee = float(wallet_info["wallet_publisher_fee_percent_default"])
             if not self._wallet_currency:
                 self._wallet_currency = Currency(wallet_info["wallet_currency"])
 
-    async def _fetch_wallet_info(self) -> WalletInfo:
-        # fetching inventory may reset new items notifs count
+    async def fetch_wallet_info(self) -> WalletInfo:
+        """
+        Get wallet info from inventory page.
+
+        .. warning:: May reset new items notifications count.
+
+        :return: wallet info
+        """
+
         r = await self.session.get(self.profile_url / "inventory", headers={"Referer": str(self.profile_url)})
         rt = await r.text()
         info: dict = loads(WALLET_INFO_RE.search(rt)["info"])
@@ -162,7 +159,7 @@ class SteamCommunityMixin(SteamGuardMixin, ConfirmationMixin, LoginMixin, Market
 
         return info
 
-    async def get_wallet_balance(self) -> tuple[float, Currency]:
+    async def get_wallet_balance(self) -> float:
         """
         Fetch wallet balance and currency.
 
@@ -175,7 +172,7 @@ class SteamCommunityMixin(SteamGuardMixin, ConfirmationMixin, LoginMixin, Market
             raise ApiError("Failed to fetch wallet info.", rj)
 
         self._wallet_currency = Currency.by_name(rj["user_wallet"]["currency"])
-        return int(rj["user_wallet"]["amount"]) / 100, self._wallet_currency
+        return int(rj["user_wallet"]["amount"]) / 100
 
     async def register_new_trade_url(self) -> URL:
         """
@@ -209,12 +206,11 @@ class SteamCommunityMixin(SteamGuardMixin, ConfirmationMixin, LoginMixin, Market
         search = API_KEY_RE.search(rt)
         return search["api_key"] if search else None
 
-    async def register_new_api_key(self, domain=DEF_DOMAIN) -> str:
+    async def register_new_api_key(self, domain="https://github.com/somespecialone/aiosteampy") -> str:
         """
         Register new api key, cache it and return.
 
-        :param domain: On which domain api key will be registered.
-            Default - "https://github.com/somespecialone/aiosteampy"
+        :param domain: On which domain api key will be registered
         :return: api key
         """
 
@@ -287,8 +283,6 @@ class SteamClient(SteamCommunityMixin):
         "_api_key",
         "trade_token",
         "_device_id",
-        "_steam_fee",
-        "_publisher_fee",
         "_wallet_currency",
         "_wallet_country",
     )

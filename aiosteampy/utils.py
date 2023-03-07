@@ -7,6 +7,7 @@ from hashlib import sha1
 from functools import wraps
 from typing import Callable, overload, ParamSpec, TypeVar, TYPE_CHECKING, TypeAlias
 from http.cookies import SimpleCookie, Morsel
+from math import floor
 
 from bs4 import BeautifulSoup
 from aiohttp import ClientSession
@@ -29,6 +30,8 @@ __all__ = (
     "to_int_boolean",
     "restore_from_cookies",
     "get_jsonable_cookies",
+    "buyer_pays_to_receive",
+    "receive_to_buyer_pays",
 )
 
 
@@ -271,3 +274,83 @@ def get_jsonable_cookies(session: ClientSession) -> JSONABLE_COOKIE_JAR:
         }
         for cookie in cookie_jar.values()
     ]
+
+
+def receive_to_buyer_pays(
+    amount: int,
+    *,
+    publisher_fee=0.1,
+    steam_fee=0.05,
+    wallet_fee_min=1,
+    wallet_fee_base=0,
+) -> tuple[int, int, int]:
+    """
+    Convert `to_receive` amount in `buyer_pays`. Mostly needed for placing sell listing.
+    Works just like on sell listing window on steam.
+
+    :param amount: amount in cents
+    :return: steam fee value, publisher fee value, buyer pays amount
+    """
+
+    steam_fee_value = int(floor(max(amount * steam_fee, wallet_fee_min) + wallet_fee_base))
+    publisher_fee_value = int(floor(max(amount * publisher_fee, 1) if publisher_fee > 0 else 0))
+    return steam_fee_value, publisher_fee_value, int(amount + steam_fee_value + publisher_fee_value)
+
+
+def buyer_pays_to_receive(
+    amount: int,
+    *,
+    publisher_fee=0.1,
+    steam_fee=0.05,
+    wallet_fee_min=1,
+    wallet_fee_base=0,
+) -> tuple[int, int, int]:
+    """
+    Convert `buyer_pays` amount in `to_receive`. Mostly needed for placing sell listing.
+    Works just like on sell listing window on steam.
+
+    :param amount: amount in cents
+    :return: steam fee value, publisher fee value, amount to receive
+    """
+
+    # I don't know how it works, it's just a copy of js function working on inputs in steam front
+    estimated_amount = int((amount - wallet_fee_base) / (steam_fee + publisher_fee + 1))
+    s_fee, p_fee, v = receive_to_buyer_pays(
+        estimated_amount,
+        publisher_fee=publisher_fee,
+        steam_fee=steam_fee,
+        wallet_fee_min=wallet_fee_min,
+        wallet_fee_base=wallet_fee_base,
+    )
+
+    i = 0
+    some_flag = False
+    while (v != amount) and (i < 10):
+        if v > amount:
+            if some_flag:
+                s_fee, p_fee, v = receive_to_buyer_pays(
+                    estimated_amount - 1,
+                    publisher_fee=publisher_fee,
+                    steam_fee=steam_fee,
+                    wallet_fee_min=wallet_fee_min,
+                    wallet_fee_base=wallet_fee_base,
+                )
+                s_fee += amount - v
+                v = amount
+                break
+            else:
+                estimated_amount -= 1
+        else:
+            some_flag = True
+            estimated_amount += 1
+
+        s_fee, p_fee, v = receive_to_buyer_pays(
+            estimated_amount,
+            publisher_fee=publisher_fee,
+            steam_fee=steam_fee,
+            wallet_fee_min=wallet_fee_min,
+            wallet_fee_base=wallet_fee_base,
+        )
+        i += 1
+
+    return s_fee, p_fee, int(v - s_fee - p_fee)

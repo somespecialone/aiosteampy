@@ -21,7 +21,7 @@ from .models import (
 )
 from .typed import WalletInfo
 from .constants import STEAM_URL, GameType, MarketListingStatus, MarketHistoryEventType, T_KWARGS
-from .utils import create_ident_code
+from .utils import create_ident_code, buyer_pays_to_receive
 
 if TYPE_CHECKING:
     from .client import SteamClient
@@ -107,8 +107,8 @@ class MarketMixin:
 
         :param asset: `EconItem` that you want to list on market or asset id
         :param game: game of item
-        :param price: money that buyer must pay
-        :param to_receive: money that you wand to receive
+        :param price: money that buyer must pay. Include fees
+        :param to_receive: money that you want to receive
         :param confirm: confirm listing or not if steam demands mobile confirmation
         :return: sell listing id or None
         :raises ApiError:
@@ -120,8 +120,7 @@ class MarketMixin:
         else:
             asset_id = asset
 
-        if to_receive is None:
-            to_receive = price * (1 - (self._steam_fee + self._publisher_fee))
+        to_receive = buyer_pays_to_receive(int(price * 100))[2] if to_receive is None else int(to_receive * 100)
 
         data = {
             "assetid": asset_id,
@@ -129,7 +128,7 @@ class MarketMixin:
             "contextid": game[1],
             "appid": game[0],
             "amount": 1,
-            "price": int(to_receive * 100),
+            "price": to_receive,
             **kwargs,
         }
         headers = {"Referer": str(STEAM_URL.COMMUNITY / f"profiles/{self.steam_id}/inventory")}
@@ -196,7 +195,6 @@ class MarketMixin:
             "quantity": quantity,
             **kwargs,
         }
-
         headers = {"Referer": str(STEAM_URL.MARKET / f"listings/{app_id}/{name}")}
         r = await self.session.post(STEAM_URL.MARKET / "createbuyorder/", data=data, headers=headers)
         rj: dict[str, ...] = await r.json()
@@ -402,20 +400,14 @@ class MarketMixin:
             listing_id = listing
 
         price = int(price * 100)
-        if fee is None:
-            steam_fee = floor(price * self._steam_fee) or 1
-            publ_fee = floor(price * self._publisher_fee) or 1
-            fee = steam_fee + publ_fee
-        else:
-            fee = int(fee * 100)
+        fee = ((floor(price * 0.05) or 1) + (floor(price * 0.10) or 1)) if fee is None else int(fee * 100)
 
-        total = price + fee
         data = {
             "sessionid": self.session_id,
             "currency": self._wallet_currency.value,
             "subtotal": price,
             "fee": fee,
-            "total": total,
+            "total": price + fee,
             "quantity": 1,
         }
         headers = {"Referer": str(STEAM_URL.MARKET / f"listings/{game[0]}/{market_hash_name}")}
@@ -424,7 +416,7 @@ class MarketMixin:
         if not rj.get("wallet_info", {}).get("success"):
             raise ApiError(
                 f"Failed to buy listing [{listing_id}] of `{market_hash_name}` "
-                f"for {total / 100} {self._wallet_currency.name}.",
+                f"for {(price + fee) / 100} {self._wallet_currency.name}.",
                 rj,
             )
 

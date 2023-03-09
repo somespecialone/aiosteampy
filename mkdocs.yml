@@ -51,7 +51,6 @@ markdown_extensions:
       emoji_generator: !!python/name:materialx.emoji.to_svg
   - toc:
       permalink: true
-  - mkautodoc
 
 nav:
   - Overview: index.md
@@ -66,14 +65,4 @@ nav:
       - 'states mixin': examples/states.md
       - 'session persistence': examples/session.md
       - '3rd party sites auth': examples/auth_3rd_party_site.md
-  - 'Api reference':
-      - client: api_reference/client.md
-      - confirmation: api_reference/confirmation.md
-      - guard: api_reference/guard.md
-      - login: api_reference/login.md
-      - market: api_reference/market.md
-      - trade: api_reference/trade.md
-      - public: api_reference/public.md
-      - exceptions: api_reference/exceptions.md
-      - utils: api_reference/utils.md
   - 'Testing 🧪': tests.md

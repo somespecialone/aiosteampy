@@ -124,12 +124,12 @@ class SteamPublicMixin:
         ]
 
     @classmethod
-    def _create_item_actions(cls, actions: list[dict]) -> list[ItemAction]:
-        return [ItemAction(a_data["link"], a_data["name"]) for a_data in actions]
+    def _create_item_actions(cls, actions: list[dict]) -> tuple[ItemAction, ...]:
+        return tuple(ItemAction(a_data["link"], a_data["name"]) for a_data in actions)
 
     @classmethod
-    def _create_item_tags(cls, tags: list[dict]) -> list[ItemTag]:
-        return [
+    def _create_item_tags(cls, tags: list[dict]) -> tuple[ItemTag, ...]:
+        return tuple(
             ItemTag(
                 category=t_data["category"],
                 internal_name=t_data["internal_name"],
@@ -138,18 +138,18 @@ class SteamPublicMixin:
                 color=t_data.get("color"),
             )
             for t_data in tags
-        ]
+        )
 
     @classmethod
-    def _create_item_description_entries(cls, descriptions: list[dict]) -> list[ItemDescriptionEntry]:
-        return [
+    def _create_item_description_entries(cls, descriptions: list[dict]) -> tuple[ItemDescriptionEntry, ...]:
+        return tuple(
             ItemDescriptionEntry(
                 value=de_data["value"],
                 color=de_data.get("color"),
             )
             for de_data in descriptions
             if de_data["value"] != " "  # ha, surprise!
-        ]
+        )
 
     @classmethod
     def _create_item_description_kwargs(cls, data: dict, assets: list[dict[str, int | str]]) -> dict:
@@ -178,7 +178,7 @@ class SteamPublicMixin:
             tags=cls._create_item_tags(data.get("tags", ())),
             descriptions=cls._create_item_description_entries(data.get("descriptions", ())),
             owner_descriptions=cls._create_item_description_entries(data.get("owner_descriptions", ())),
-            fraud_warnings=[*data.get("fraudwarnings", ())],
+            fraud_warnings=tuple(*data.get("fraudwarnings", ())),
         )
 
     async def fetch_item_orders_histogram(
@@ -398,8 +398,7 @@ class SteamPublicMixin:
             "language": lang or self.language,
             **kwargs,
         }
-        headers = {"Referer": str(base_url)}
-        r = await self.session.get(base_url / "render", params=params, headers=headers)
+        r = await self.session.get(base_url / "render", params=params, headers={"Referer": str(base_url)})
         rj: dict[str, int | dict[str, dict[str, ...]]] = await r.json()
         if not rj.get("success"):
             raise ApiError(f"Can't fetch market listings for `{name}`.", rj)
@@ -422,11 +421,11 @@ class SteamPublicMixin:
                     )
                 ],
                 currency=Currency(int(l_data["currencyid"]) - 2000),
-                price=int(l_data["price"]) / 100,
-                fee=int(l_data["fee"]) / 100,
+                price=int(l_data["price"]),
+                fee=int(l_data["fee"]),
                 converted_currency=Currency(int(l_data["converted_currencyid"]) - 2000),
-                converted_fee=int(l_data["converted_fee"]) / 100,
-                converted_price=int(l_data["converted_price"]) / 100,
+                converted_fee=int(l_data["converted_fee"]),
+                converted_price=int(l_data["converted_price"]),
             )
             for l_data in rj["listinginfo"].values()
         ], rj["total_count"]

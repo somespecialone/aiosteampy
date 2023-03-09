@@ -37,7 +37,7 @@ class LoginMixin:
 
     @property
     def session_id(self: "SteamClient") -> str | None:
-        return get_cookie_value_from_session(self.session, STEAM_URL.HELP.host, "sessionid")
+        return get_cookie_value_from_session(self.session, STEAM_URL.HELP, "sessionid")
 
     async def is_session_alive(self: "SteamClient") -> bool:
         r = await self.session.get(STEAM_URL.COMMUNITY)

@@ -21,7 +21,6 @@ __all__ = (
     "generate_confirmation_key",
     "generate_device_id",
     "do_session_steam_auth",
-    "get_session_cookie_jar",
     "get_cookie_value_from_session",
     "async_throttle",
     "create_ident_code",
@@ -95,18 +94,11 @@ async def do_session_steam_auth(session: ClientSession, auth_url: str | URL):
     await session.post("https://steamcommunity.com/openid/login", data=login_data)
 
 
-def get_session_cookie_jar(session: ClientSession) -> dict[str, SimpleCookie]:
-    """This function exists only to hide annoying alert "unresolved _cookies attr reference" from main base code."""
-
-    return session.cookie_jar._cookies
-
-
-def get_cookie_value_from_session(session: ClientSession, domain: str, field: str) -> str | None:
+def get_cookie_value_from_session(session: ClientSession, url: URL, field: str) -> str | None:
     """Just get value from session cookies."""
 
-    jar = get_session_cookie_jar(session)
-    if field in jar[domain]:
-        return jar[domain][field].value
+    c = session.cookie_jar.filter_cookies(url)
+    return c[field].value if field in c else None
 
 
 _P = ParamSpec("_P")
@@ -240,6 +232,7 @@ async def restore_from_cookies(
             c[k] = m
 
         prepared.append(c)
+        # client.session.cookie_jar.update_cookies(c, URL(c["domain"]))
 
     for c in prepared:
         client.session.cookie_jar.update_cookies(c)
@@ -253,7 +246,6 @@ async def restore_from_cookies(
 def get_jsonable_cookies(session: ClientSession) -> JSONABLE_COOKIE_JAR:
     """Extract and convert cookies to dict object."""
 
-    cookie_jar = get_session_cookie_jar(session)
     return [
         {
             field_key: {
@@ -272,7 +264,7 @@ def get_jsonable_cookies(session: ClientSession) -> JSONABLE_COOKIE_JAR:
             }
             for field_key, morsel in cookie.items()
         }
-        for cookie in cookie_jar.values()
+        for cookie in session.cookie_jar._cookies.values()
     ]
 
 

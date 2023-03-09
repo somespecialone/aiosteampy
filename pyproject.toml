@@ -1,6 +1,6 @@
 [tool.poetry]
 name = "aiosteampy"
-version = "0.2.5"
+version = "0.2.6"
 description = "Simple library to trade and interact with steam market, webapi, guard"
 license = "MIT"
 authors = ["Dmytro Tkachenko <tkachenkodmitriy@yahoo.com>"]
@@ -23,8 +23,8 @@ packages = [{ include = "aiosteampy" }]
 
 [tool.poetry.dependencies]
 python = "^3.10"
-aiohttp = "^3.8.3"
-beautifulsoup4 = "^4.10.0"
+aiohttp = "^3.8.4"
+beautifulsoup4 = "^4.11.2"
 rsa = "^4.9"
 
 [tool.poetry.group.dev.dependencies]
@@ -37,6 +37,7 @@ optional = true
 pytest = "^7.2.0"
 pytest-asyncio = "^0.20.1"
 pytest-cov = "^4.0.0"
+python-dotenv = "^1.0.0"
 
 [tool.poetry.group.docs]
 optional = true
@@ -45,12 +46,11 @@ optional = true
 mkdocs = "^1.4.2"
 mkdocs-material = "^8.5.8"
 mkdocs-git-revision-date-localized-plugin = "^1.1.0"
-mkautodoc = "^0.2.0"
 mkdocs-include-markdown-plugin = "^3.9.1"
 
 [tool.pytest.ini_options]
 testpaths = ["tests"]
-asyncio_mode = 'auto'
+asyncio_mode = "auto"
 markers = ["incremental"]
 
 [tool.coverage.run]

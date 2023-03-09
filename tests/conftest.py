@@ -1,19 +1,49 @@
 import platform
 import asyncio
 import json
+import os
 from typing import TYPE_CHECKING
 from pathlib import Path
 
 import pytest
 import pytest_asyncio
 from aiohttp import ClientSession
+from dotenv import load_dotenv
 
 from aiosteampy import SteamClient
 from aiosteampy.models import EconItem
-from aiosteampy.utils import restore_from_cookies
+from aiosteampy.utils import restore_from_cookies, get_jsonable_cookies
 
+# env variables
+# required
+# TEST_USERNAME
+# TEST_PASSWORD
+# TEST_STEAMID
+# TEST_SHARED_SECRET
+# TEST_IDENTITY_SECRET
 
-from data import CREDENTIALS, UA, GAME, ASSET_ID, TEST_COOKIE_FILE_PATH
+# optional
+# TEST_GAME_APP_ID
+# TEST_GAME_CONTEXT_ID
+# TEST_ASSET_ID
+# TEST_COOKIE_FILE_PATH
+
+load_dotenv()
+
+TEST_COOKIE_FILE_PATH = os.getenv("TEST_COOKIE_FILE_PATH", "")
+
+CREDENTIALS = {
+    "username": os.getenv("TEST_USERNAME", ""),
+    "password": os.getenv("TEST_PASSWORD", ""),
+    "steam_id": int(os.getenv("TEST_STEAMID", 0)),
+    "shared_secret": os.getenv("TEST_SHARED_SECRET", ""),
+    "identity_secret": os.getenv("TEST_IDENTITY_SECRET", ""),
+}
+
+GAME = (int(os.getenv("TEST_GAME_APP_ID", 730)), int(os.getenv("TEST_GAME_CONTEXT_ID", 2)))  # def CSGO
+ASSET_ID = int(os.getenv("TEST_ASSET_ID", 0))
+
+UA = "Mozilla/5.0 (X11; CrOS x86_64 8172.45.0) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/51.0.2704.64 Safari/537.36"
 
 # https://docs.pytest.org/en/latest/example/simple.html#incremental-testing-test-steps
 _test_failed_incremental: dict[str, dict[tuple[int, ...], str]] = {}
@@ -63,18 +93,25 @@ def event_loop():
 async def client():
     sess = ClientSession(headers={"User-Agent": UA}, raise_for_status=True)
     c = SteamClient(**CREDENTIALS, session=sess)
-    cookie_path = Path(TEST_COOKIE_FILE_PATH)
-    if cookie_path.is_file():
-        with cookie_path.open("r") as f:
-            cookies = json.load(f)
-        await restore_from_cookies(cookies, c)
-    else:
-        await c.login()
+    cookie_file = Path(TEST_COOKIE_FILE_PATH)
+    try:
+        if cookie_file.is_file():
+            with cookie_file.open("r") as f:
+                cookies = json.load(f)
+            await restore_from_cookies(cookies, c)
+        else:
+            await c.login()
 
-    yield c
+        yield c
 
-    await c.logout()
-    await sess.close()
+    finally:
+        if cookie_file.is_file():
+            with cookie_file.open("w") as f:
+                json.dump(get_jsonable_cookies(sess), f, indent=2)
+        else:
+            await c.logout()
+
+        await sess.close()
 
 
 @pytest_asyncio.fixture(scope="session")

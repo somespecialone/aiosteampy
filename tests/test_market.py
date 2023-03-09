@@ -31,7 +31,7 @@ class TestMarketInteractions:
         # place buy order with price 2 times less than the cheapest listing
         buy_order_id = await client.place_buy_order(
             inventory[0],
-            price=listings[0].total_converted_cost / 2,
+            price=int(listings[0].total_converted_cost / 2),
             quantity=1,
         )
 

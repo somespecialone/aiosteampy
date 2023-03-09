@@ -66,7 +66,8 @@ class Currency(IntEnum):
 
     USD = 1  # UnitedStates Dollar
     GBP = 2  # United Kingdom Pound
-    EURO = 3  # European Union Euro
+    # EURO = 3  # European Union Euro
+    EUR = 3  # European Union Euro
     CHF = 4  # Swiss Francs
     RUB = 5  # Russian Rouble
     PLN = 6  # Polish Złoty

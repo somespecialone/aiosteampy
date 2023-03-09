@@ -17,26 +17,14 @@ class SteamGuardMixin:
     __slots__ = ()
 
     def __init__(self, *args, **kwargs):
-        self._device_id = self._gen_device_id()
+        self.device_id = generate_device_id(self.steam_id)
         super().__init__(*args, **kwargs)
 
     @property
     def two_factor_code(self: "SteamClient") -> str:
         return gen_two_factor_code(self._shared_secret)
 
-    @property
-    def device_id(self) -> str | None:
-        return self._device_id
-
     @async_throttle(1, arg_name="tag")
-    async def _gen_confirmation_key(self: "SteamClient", *, tag: str) -> tuple[str, int]:
-        """
-
-        :param tag:
-        :return: confirmation key, used timestamp
-        """
+    async def gen_confirmation_key(self: "SteamClient", *, tag: str) -> tuple[str, int]:
         ts = int(time_time())
         return generate_confirmation_key(self._identity_secret, tag, ts), ts
-
-    def _gen_device_id(self: "SteamClient") -> str:
-        return generate_device_id(self.steam_id)

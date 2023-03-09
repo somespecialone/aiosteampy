@@ -1,6 +1,9 @@
+import base64
+
 from aiosteampy.utils import generate_confirmation_key, gen_two_factor_code, generate_device_id
 
-from data import MOCK_IDENTITY_SECRET, MOCK_SHARED_SECRET
+MOCK_SHARED_SECRET = base64.b64encode("1234567890abcdefghij".encode("utf-8"))
+MOCK_IDENTITY_SECRET = base64.b64encode("abcdefghijklmnoprstu".encode("utf-8"))
 
 
 def test_one_time_code():

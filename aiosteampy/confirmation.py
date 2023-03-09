@@ -240,7 +240,7 @@ class ConfirmationMixin:
         return [c for c in confs if predicate(c)] if predicate else confs
 
     async def _create_confirmation_params(self: "SteamClient", tag: str) -> dict[str, ...]:
-        conf_key, ts = await self._gen_confirmation_key(tag=tag)
+        conf_key, ts = await self.gen_confirmation_key(tag=tag)
         return {
             "p": self.device_id,
             "a": self.steam_id,

@@ -44,23 +44,23 @@ class MarketMixin:
     __slots__ = ()
 
     @overload
-    async def place_sell_listing(self, asset: EconItem, *, price: float) -> int:
+    async def place_sell_listing(self, asset: EconItem, *, price: int) -> int:
         ...
 
     @overload
-    async def place_sell_listing(self, asset: EconItem, *, price: float, confirm: Literal[False] = ...) -> None:
+    async def place_sell_listing(self, asset: EconItem, *, price: int, confirm: Literal[False] = ...) -> None:
         ...
 
     @overload
-    async def place_sell_listing(self, asset: EconItem, *, to_receive: float) -> int:
+    async def place_sell_listing(self, asset: EconItem, *, to_receive: int) -> int:
         ...
 
     @overload
-    async def place_sell_listing(self, asset: EconItem, *, to_receive: float, confirm: Literal[False] = ...) -> None:
+    async def place_sell_listing(self, asset: EconItem, *, to_receive: int, confirm: Literal[False] = ...) -> None:
         ...
 
     @overload
-    async def place_sell_listing(self, asset: int, game: GameType, *, price: float) -> int:
+    async def place_sell_listing(self, asset: int, game: GameType, *, price: int) -> int:
         ...
 
     @overload
@@ -69,13 +69,13 @@ class MarketMixin:
         asset: int,
         game: GameType,
         *,
-        price: float,
+        price: int,
         confirm: Literal[False] = ...,
     ) -> None:
         ...
 
     @overload
-    async def place_sell_listing(self, asset: int, game: GameType, *, to_receive: float) -> int:
+    async def place_sell_listing(self, asset: int, game: GameType, *, to_receive: int) -> int:
         ...
 
     @overload
@@ -84,7 +84,7 @@ class MarketMixin:
         asset: int,
         game: GameType,
         *,
-        to_receive: float,
+        to_receive: int,
         confirm: Literal[False] = ...,
     ) -> None:
         ...
@@ -94,8 +94,8 @@ class MarketMixin:
         asset: EconItem | int,
         game: GameType = None,
         *,
-        price: float = None,
-        to_receive: float = None,
+        price: int = None,
+        to_receive: int = None,
         confirm=True,
         **kwargs: T_KWARGS,
     ) -> int | None:
@@ -120,7 +120,7 @@ class MarketMixin:
         else:
             asset_id = asset
 
-        to_receive = buyer_pays_to_receive(int(price * 100))[2] if to_receive is None else int(to_receive * 100)
+        to_receive = to_receive or buyer_pays_to_receive(price)[2]
 
         data = {
             "assetid": asset_id,
@@ -153,11 +153,11 @@ class MarketMixin:
         return self.session.post(STEAM_URL.MARKET / f"removelisting/{listing_id}", data=data, headers=headers)
 
     @overload
-    async def place_buy_order(self, obj: ItemDescription, *, price: float, quantity: int = ...) -> int:
+    async def place_buy_order(self, obj: ItemDescription, *, price: int, quantity: int = ...) -> int:
         ...
 
     @overload
-    async def place_buy_order(self, obj: str, app_id: int, *, price: float, quantity: int = ...) -> int:
+    async def place_buy_order(self, obj: str, app_id: int, *, price: int, quantity: int = ...) -> int:
         ...
 
     async def place_buy_order(
@@ -165,7 +165,7 @@ class MarketMixin:
         obj: str | ItemDescription,
         app_id: int = None,
         *,
-        price: float,
+        price: int,
         quantity=1,
         **kwargs: T_KWARGS,
     ) -> int:
@@ -191,7 +191,7 @@ class MarketMixin:
             "currency": self._wallet_currency.value,
             "appid": app_id,
             "market_hash_name": name,
-            "price_total": int(price * quantity * 100),
+            "price_total": price * quantity,
             "quantity": quantity,
             **kwargs,
         }
@@ -291,7 +291,7 @@ class MarketMixin:
         return [
             MyMarketListing(
                 id=int(l_data["listingid"]),
-                price=l_data["price"] / 100,
+                price=l_data["price"],
                 lister_steam_id=self.steam_id,
                 time_created=datetime.fromtimestamp(l_data["time_created"]),
                 item=MarketListingItem(
@@ -330,7 +330,7 @@ class MarketMixin:
             orders_list.append(
                 BuyOrder(
                     id=int(o_data["buy_orderid"]),
-                    price=int(o_data["price"]) / 100,
+                    price=int(o_data["price"]),
                     item_description=ItemDescription(**item_descrs_map[class_ident_key]),
                     quantity=int(o_data["quantity"]),
                     quantity_remaining=int(o_data["quantity_remaining"]),
@@ -347,7 +347,7 @@ class MarketMixin:
     async def buy_market_listing(
         self,
         listing: int,
-        price: float,
+        price: int,
         market_hash_name: str,
         game: GameType,
         *,
@@ -358,11 +358,11 @@ class MarketMixin:
     async def buy_market_listing(
         self: "SteamClient",
         listing: int | MarketListing,
-        price: float = None,
+        price: int = None,
         market_hash_name: str = None,
         game: GameType = None,
         *,
-        fee: float = None,
+        fee: int = None,
     ) -> WalletInfo:
         """
         Buy item listing from market.
@@ -372,8 +372,7 @@ class MarketMixin:
         .. note:: Make sure that listing converted currency is wallet currency!
 
         :param listing: id for listing itself (aka market id) or `MarketListing`
-        :param price: price in `1.24` format, can be found on listing data in
-            Steam under field `converted_price` divided by 100
+        :param price: Can be found on listing data in Steam under field `converted_price` divided by 100
         :param market_hash_name: as arg name
         :param game: as arg name&type
         :param fee: if fee of listing is different from default one,
@@ -399,9 +398,7 @@ class MarketMixin:
         else:
             listing_id = listing
 
-        price = int(price * 100)
-        fee = ((floor(price * 0.05) or 1) + (floor(price * 0.10) or 1)) if fee is None else int(fee * 100)
-
+        fee = fee or ((floor(price * 0.05) or 1) + (floor(price * 0.10) or 1))
         data = {
             "sessionid": self.session_id,
             "currency": self._wallet_currency.value,
@@ -486,7 +483,7 @@ class MarketMixin:
             if l_id not in listings_map:
                 listings_map[l_id] = MarketHistoryListing(
                     id=int(l_data["listingid"]),
-                    price=int(l_data["price"]) / 100,
+                    price=int(l_data["price"]),
                     item=econ_item_map[
                         create_ident_code(
                             l_data["asset"]["id"],
@@ -494,7 +491,7 @@ class MarketMixin:
                             l_data["asset"]["contextid"],
                         )
                     ],
-                    original_price=int(l_data["original_price"]) / 100,
+                    original_price=int(l_data["original_price"]),
                     cancel_reason=l_data.get("cancel_reason"),
                 )
 
@@ -511,7 +508,7 @@ class MarketMixin:
                     ],
                     purchase_id=int(p_data["purchaseid"]),
                     steamid_purchaser=int(p_data["steamid_purchaser"]),
-                    received_amount=int(p_data["received_amount"]) / 100,
+                    received_amount=int(p_data["received_amount"]),
                 )
                 listing.item.new_asset_id = int(p_data["asset"]["new_id"])
                 listing.item.new_context_id = int(p_data["asset"]["new_contextid"])

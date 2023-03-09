@@ -94,7 +94,7 @@ class SteamCommunityMixin(SteamGuardMixin, ConfirmationMixin, LoginMixin, Market
     @property
     def language(self) -> Language:
         """Language of Steam html pages, json info, descriptions, etc."""
-        return Language(get_cookie_value_from_session(self.session, STEAM_URL.STORE.host, STEAM_LANG_COOKIE))
+        return Language(get_cookie_value_from_session(self.session, STEAM_URL.STORE, STEAM_LANG_COOKIE))
 
     @property
     def country(self) -> str:
@@ -159,27 +159,20 @@ class SteamCommunityMixin(SteamGuardMixin, ConfirmationMixin, LoginMixin, Market
 
         return info
 
-    async def get_wallet_balance(self) -> float:
-        """
-        Fetch wallet balance and currency.
+    async def get_wallet_balance(self) -> int:
+        """Fetch wallet balance and currency."""
 
-        :return: tuple of balance and `Currency`
-        """
-
+        # Why is this endpoint do not work sometimes?
         r = await self.session.get(STEAM_URL.STORE / "api/getfundwalletinfo")
         rj = await r.json()
         if not rj.get("success"):
             raise ApiError("Failed to fetch wallet info.", rj)
 
         self._wallet_currency = Currency.by_name(rj["user_wallet"]["currency"])
-        return int(rj["user_wallet"]["amount"]) / 100
+        return int(rj["user_wallet"]["amount"])
 
     async def register_new_trade_url(self) -> URL:
-        """
-        Register new trade url. Cache token.
-
-        :return: trade url
-        """
+        """Register new trade url. Cache token."""
 
         r = await self.session.post(
             self.profile_url / "tradeoffers/newtradeurl",
@@ -282,7 +275,7 @@ class SteamClient(SteamCommunityMixin):
         "_identity_secret",
         "_api_key",
         "trade_token",
-        "_device_id",
+        "device_id",
         "_wallet_currency",
         "_wallet_country",
     )

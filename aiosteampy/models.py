@@ -66,15 +66,14 @@ class ItemDescription:
     icon: str
     icon_large: str | None
 
-    # maybe I should prefer tuples here? For the sake of immutability & safety & memory
-    actions: list[ItemAction]
-    market_actions: list[ItemAction]
-    owner_actions: list[ItemAction]
-    tags: list[ItemTag]
-    descriptions: list[ItemDescriptionEntry]
-    owner_descriptions: list[ItemDescriptionEntry]
+    actions: tuple[ItemAction, ...]
+    market_actions: tuple[ItemAction, ...]
+    owner_actions: tuple[ItemAction, ...]
+    tags: tuple[ItemTag, ...]
+    descriptions: tuple[ItemDescriptionEntry, ...]
+    owner_descriptions: tuple[ItemDescriptionEntry, ...]
 
-    fraud_warnings: list[str]
+    fraud_warnings: tuple[str, ...]
 
     commodity: bool  # item use buy orders on market
     tradable: bool  # item can be traded
@@ -232,7 +231,7 @@ class MarketListingItem(EconItem):
 class BaseOrder:
     id: int  # listing/buy order id
 
-    price: float
+    price: int
 
     def __hash__(self):
         return self.id
@@ -290,15 +289,15 @@ class MarketHistoryListingItem(MarketListingItem):
 class MarketHistoryListing(BaseOrder):
     item: MarketHistoryListingItem
 
-    price: float | None = None
+    price: int | None = None
 
     # purchase fields
     purchase_id: int | None = None
     steamid_purchaser: int | None = None
-    received_amount: float | None = None
+    received_amount: int | None = None
 
     # listing fields
-    original_price: float | None = None
+    original_price: int | None = None
     cancel_reason: str | None = None
 
     @property
@@ -322,7 +321,7 @@ class MarketHistoryEvent:
 @dataclass(eq=False, slots=True)
 class PriceHistoryEntry:
     date: datetime
-    price: float
+    price: float  # float from steam
     daily_volume: int
 
 
@@ -331,11 +330,11 @@ class MarketListing(BaseOrder):
     item: MarketListingItem
 
     currency: Currency  # original currency
-    fee: float
+    fee: int
 
     converted_currency: Currency
-    converted_price: float
-    converted_fee: float
+    converted_price: int
+    converted_fee: int
 
     def __post_init__(self):
         if not self.item.market_id:
@@ -346,11 +345,11 @@ class MarketListing(BaseOrder):
         return self.id
 
     @property
-    def total_cost(self) -> float:
+    def total_cost(self) -> int:
         return self.price + self.fee
 
     @property
-    def total_converted_cost(self) -> float:
+    def total_converted_cost(self) -> int:
         return self.converted_price + self.converted_fee
 
 

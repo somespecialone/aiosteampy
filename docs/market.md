@@ -23,11 +23,11 @@ from aiosteampy import SteamClient, Game
 client = SteamClient(...)
 
 # with asset id of inventory EconItem
-listing_id = await client.place_sell_listing(1234567890, Game.CSGO, price=164.57)
+listing_id = await client.place_sell_listing(1234567890, Game.CSGO, price=16457)
 
 # with EconItem
 inventory = await client.get_inventory(Game.CSGO)
-listing_id = await client.place_sell_listing(inventory[0], to_receive=161.20)
+listing_id = await client.place_sell_listing(inventory[0], to_receive=16120)
 
 # and cancel with listing id
 await client.cancel_sell_listing(listing_id)
@@ -44,7 +44,7 @@ from aiosteampy import SteamClient
 
 client = SteamClient(...)
 
-buy_order_id = await client.place_buy_order("★ Butterfly Knife | Slaughter (Minimal Wear)", 730, price=11.51)
+buy_order_id = await client.place_buy_order("★ Butterfly Knife | Slaughter (Minimal Wear)", 730, price=1151)
 await client.cancel_buy_order(buy_order_id)
 
 # with buy order model

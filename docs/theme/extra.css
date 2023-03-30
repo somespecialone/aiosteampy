@@ -1,4 +1,4 @@
-:root {
+:root, [data-md-color-scheme=default] {
     --md-primary-fg-color: #171A21;
     --md-primary-bg-color: #c5c3c0;
     --md-default-bg-color: #1b2838;

@@ -1,7 +1,7 @@
-site_name: aiosteampy
-site_url: https://somespecialone.github.io/aiosteampy
+site_name: Aiosteampy
+site_url: https://aiosteampy.somespecial.one
 
-repo_name: somespecialone/aiosteampy
+repo_name: aiosteampy
 repo_url: https://github.com/somespecialone/aiosteampy
 
 copyright: Copyright &copy; 2023 Dmytro Tkachenko

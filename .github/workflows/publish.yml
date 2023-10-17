@@ -7,8 +7,9 @@ on:
 jobs:
   main:
     runs-on: ubuntu-latest
+    timeout-minutes: 10
     steps:
-      - uses: actions/checkout@v3
+      - uses: actions/checkout@v4
       - uses: actions/setup-python@v4
         with:
           python-version: 3.x
@@ -18,7 +19,7 @@ jobs:
           virtualenvs-in-project: true
       - run: poetry install
 
-      - name: "Publish to PyPI"
+      - name: Publish to PyPI
         env:
           PYPI_TOKEN: ${{ secrets.PYPI_TOKEN }}
         run: |

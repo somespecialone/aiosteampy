@@ -2,22 +2,22 @@ name: Tests
 
 on: workflow_dispatch
 
-
 jobs:
   main:
     runs-on: ubuntu-latest
+    timeout-minutes: 30
     steps:
-      - uses: actions/checkout@v3
+      - uses: actions/checkout@v4
       - uses: actions/setup-python@v4
         with:
-          python-version: "3.10"
+          python-version: 3.10
       - uses: snok/install-poetry@v1
         with:
           virtualenvs-create: true
           virtualenvs-in-project: true
       - run: poetry install --with test
 
-      - name: "Run PyTest with coverage"
+      - name: Run PyTest with coverage
         env:
          TEST_LOGIN: ${{ secrets.TEST_LOGIN }}
          TEST_PASSWORD: ${{ secrets.TEST_PASSWORD }}
@@ -26,8 +26,7 @@ jobs:
          TEST_IDENTITY_SECRET: ${{ secrets.TEST_IDENTITY_SECRET }}
         run: poetry run pytest --cov --cov-report=xml
 
-      - name: "Upload coverage report to Codecov"
+      - name: Upload coverage report to Codecov
         uses: codecov/codecov-action@v3
         with:
           token: ${{ secrets.CODECOV_TOKEN }}
-        timeout-minutes: 30

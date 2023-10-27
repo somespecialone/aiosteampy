@@ -2,19 +2,24 @@ name: Tests
 
 on: workflow_dispatch
 
+concurrency:
+  group: tests
+  cancel-in-progress: true
+
 jobs:
   main:
     runs-on: ubuntu-latest
     timeout-minutes: 30
     steps:
       - uses: actions/checkout@v4
-      - uses: actions/setup-python@v4
-        with:
-          python-version: 3.10
       - uses: snok/install-poetry@v1
         with:
           virtualenvs-create: true
           virtualenvs-in-project: true
+      - uses: actions/setup-python@v4
+        with:
+          python-version: '3.10'
+          cache: poetry
       - run: poetry install --with test
 
       - name: Run PyTest with coverage

@@ -1,10 +1,12 @@
-site_name: AioSteampy
+site_name: AIOSTEAMPY
 site_url: https://aiosteampy.somespecial.one
+site_author: Dmytro Tkachenko
+site_description: Simple library to trade and interact with steam market, webapi, guard.
 
 repo_name: aiosteampy
 repo_url: https://github.com/somespecialone/aiosteampy
 
-copyright: Copyright &copy; 2023 Dmytro Tkachenko
+copyright: Copyright &copy; 2022 - 2023 Dmytro Tkachenko
 
 theme:
   name: material
@@ -21,6 +23,19 @@ theme:
     - navigation.expand
     - navigation.top
     - toc.follow
+    - search.suggest
+
+  palette:
+  - media: "(prefers-color-scheme: dark)"
+    scheme: default
+    toggle:
+      icon: material/lightbulb
+      name: Switch to light mode
+  - media: "(prefers-color-scheme: light)"
+    scheme: light
+    toggle:
+      icon: material/lightbulb-outline
+      name: Switch to dark mode
 
 extra_css:
   - theme/extra.css
@@ -29,8 +44,6 @@ extra:
   social:
     - icon: fontawesome/solid/envelope
       link: mailto:tkachenkodmitriy@yahoo.com
-    - icon: fontawesome/brands/linkedin
-      link: https://www.linkedin.com/in/somespecialone/
     - icon: fontawesome/solid/globe
       link: https://somespecial.one
 

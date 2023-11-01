@@ -1,16 +1,15 @@
-:root, [data-md-color-scheme=default] {
+[data-md-color-scheme] {
     --md-primary-fg-color: #171A21;
     --md-primary-bg-color: #c5c3c0;
     --md-default-bg-color: #1b2838;
-    --md-default-fg-color: #fff;
-    --md-default-fg-color--light: #acb2b8;
+    --md-default-fg-color: #b8b6b4;
+    --md-default-fg-color--light: #fff;
     --md-accent-fg-color: #66C0F4;
-    --md-default-fg-color--lighter: rgba(136, 136, 136, 0.32);
-}
+    --md-default-fg-color--lighter: rgba(136, 136, 136, 0.5);
 
-:root > * {
-    --md-typeset-a-color: var(--md-accent-fg-color);
-    --md-default-fg-color--lightest: var(--md-default-fg-color--lighter);
+    --md-typeset-a-color: #C6D4DF;
+    --md-typeset-color: var(--md-default-fg-color);
+    --md-footer-bg-color: #000;
 
     /* Code blocks colors */
     --md-code-fg-color: white;
@@ -18,16 +17,59 @@
     --md-code-hl-name-color: white;
     --md-code-hl-string-color: #0FF1CE;
     --md-code-hl-punctuation-color: white;
+
+    --md-admonition-bg-color: var(--md-default-bg-color)
+}
+
+[data-md-color-scheme=light] {
+    --md-primary-fg-color: #7c87a1;
+    --md-primary-bg-color: #fff;
+    --md-default-bg-color: #f2f4fa;
+    --md-default-fg-color: #656463;
+
+    --md-default-fg-color--light: #000;
+    --md-accent-fg-color: #66C0F4;
+
+    --md-typeset-a-color: #7c99ab;
+
+    /* Code blocks colors */
+    --md-code-fg-color: #000;
+    --md-code-bg-color: #fff;
+    --md-code-hl-name-color: #000;
+    --md-code-hl-string-color: green;
+    --md-code-hl-punctuation-color: #000;
+
+    --md-footer-bg-color: #1b2838;
+}
+
+/* nav titles, list, anchors */
+.md-nav__title, .md-typeset h2, .md-typeset h3 {
+    color: var(--md-default-fg-color--light);
+}
+
+.md-nav__list {
+    color: var(--md-typeset-a-color);
+}
+
+.md-nav__item .md-nav__link--active {
+    color: var(--md-accent-fg-color);
 }
 
 /* mkautodoc */
-div.autodoc-docstring {
-  padding-left: 20px;
-  margin-bottom: 30px;
-  border-left: 5px solid rgba(230, 230, 230);
-}
+/*div.autodoc-docstring {*/
+/*    padding-left: 20px;*/
+/*    margin-bottom: 30px;*/
+/*    border-left: 5px solid rgba(230, 230, 230);*/
+/*}*/
 
-div.autodoc-members {
-  padding-left: 20px;
-  margin-bottom: 15px;
+/*div.autodoc-members {*/
+/*    padding-left: 20px;*/
+/*    margin-bottom: 15px;*/
+/*}*/
+
+/* steam style */
+::selection {
+    background: var(--md-accent-fg-color);
+    text-shadow: 1px 1px 2px rgba(0, 0, 0, 0.6666666667);
+    color: white;
 }

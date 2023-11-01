@@ -1,13 +1,47 @@
 {% extends "base.html" %}
 
 {% block announce %}
-    <style>
-        #announce-ukraine {
-            font-size: 0.59rem;
+<style>
+    @keyframes marquee-left {
+        to {
+            transform: translateX(-100%);
         }
-    </style>
-  <div id="announce-ukraine">
-      I'M SORRY TO BOTHER YOU AGAIN, BUT IF THERE'S SOMETHING I CAN DO, I'LL DO IT. DON'T LET MY COUNTRY AND PEOPLE DIE.
-      ANYTHING, EVEN ONE WORD IN SUPPORT OF UKRAINE, WILL BE IMPORTANT. THANKS! 💛💙
-  </div>
+    }
+
+    #announce-ukraine {
+        height: 1rem;
+    }
+
+    #announce-ukraine > a {
+        position: absolute;
+        left: 0;
+        right: 0;
+        overflow: hidden;
+
+        display: flex;
+        white-space: nowrap;
+
+        font-style: italic;
+    }
+
+    #announce-ukraine > a > span {
+        animation: marquee-left 1s linear infinite;;
+    }
+</style>
+<div id="announce-ukraine">
+    <a href="https://stand-with-ukraine.pp.ua">
+        <span>#StandWithUkraine 💛💙</span>
+        <span>#StandWithUkraine 💛💙</span>
+        <span>#StandWithUkraine 💛💙</span>
+        <span>#StandWithUkraine 💛💙</span>
+        <span>#StandWithUkraine 💛💙</span>
+        <span>#StandWithUkraine 💛💙</span>
+        <span>#StandWithUkraine 💛💙</span>
+        <span>#StandWithUkraine 💛💙</span>
+        <span>#StandWithUkraine 💛💙</span>
+        <span>#StandWithUkraine 💛💙</span>
+        <span>#StandWithUkraine 💛💙</span>
+        <span>#StandWithUkraine 💛💙</span>
+    </a>
+</div>
 {% endblock %}

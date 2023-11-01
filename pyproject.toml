@@ -43,9 +43,9 @@ python-dotenv = "^1.0.0"
 optional = true
 
 [tool.poetry.group.docs.dependencies]
-mkdocs = "^1.4.2"
-mkdocs-material = "^8.5.11"
-mkdocs-git-revision-date-localized-plugin = "^1.2.0"
+mkdocs = "^1.5.3"
+mkdocs-material = "^9.4.7"
+mkdocs-git-revision-date-localized-plugin = "^1.2.1"
 mkdocs-include-markdown-plugin = "^3.9.1"
 
 [tool.pytest.ini_options]

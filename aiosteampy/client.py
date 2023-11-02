@@ -1,4 +1,4 @@
-from re import compile
+from re import compile, search as re_search
 from urllib.parse import quote
 from json import loads
 from http.cookies import SimpleCookie
@@ -7,6 +7,7 @@ from aiohttp import ClientSession
 from aiohttp.client import _RequestContextManager
 from yarl import URL
 
+from .http import SteamHTTPTransportMixin
 from .guard import SteamGuardMixin
 from .confirmation import ConfirmationMixin
 from .login import LoginMixin
@@ -16,15 +17,13 @@ from .public import SteamPublicMixin, INV_PAGE_SIZE, PREDICATE, PRIVATE_USER_EXC
 
 from .models import Notifications, EconItem
 from .typed import WalletInfo
-from .constants import STEAM_URL, Currency, GameType, Language, CORO
+from .constants import STEAM_URL, Currency, GameType, Language
 from .exceptions import ApiError, SessionExpired
 from .utils import get_cookie_value_from_session, steam_id_to_account_id, account_id_to_steam_id
 
 __all__ = ("SteamClient", "SteamPublicClient", "SteamCommunityMixin")
 
 API_KEY_RE = compile(r"<p>Key: (?P<api_key>[0-9A-F]+)</p>")
-WALLET_INFO_RE = compile(r"g_rgWalletInfo = (?P<info>.+);")
-TRADE_TOKEN_RE = compile(r"\d+&token=(?P<token>.+)\" readonly")
 
 API_KEY_CHECK_STR = "<h2>Access Denied</h2>"
 API_KEY_CHECK_STR1 = "You must have a validated email address to create a Steam Web API key"
@@ -32,23 +31,32 @@ STEAM_LANG_COOKIE = "Steam_Language"
 DEF_COUNTRY = "UA"
 
 
-class SteamCommunityMixin(SteamGuardMixin, ConfirmationMixin, LoginMixin, MarketMixin, TradeMixin, SteamPublicMixin):
+class SteamCommunityMixin(
+    SteamGuardMixin,
+    ConfirmationMixin,
+    LoginMixin,
+    MarketMixin,
+    TradeMixin,
+    SteamPublicMixin,
+    SteamHTTPTransportMixin,
+):
     """
     Mixin class, but with `__init__`. Inherits all other mixins.
-    Need in case you want to use multiple inheritance with `__slots__`.
+    Needed in case you want to use multiple inheritance with `__slots__`.
     """
 
     __slots__ = ()
 
-    session: ClientSession
     username: str
-    steam_id: int
+    steam_id: int | None
     trade_token: str
 
     def __init__(
         self,
         username: str,
         password: str,
+        # It is possible to get steam id from the cookie and then arg will not be necessary,
+        # but typical use case of the library means that the user already knows the steam id
         steam_id: int,
         *,
         shared_secret: str,
@@ -60,8 +68,8 @@ class SteamCommunityMixin(SteamGuardMixin, ConfirmationMixin, LoginMixin, Market
         lang=Language.ENGLISH,
         tz_offset=0.0,
         session: ClientSession = None,
+        user_agent: str = None,
     ):
-        self.session = session or ClientSession(raise_for_status=True)
         self.username = username
         self.steam_id = account_id_to_steam_id(steam_id) if steam_id < 4294967296 else steam_id  # steam id64
         self.trade_token = trade_token
@@ -74,7 +82,7 @@ class SteamCommunityMixin(SteamGuardMixin, ConfirmationMixin, LoginMixin, Market
 
         self._wallet_country = wallet_country
 
-        super().__init__()
+        super().__init__(session=session, user_agent=user_agent)
 
         self._set_init_cookies(lang, tz_offset)
 
@@ -117,6 +125,7 @@ class SteamCommunityMixin(SteamGuardMixin, ConfirmationMixin, LoginMixin, Market
 
             self.session.cookie_jar.update_cookies(cookies=c, response_url=url)
 
+        # Is it needed?
         c_key = "timezoneOffset"
         for url in urls:
             c = SimpleCookie()
@@ -153,7 +162,7 @@ class SteamCommunityMixin(SteamGuardMixin, ConfirmationMixin, LoginMixin, Market
 
         r = await self.session.get(self.profile_url / "inventory", headers={"Referer": str(self.profile_url)})
         rt = await r.text()
-        info: dict = loads(WALLET_INFO_RE.search(rt)["info"])
+        info: dict = loads(re_search(r"g_rgWalletInfo = (?P<info>.+);", rt)["info"])
         if not info.get("success"):
             raise ApiError("Failed to fetch wallet info from inventory.", info)
 
@@ -187,7 +196,7 @@ class SteamCommunityMixin(SteamGuardMixin, ConfirmationMixin, LoginMixin, Market
         r = await self.session.get(self.profile_url / "tradeoffers/privacy")
         rt = await r.text()
 
-        search = TRADE_TOKEN_RE.search(rt)
+        search = re_search(r"\d+&token=(?P<token>.+)\" readonly", rt)
         return search["token"] if search else None
 
     async def _fetch_api_key(self) -> str | None:
@@ -227,12 +236,11 @@ class SteamCommunityMixin(SteamGuardMixin, ConfirmationMixin, LoginMixin, Market
         rj = await r.json()
         return Notifications(*(rj["notifications"][str(i)] for i in range(1, 12) if i != 7))
 
-    # TODO check primary events resetting conditions.
-    def reset_items_notifications(self) -> CORO[_RequestContextManager]:
+    def reset_items_notifications(self) -> _RequestContextManager:
         """
-        Fetching your inventory page, which resets new items notifications to 0.
+        Fetches self inventory page, which resets new items notifications to 0.
 
-        .. seealso:: https://github.com/DoctorMcKay/node-steamcommunity/blob/851c14bd93008579e7a308ea8ecda873996baa1f/index.js#L405
+        .. seealso:: https://github.com/DoctorMcKay/node-steamcommunity/blob/7c564c1453a5ac413d9312b8cf8fe86e7578b309/index.js#L275
         """
 
         return self.session.get(self.profile_url / "inventory/")
@@ -263,10 +271,12 @@ class SteamCommunityMixin(SteamGuardMixin, ConfirmationMixin, LoginMixin, Market
 
 
 class SteamClient(SteamCommunityMixin):
-    """Base class in hierarchy ..."""
+    """Ready to use client class with all inherited methods."""
 
     __slots__ = (
         "_is_logged",
+        "_refresh_token",
+        "_access_token",
         "session",
         "username",
         "steam_id",
@@ -281,8 +291,8 @@ class SteamClient(SteamCommunityMixin):
     )
 
 
-class SteamPublicClient(SteamPublicMixin):
-    """Class for public methods that not requires login."""
+class SteamPublicClient(SteamPublicMixin, SteamHTTPTransportMixin):
+    """Class for public methods that do not require login."""
 
     __slots__ = ("session", "language", "currency", "country")
 
@@ -293,9 +303,10 @@ class SteamPublicClient(SteamPublicMixin):
         currency=Currency.USD,
         country=DEF_COUNTRY,
         session: ClientSession = None,
+        user_agent: str = "",
     ):
-        self.session = session or ClientSession(raise_for_status=True)
-
         self.language = language
         self.currency = currency
         self.country = country
+
+        super().__init__(session=session, user_agent=user_agent)

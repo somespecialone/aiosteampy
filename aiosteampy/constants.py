@@ -207,12 +207,15 @@ class MarketHistoryEventType(Enum):
     LISTING_PURCHASED = 4
 
 
+# TODO Maybe I can create class with __getattribute__ and then build url trough magic method calls
 _API_BASE = URL("https://api.steampowered.com")  # nah
+_v = "v1"
 
 
 class STEAM_URL:
     COMMUNITY = URL("https://steamcommunity.com")
     STORE = URL("https://store.steampowered.com")
+    LOGIN = URL("https://login.steampowered.com")
     HELP = URL("https://help.steampowered.com")
     STATIC = URL("https://community.akamai.steamstatic.com")
     # specific
@@ -224,14 +227,22 @@ class STEAM_URL:
 
         # interfaces
         class IEconService:
-            _IBase = _API_BASE / "IEconService"
-            _v = "v1"
-            GetTradeHistory = _IBase / "GetTradeHistory" / _v
-            GetTradeHoldDurations = _IBase / "GetTradeHoldDurations" / _v
-            GetTradeOffer = _IBase / "GetTradeOffer" / _v
-            GetTradeOffers = _IBase / "GetTradeOffers" / _v
-            GetTradeOffersSummary = _IBase / "GetTradeOffersSummary" / _v
-            GetTradeStatus = _IBase / "GetTradeStatus" / _v
+            _Base = _API_BASE / "IEconService"
+
+            GetTradeHistory = _Base / "GetTradeHistory" / _v
+            GetTradeHoldDurations = _Base / "GetTradeHoldDurations" / _v
+            GetTradeOffer = _Base / "GetTradeOffer" / _v
+            GetTradeOffers = _Base / "GetTradeOffers" / _v
+            GetTradeOffersSummary = _Base / "GetTradeOffersSummary" / _v
+            GetTradeStatus = _Base / "GetTradeStatus" / _v
+
+        class IAuthService:
+            _Base = _API_BASE / "IAuthenticationService"
+
+            BeginAuthSessionViaCredentials = _Base / "BeginAuthSessionViaCredentials" / _v
+            GetPasswordRSAPublicKey = _Base / "GetPasswordRSAPublicKey" / _v
+            UpdateAuthSessionWithSteamGuardCode = _Base / "UpdateAuthSessionWithSteamGuardCode" / _v
+            PollAuthSessionStatus = _Base / "PollAuthSessionStatus" / _v
 
 
 T_KWARGS: TypeAlias = int | str | float

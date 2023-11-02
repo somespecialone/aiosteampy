@@ -9,7 +9,7 @@ from .exceptions import ApiError, ConfirmationError, SessionExpired
 from .utils import create_ident_code
 
 if TYPE_CHECKING:
-    from .client import SteamClient
+    from .client import SteamCommunityMixin
 
 __all__ = ("ConfirmationMixin", "CONF_URL")
 
@@ -149,7 +149,7 @@ class ConfirmationMixin:
 
         return self.send_confirmation(conf, "allow")
 
-    async def send_confirmation(self: "SteamClient", conf: Confirmation, tag: CONF_OP_TAGS) -> None:
+    async def send_confirmation(self: "SteamCommunityMixin", conf: Confirmation, tag: CONF_OP_TAGS) -> None:
         """
         Perform confirmation action. Remove passed conf from inner cache.
 
@@ -174,7 +174,9 @@ class ConfirmationMixin:
 
         return self.send_multiple_confirmations(confs, "allow")
 
-    async def send_multiple_confirmations(self: "SteamClient", confs: list[Confirmation], tag: CONF_OP_TAGS) -> None:
+    async def send_multiple_confirmations(
+        self: "SteamCommunityMixin", confs: list[Confirmation], tag: CONF_OP_TAGS
+    ) -> None:
         """
         Perform confirmation action for multiple confs with single request to Steam.
         Remove passed conf from inner cache.
@@ -195,7 +197,7 @@ class ConfirmationMixin:
             raise ConfirmationError(f"Failed to perform action `{tag}` for multiple confs.")
 
     async def fetch_confirmations(
-        self: "SteamClient",
+        self: "SteamCommunityMixin",
         *,
         predicate: PRED = None,
         update=False,
@@ -239,7 +241,7 @@ class ConfirmationMixin:
         await self.store_multiple_confirmations([c.creator_id for c in confs], confs)
         return [c for c in confs if predicate(c)] if predicate else confs
 
-    async def _create_confirmation_params(self: "SteamClient", tag: str) -> dict[str, ...]:
+    async def _create_confirmation_params(self: "SteamCommunityMixin", tag: str) -> dict[str, ...]:
         conf_key, ts = await self.gen_confirmation_key(tag=tag)
         return {
             "p": self.device_id,
@@ -250,7 +252,7 @@ class ConfirmationMixin:
             "tag": tag,
         }
 
-    async def _update_confirmation(self: "SteamClient", conf: Confirmation):
+    async def _update_confirmation(self: "SteamCommunityMixin", conf: Confirmation):
         # create ident code from info to bind conf to listing without id (newly created)
         params = await self._create_confirmation_params(f"details{conf.id}")
         r = await self.session.get(CONF_URL / f"details/{conf.id}", params=params)

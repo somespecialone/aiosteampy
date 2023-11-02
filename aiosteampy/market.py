@@ -24,7 +24,7 @@ from .constants import STEAM_URL, GameType, MarketListingStatus, MarketHistoryEv
 from .utils import create_ident_code, buyer_pays_to_receive
 
 if TYPE_CHECKING:
-    from .client import SteamClient
+    from .client import SteamCommunityMixin
 
 __all__ = ("MarketMixin",)
 
@@ -90,7 +90,7 @@ class MarketMixin:
         ...
 
     async def place_sell_listing(
-        self: "SteamClient",
+        self: "SteamCommunityMixin",
         asset: EconItem | int,
         game: GameType = None,
         *,
@@ -140,7 +140,7 @@ class MarketMixin:
         if rj.get("needs_mobile_confirmation") and confirm:
             return await self.confirm_sell_listing(asset_id, game)
 
-    def cancel_sell_listing(self: "SteamClient", obj: MyMarketListing | int):
+    def cancel_sell_listing(self: "SteamCommunityMixin", obj: MyMarketListing | int):
         """
         Just cancel sell listing.
 
@@ -161,7 +161,7 @@ class MarketMixin:
         ...
 
     async def place_buy_order(
-        self: "SteamClient",
+        self: "SteamCommunityMixin",
         obj: str | ItemDescription,
         app_id: int = None,
         *,
@@ -203,7 +203,7 @@ class MarketMixin:
 
         return int(rj["buy_orderid"])
 
-    async def cancel_buy_order(self: "SteamClient", order: int | BuyOrder):
+    async def cancel_buy_order(self: "SteamCommunityMixin", order: int | BuyOrder):
         """
         Just cancel buy order.
 
@@ -223,7 +223,7 @@ class MarketMixin:
         if not rj.get("success"):
             raise ApiError(f"Failed to cancel buy order [{order_id}].", rj)
 
-    async def get_my_listings(self: "SteamClient", *, page_size=100, **kwargs: T_KWARGS) -> MY_LISTINGS:
+    async def get_my_listings(self: "SteamCommunityMixin", *, page_size=100, **kwargs: T_KWARGS) -> MY_LISTINGS:
         """
         Fetch users market listings.
 
@@ -258,7 +258,7 @@ class MarketMixin:
 
         return active, to_confirm, buy_orders
 
-    async def _fetch_listings(self: "SteamClient", url: URL, params: dict) -> dict[str, ...]:
+    async def _fetch_listings(self: "SteamCommunityMixin", url: URL, params: dict) -> dict[str, ...]:
         try:
             r = await self.session.get(url, params=params)
         except ClientResponseError as e:
@@ -272,7 +272,7 @@ class MarketMixin:
 
     @classmethod
     def _parse_item_descriptions_for_listings(
-        cls: Type["SteamClient"],
+        cls: Type["SteamCommunityMixin"],
         assets: dict[str, dict[str, dict[str, dict[str, ...]]]],
         item_descrs_map: dict[str, dict],
     ):
@@ -284,7 +284,7 @@ class MarketMixin:
                         item_descrs_map[key] = cls._create_item_description_kwargs(a_data, [a_data])
 
     def _parse_listings(
-        self: "SteamClient",
+        self: "SteamCommunityMixin",
         listings: list[dict[str, ...]],
         item_descrs_map: dict[str, dict],
     ) -> list[MyMarketListing]:
@@ -316,7 +316,7 @@ class MarketMixin:
 
     @classmethod
     def _parse_buy_orders(
-        cls: Type["SteamClient"],
+        cls: Type["SteamCommunityMixin"],
         orders: list[dict[str, ...]],
         item_descrs_map: dict[str, dict],
     ) -> list[BuyOrder]:
@@ -356,7 +356,7 @@ class MarketMixin:
         ...
 
     async def buy_market_listing(
-        self: "SteamClient",
+        self: "SteamCommunityMixin",
         listing: int | MarketListing,
         price: int = None,
         market_hash_name: str = None,
@@ -420,7 +420,7 @@ class MarketMixin:
         return rj["wallet_info"]
 
     async def get_my_market_history(
-        self: "SteamClient",
+        self: "SteamCommunityMixin",
         *,
         predicate: PREDICATE = None,
         page_size=500,
@@ -544,7 +544,7 @@ class MarketMixin:
     async def fetch_price_history(self, obj: str, app_id: int) -> list[PriceHistoryEntry]:
         ...
 
-    async def fetch_price_history(self: "SteamClient", obj: str, app_id: int = None) -> list[PriceHistoryEntry]:
+    async def fetch_price_history(self: "SteamCommunityMixin", obj: str, app_id: int = None) -> list[PriceHistoryEntry]:
         """
         Fetch price history.
         Prices always will be same currency as a wallet.

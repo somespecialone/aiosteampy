@@ -1,6 +1,6 @@
-from typing import Callable, TypeAlias, overload
+from typing import Callable, TypeAlias, overload, TYPE_CHECKING
 
-from aiohttp import ClientSession, ClientResponseError
+from aiohttp import ClientResponseError
 from yarl import URL
 
 from .models import (
@@ -18,6 +18,9 @@ from .typed import ItemOrdersHistogram, ItemOrdersActivity, PriceOverview
 from .exceptions import ApiError
 from .utils import create_ident_code
 
+if TYPE_CHECKING:
+    from .client import SteamPublicClient
+
 INV_PAGE_SIZE = 2000  # steam new limit rule
 INVENTORY_URL = STEAM_URL.COMMUNITY / "inventory"
 PREDICATE: TypeAlias = Callable[[EconItem], bool]
@@ -26,17 +29,14 @@ ITEM_MARKET_LISTINGS_DATA: TypeAlias = tuple[list[MarketListing], int]
 
 
 class SteamPublicMixin:
-    """Mixin contain methods that do not need authorization."""
+    """Contains methods that do not require authentication."""
 
     __slots__ = ()
 
-    session: ClientSession
-    language: Language
-    currency: Currency
-    country: str
+    # init method with attr in client
 
     async def get_user_inventory(
-        self,
+        self: "SteamPublicClient",
         steam_id: int,
         game: GameType,
         *,
@@ -76,7 +76,7 @@ class SteamPublicMixin:
         return [i for i in items if predicate(i)] if predicate else items
 
     async def _fetch_inventory(
-        self,
+        self: "SteamPublicClient",
         url: URL,
         params: dict,
         headers: dict,
@@ -182,7 +182,7 @@ class SteamPublicMixin:
         )
 
     async def fetch_item_orders_histogram(
-        self,
+        self: "SteamPublicClient",
         item_nameid: int,
         *,
         lang: Language = None,
@@ -223,7 +223,7 @@ class SteamPublicMixin:
         return rj
 
     async def fetch_item_orders_activity(
-        self,
+        self: "SteamPublicClient",
         item_name_id: int,
         *,
         lang: Language = None,
@@ -283,7 +283,7 @@ class SteamPublicMixin:
         ...
 
     async def fetch_price_overview(
-        self,
+        self: "SteamPublicClient",
         obj: str | EconItem | ItemDescription,
         app_id: int = None,
         *,
@@ -352,7 +352,7 @@ class SteamPublicMixin:
         ...
 
     async def get_item_listings(
-        self,
+        self: "SteamPublicClient",
         obj: str | EconItem | ItemDescription,
         app_id: int = None,
         *,

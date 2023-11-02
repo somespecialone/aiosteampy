@@ -8,8 +8,9 @@ from functools import wraps
 from typing import Callable, overload, ParamSpec, TypeVar, TYPE_CHECKING, TypeAlias
 from http.cookies import SimpleCookie, Morsel
 from math import floor
+from secrets import token_hex
+from re import search as re_search
 
-from bs4 import BeautifulSoup
 from aiohttp import ClientSession
 from yarl import URL
 
@@ -31,6 +32,7 @@ __all__ = (
     "get_jsonable_cookies",
     "buyer_pays_to_receive",
     "receive_to_buyer_pays",
+    "generate_session_id",
 )
 
 
@@ -73,22 +75,23 @@ def generate_device_id(steam_id: int) -> str:
 async def do_session_steam_auth(session: ClientSession, auth_url: str | URL):
     """
     Request auth page, find specs of steam openid and log in through steam with passed session.
-    Useful when you need to log in 3rd party site trough Steam.
+    Use it when you need to log in 3rd party site trough Steam.
 
-    :param session: just session
-    :param auth_url: url to site, which redirect you to steam login page
+    .. seealso:: https://aiosteampy.somespecial.one/examples/auth_3rd_party_site/
+
+    :param session: just session.
+    :param auth_url: url to site, which redirect you to steam login page.
     """
 
     r = await session.get(auth_url)
     rt = await r.text()
 
-    soup = BeautifulSoup(rt, "html.parser")
-    form = soup.find(id="openidForm")
+    # not so beautiful as with bs4 but dependency free
     login_data = {
-        "action": form.find(id="actionInput").attrs["value"],
-        "openid.mode": form.find(attrs={"name": "openid.mode"}).attrs["value"],
-        "openidparams": form.find(attrs={"name": "openidparams"}).attrs["value"],
-        "nonce": form.find(attrs={"name": "nonce"}).attrs["value"],
+        "action": re_search(r"id=\"actionInput\".+value=\"(?P<action>\w+)\"", rt)["action"],
+        "openid.mode": re_search(r"name=\"openid\.mode\".+value=\"(?P<mode>\w+)\"", rt)["mode"],
+        "openidparams": re_search(r"name=\"openidparams\".+value=\"(?P<params>[\w=]+)\"", rt)["params"],
+        "nonce": re_search(r"name=\"nonce\".+value=\"(?P<nonce>\w+)\"", rt)["nonce"],
     }
 
     await session.post("https://steamcommunity.com/openid/login", data=login_data)
@@ -121,7 +124,10 @@ def async_throttle(seconds: float):
 
 
 def async_throttle(
-    seconds: float, *, arg_index: int = None, arg_name: str = None
+    seconds: float,
+    *,
+    arg_index: int = None,
+    arg_name: str = None,
 ) -> Callable[[Callable[_P, _R]], Callable[_P, _R]]:
     """
     Prevents the decorated function from being called more than once per ``seconds``.
@@ -346,3 +352,13 @@ def buyer_pays_to_receive(
         i += 1
 
     return s_fee, p_fee, int(v - s_fee - p_fee)
+
+
+def generate_session_id() -> str:
+    """
+    Generate steam like session id.
+    .. seealso:: https://github.com/DoctorMcKay/node-steam-session/blob/698469cdbad3e555dda10c81f580f1ee3960156f/src/LoginSession.ts#L801C19-L801C50
+    """
+
+    # Hope ChatGPT knows what she is doing
+    return token_hex(12)

@@ -17,10 +17,6 @@ class ApiError(_BaseExc):
         self.resp = resp
 
 
-class CaptchaRequired(Exception):
-    """Just when steam requires captcha, simple."""
-
-
 class LoginError(ApiError):
     """When failed to do login."""
 

@@ -12,6 +12,7 @@ client = SteamClient(
     112233,  # steam id(64) or account id(32)
     shared_secret="shared secret",
     identity_secret="identity secret",
+    user_agent="my user agent :)"
 )
 
 await client.login()
@@ -19,6 +20,11 @@ await client.login()
 
 ??? info "Client args"
     Client will retrieve needed data from `steam` if you not pass it. Details [there](client.md#init--login).
+
+???+ tip "User-Agent"
+    [Aiohttp](https://docs.aiohttp.org/en/stable/) uses its own `User-Agent` header by default.
+    It is strongly recommended to replace it with your own.
+    You can easily get one from [randua.somespecial.one](https://randua.somespecial.one).
 
 ### Do work
 

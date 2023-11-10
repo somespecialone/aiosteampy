@@ -1,4 +1,5 @@
 from typing import Callable, TypeAlias, overload, TYPE_CHECKING
+from warnings import warn
 
 from aiohttp import ClientResponseError
 from yarl import URL
@@ -359,7 +360,7 @@ class SteamPublicMixin:
         country: str = None,
         currency: Currency = None,
         lang: str = None,
-        query: str = None,
+        query="",
         start: int = 0,
         count: int = 10,
         **kwargs: T_KWARGS,
@@ -390,7 +391,7 @@ class SteamPublicMixin:
 
         base_url = STEAM_URL.MARKET / f"listings/{app_id}/{name}"
         params = {
-            "query": query or "",
+            "filter": query,
             "country": country or self.country,
             "currency": currency or self.currency,
             "start": start,
@@ -398,7 +399,7 @@ class SteamPublicMixin:
             "language": lang or self.language,
             **kwargs,
         }
-        r = await self.session.get(base_url / "render", params=params, headers={"Referer": str(base_url)})
+        r = await self.session.get(base_url / "render/", params=params, headers={"Referer": str(base_url)})
         rj: dict[str, int | dict[str, dict[str, ...]]] = await r.json()
         if not rj.get("success"):
             raise ApiError(f"Can't fetch market listings for `{name}`.", rj)

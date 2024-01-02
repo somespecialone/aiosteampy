@@ -24,11 +24,8 @@ But now it standalone project. Created by myself for steam trading purposes most
 
 <!--header-end-->
 
----
-
-> **See full documentation [here](https://somespecialone.github.io/aiosteampy) 📖**
-
----
+> [!NOTE]
+> See full documentation [here](https://aiosteampy.somespecial.one/) 📖
 
 <!--install-start-->
 
@@ -54,22 +51,14 @@ poetry add aiosteampy
 
 <!--install-end-->
 
-Also, [aiohttp docs](https://docs.aiohttp.org/en/stable/#library-installation) recommends install speedups (`aiodns`
-, `cchardet`, ...)
-
-> Old version still available on PyPI: [asyncsteampy](https://pypi.org/project/asyncsteampy/)
-
----
+> [!TIP]
+> [Aiohttp docs](https://docs.aiohttp.org/en/stable/#library-installation) recommends installing speedups (`aiodns`
+> , `cchardet`, ...)
 
 <!--intro-start-->
 
-AIOSTEAMPY use [aiohttp](https://github.com/aio-libs/aiohttp) underneath to get asynchronous requests to steam servers,
-with modern (not really for current moment 😊) async/await syntax.
-Project is similar to [Gobot1234/steam.py](https://github.com/Gobot1234/steam.py) for first look, but with some
-differences.
-It uses only requests and steam apis (documented and not), while `steam.py` implement stateful steam client based on
-websocket
-protobuf, same as [DoctorMcKay/node-steam-user](https://github.com/DoctorMcKay/node-steam-user).
+AIOSTEAMPY use [aiohttp](https://github.com/aio-libs/aiohttp) underneath to do asynchronous requests to steam servers,
+with modern async/await syntax.
 
 > Generally, project inspired most
 > by [DoctorMcKay/node-steamcommunity](https://github.com/DoctorMcKay/node-steamcommunity)
@@ -79,7 +68,7 @@ protobuf, same as [DoctorMcKay/node-steam-user](https://github.com/DoctorMcKay/n
 
 * Stateless: the main idea was a low-middle layer API wrapper of some steam services and methods like market,
   tradeoffers, confirmations, steamguard, etc. But if you want to cache your entities data (listings, confirmations,
-  ...) there is some methods to help.
+  ...) [there is some methods to help](https://aiosteampy.somespecial.one/examples/states/).
 * Declarative: there is models almost for every data.
 * Typed: for editor support most things are typed.
 * Short: I really tried to fit most important for steam trading methods.
@@ -100,17 +89,14 @@ protobuf, same as [DoctorMcKay/node-steam-user](https://github.com/DoctorMcKay/n
 * All, that need connection to CM.
 * Interact with game servers (inspect CSGO items, ...).
 * Edit profile, social interaction(groups, clans).
-* Handle entities(listings, items, tradeoffers) lifecycle for easy if you need to store it.
+* Handle entities (listings, items, tradeoffers) lifecycle for easy if you need to store it.
 
 <!--intro-end-->
 
----
-
 ## Tests 🧪
 
-**Read [test documentation](https://somespecialone.github.io/aiosteampy/tests/) 📖**
-
----
+> [!NOTE]
+> Read [test documentation](https://aiosteampy.somespecial.one/tests/) 📖
 
 <!--footer-start-->
 

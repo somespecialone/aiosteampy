@@ -93,3 +93,17 @@ class WalletInfo(TypedDict):
     wallet_trade_max_balance: str
     success: SUCCESS
     rwgrsn: int
+
+
+class JWTToken(TypedDict):
+    iss: Literal["steam"]
+    sub: str  # steam id64
+    aud: list[str]
+    exp: int
+    nbf: int
+    iat: int
+    jti: str
+    oat: int
+    per: int
+    ip_subject: str
+    ip_confirmer: str

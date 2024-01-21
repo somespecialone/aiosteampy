@@ -243,6 +243,7 @@ class STEAM_URL:
             GetPasswordRSAPublicKey = _Base / "GetPasswordRSAPublicKey" / _v
             UpdateAuthSessionWithSteamGuardCode = _Base / "UpdateAuthSessionWithSteamGuardCode" / _v
             PollAuthSessionStatus = _Base / "PollAuthSessionStatus" / _v
+            GenerateAccessTokenForApp = _Base / "GenerateAccessTokenForApp" / _v
 
 
 T_KWARGS: TypeAlias = int | str | float

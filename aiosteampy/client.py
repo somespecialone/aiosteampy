@@ -61,6 +61,8 @@ class SteamCommunityMixin(
         *,
         shared_secret: str,
         identity_secret: str,
+        refresh_token: str = None,
+        access_token: str = None,
         api_key: str = None,
         trade_token: str = None,
         wallet_currency: Currency = None,
@@ -82,7 +84,7 @@ class SteamCommunityMixin(
 
         self._wallet_country = wallet_country
 
-        super().__init__(session=session, user_agent=user_agent)
+        super().__init__(session=session, user_agent=user_agent, access_token=access_token, refresh_token=refresh_token)
 
         self._set_init_cookies(lang, tz_offset)
 

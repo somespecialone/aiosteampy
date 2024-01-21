@@ -16,7 +16,7 @@
 
 Previously this library was a soft fork of [bukson/steampy](https://github.com/bukson/steampy) and created only to
 provide asynchronous methods and proxies support.
-But now it standalone project. Created by myself for steam trading purposes mostly.
+But now it _standalone_ project. Created by myself for steam trading purposes mostly.
 
 ---
 
@@ -24,7 +24,7 @@ But now it standalone project. Created by myself for steam trading purposes most
 
 <!--header-end-->
 
-> [!NOTE]
+> [!IMPORTANT]
 > See full documentation [here](https://aiosteampy.somespecial.one/) 📖
 
 <!--install-start-->
@@ -51,8 +51,7 @@ poetry add aiosteampy
 
 <!--install-end-->
 
-> [!TIP]
-> [Aiohttp docs](https://docs.aiohttp.org/en/stable/#library-installation) recommends installing speedups (`aiodns`
+> [!TIP] > [Aiohttp docs](https://docs.aiohttp.org/en/stable/#library-installation) recommends installing speedups (`aiodns`
 > , `cchardet`, ...)
 
 <!--intro-start-->
@@ -62,41 +61,40 @@ with modern async/await syntax.
 
 > Generally, project inspired most
 > by [DoctorMcKay/node-steamcommunity](https://github.com/DoctorMcKay/node-steamcommunity)
-> but created with additions and differences, of course.
 
 ## Key features
 
-* Stateless: the main idea was a low-middle layer API wrapper of some steam services and methods like market,
+- Stateless: the main idea was a low-middle layer API wrapper of some steam services and methods like market,
   tradeoffers, confirmations, steamguard, etc. But if you want to cache your entities data (listings, confirmations,
   ...) [there is some methods to help](https://aiosteampy.somespecial.one/examples/states/).
-* Declarative: there is models almost for every data.
-* Typed: for editor support most things are typed.
-* Short: I really tried to fit most important for steam trading methods.
+- Declarative: there is models almost for every data.
+- Typed: for editor support most things are typed.
+- Short: I really tried to fit most important for steam trading methods.
 
 ## What can I do with this
 
-* Operate with steam trade offers for any manner.
-* Sell, buy items on market. Place, cancel orders.
-* Login trough steam to 3rd party sites.
-* Fetch data from market.
-* Manipulate many accounts with proxies for each session.
-* Store and load cookies to stay logged in.
+- Operate with steam trade offers for any manner.
+- Sell, buy items on market. Place, cancel orders.
+- Login trough steam to 3rd party sites.
+- Fetch data from market.
+- Manipulate many accounts with proxies for each session.
+- Store and load cookies to stay logged in.
+- Convert market prices into different currencies.
 
 ## What I can't do
 
-* Chat (at least for now).
-* Get apps, packages.
-* All, that need connection to CM.
-* Interact with game servers (inspect CSGO items, ...).
-* Edit profile, social interaction(groups, clans).
-* Handle entities (listings, items, tradeoffers) lifecycle for easy if you need to store it.
+- Chat (at least for now).
+- Get apps, packages.
+- All, that need connection to CM.
+- Interact with game servers (inspect CS2 (ex. CSGO) items, ...).
+- Edit profile, social interaction(groups, clans).
+- Handle entities (listings, items, tradeoffers) lifecycle for easy if you need to store it.
 
 <!--intro-end-->
 
 ## Tests 🧪
 
-> [!NOTE]
-> Read [test documentation](https://aiosteampy.somespecial.one/tests/) 📖
+Read [test documentation](https://aiosteampy.somespecial.one/tests/) 📖
 
 <!--footer-start-->
 
@@ -107,12 +105,13 @@ I will be very grateful for helping me get the things right.
 
 ## Credits
 
-* [bukson/steampy](https://github.com/bukson/steampy)
-* [DoctorMcKay/node-steamcommunity](https://github.com/DoctorMcKay/node-steamcommunity)
-* [Identifying Steam items](https://dev.doctormckay.com/topic/332-identifying-steam-items/)
-* [Revadike/InternalSteamWebAPI](https://github.com/Revadike/InternalSteamWebAPI)
-* [Gobot1234/steam.py](https://github.com/Gobot1234/steam.py)
-* [somespecialone/steam-item-name-ids](https://github.com/somespecialone/steam-item-name-ids)
-* [steamapi.xpaw.me](https://steamapi.xpaw.me/)
+- [bukson/steampy](https://github.com/bukson/steampy)
+- [DoctorMcKay/node-steamcommunity](https://github.com/DoctorMcKay/node-steamcommunity)
+- [Identifying Steam items](https://dev.doctormckay.com/topic/332-identifying-steam-items/)
+- [Revadike/InternalSteamWebAPI](https://github.com/Revadike/InternalSteamWebAPI)
+- [Gobot1234/steam.py](https://github.com/Gobot1234/steam.py)
+- [Steam Market id's storage repo](https://github.com/somespecialone/steam-item-name-ids)
+- [steamapi.xpaw.me](https://steamapi.xpaw.me/)
+- [Steam Exchange Rate Tracker](https://github.com/somespecialone/sert)
 
 <!--footer-end-->

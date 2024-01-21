@@ -133,7 +133,7 @@ class MarketMixin:
         }
         headers = {"Referer": str(STEAM_URL.COMMUNITY / f"profiles/{self.steam_id}/inventory")}
         r = await self.session.post(STEAM_URL.MARKET / "sellitem/", data=data, headers=headers)
-        rj: dict[str, ...] = await r.json()
+        rj: dict = await r.json()
         if not rj.get("success"):
             raise ApiError("Failed to place sell listing.", rj)
 
@@ -197,7 +197,7 @@ class MarketMixin:
         }
         headers = {"Referer": str(STEAM_URL.MARKET / f"listings/{app_id}/{name}")}
         r = await self.session.post(STEAM_URL.MARKET / "createbuyorder/", data=data, headers=headers)
-        rj: dict[str, ...] = await r.json()
+        rj: dict = await r.json()
         if not rj.get("success"):
             raise ApiError("Failed to create buy order.", rj)
 
@@ -258,13 +258,13 @@ class MarketMixin:
 
         return active, to_confirm, buy_orders
 
-    async def _fetch_listings(self: "SteamCommunityMixin", url: URL, params: dict) -> dict[str, ...]:
+    async def _fetch_listings(self: "SteamCommunityMixin", url: URL, params: dict) -> dict:
         try:
             r = await self.session.get(url, params=params)
         except ClientResponseError as e:
             raise SessionExpired if e.status == 400 else e
 
-        rj: dict[str, ...] = await r.json()
+        rj: dict = await r.json()
         if not rj.get("success"):
             raise ApiError("Failed to fetch user listings.", rj)
 
@@ -273,7 +273,7 @@ class MarketMixin:
     @classmethod
     def _parse_item_descriptions_for_listings(
         cls: Type["SteamCommunityMixin"],
-        assets: dict[str, dict[str, dict[str, dict[str, ...]]]],
+        assets: dict[str, dict[str, dict[str, dict]]],
         item_descrs_map: dict[str, dict],
     ):
         for app_id, app_data in assets.items():
@@ -285,7 +285,7 @@ class MarketMixin:
 
     def _parse_listings(
         self: "SteamCommunityMixin",
-        listings: list[dict[str, ...]],
+        listings: list[dict],
         item_descrs_map: dict[str, dict],
     ) -> list[MyMarketListing]:
         return [
@@ -317,7 +317,7 @@ class MarketMixin:
     @classmethod
     def _parse_buy_orders(
         cls: Type["SteamCommunityMixin"],
-        orders: list[dict[str, ...]],
+        orders: list[dict],
         item_descrs_map: dict[str, dict],
     ) -> list[BuyOrder]:
         orders_list = []
@@ -451,7 +451,7 @@ class MarketMixin:
 
     @staticmethod
     def _parse_assets_for_history_listings(
-        data: dict[str, dict[str, dict[str, dict[str, ...]]]],
+        data: dict[str, dict[str, dict[str, dict]]],
         item_descrs_map: dict[str, dict],
         econ_item_map: dict[str, MarketHistoryListingItem],
     ):
@@ -475,7 +475,7 @@ class MarketMixin:
 
     @staticmethod
     def _parse_history_listings(
-        data: dict[str, dict[str, dict[str, ...]]],
+        data: dict[str, dict[str, dict]],
         econ_item_map: dict[str, MarketHistoryListingItem],
         listings_map: dict[str, MarketHistoryListing],
     ):
@@ -517,7 +517,7 @@ class MarketMixin:
 
     @staticmethod
     def _parse_history_events(
-        data: dict[str, list[dict[str, ...]] | dict[str, dict[str, ...]]],
+        data: dict[str, list[dict] | dict[str, dict]],
         listings_map: dict[str, MarketHistoryListing],
     ) -> list[MarketHistoryEvent]:
         events = []

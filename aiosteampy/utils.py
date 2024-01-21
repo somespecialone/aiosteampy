@@ -10,9 +10,12 @@ from http.cookies import SimpleCookie, Morsel
 from math import floor
 from secrets import token_hex
 from re import search as re_search
+from json import loads as j_loads
 
 from aiohttp import ClientSession
 from yarl import URL
+
+from .typed import JWTToken
 
 if TYPE_CHECKING:
     from .client import SteamCommunityMixin
@@ -33,6 +36,7 @@ __all__ = (
     "buyer_pays_to_receive",
     "receive_to_buyer_pays",
     "generate_session_id",
+    "decode_jwt",
 )
 
 
@@ -72,6 +76,7 @@ def generate_device_id(steam_id: int) -> str:
     )
 
 
+# TODO make enum with service urls (loot.farm, ...)
 async def do_session_steam_auth(session: ClientSession, auth_url: str | URL):
     """
     Request auth page, find specs of steam openid and log in through steam with passed session.
@@ -130,12 +135,12 @@ def async_throttle(
     arg_name: str = None,
 ) -> Callable[[Callable[_P, _R]], Callable[_P, _R]]:
     """
-    Prevents the decorated function from being called more than once per ``seconds``.
+    Prevents the decorated function from being called more than once per `seconds`.
     Throttle (`await asyncio.sleep`) before call wrapped async func,
     when related arg was equal (same hash value) to related arg passed in previous func call
-    if time between previous and current call lower than ``seconds``.
+    if time between previous and current call lower than `seconds`.
     Related arg must be hashable (can be dict key).
-    Wrapped func must be async (return Coroutine).
+    Wrapped func must be async (return `Coroutine`).
     Throttle every func call time if related arg has been not specified.
 
     :param seconds: seconds during which call frequency has been limited.
@@ -178,7 +183,7 @@ def create_ident_code(obj_id: int | str, app_id: int | str, context_id: int | st
     Create unique ident code for :class:`aiosteampy.models.EconItem` asset or item class
     (description) within whole Steam Economy.
 
-    https://dev.doctormckay.com/topic/332-identifying-steam-items/
+    .. seealso:: https://dev.doctormckay.com/topic/332-identifying-steam-items/
 
     :param obj_id: asset or class id of Steam Economy Item
     :param app_id: app id of Steam Game
@@ -237,8 +242,13 @@ async def restore_from_cookies(
             m.update(v)
             c[k] = m
 
+            if m.key == "steamLoginSecure":
+                try:
+                    client._access_token = m.value.split("%7C%7C")[1]
+                except IndexError:
+                    pass
+
         prepared.append(c)
-        # client.session.cookie_jar.update_cookies(c, URL(c["domain"]))
 
     for c in prepared:
         client.session.cookie_jar.update_cookies(c)
@@ -357,8 +367,17 @@ def buyer_pays_to_receive(
 def generate_session_id() -> str:
     """
     Generate steam like session id.
+
     .. seealso:: https://github.com/DoctorMcKay/node-steam-session/blob/698469cdbad3e555dda10c81f580f1ee3960156f/src/LoginSession.ts#L801C19-L801C50
     """
 
     # Hope ChatGPT knows what she is doing
     return token_hex(12)
+
+
+def decode_jwt(token: str) -> JWTToken:
+    parts = token.split(".")
+    if len(parts) != 3:
+        raise ValueError("Invalid JWT", parts)
+
+    return j_loads(b64decode(parts[1] + "==", altchars="-_"))

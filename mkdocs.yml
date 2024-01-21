@@ -6,7 +6,7 @@ site_description: Simple library to trade and interact with steam market, webapi
 repo_name: aiosteampy
 repo_url: https://github.com/somespecialone/aiosteampy
 
-copyright: Copyright &copy; 2022 - 2023 Dmytro Tkachenko
+copyright: Copyright &copy; 2022 - 2024 Dmytro Tkachenko
 
 theme:
   name: material
@@ -48,7 +48,7 @@ extra:
     - icon: fontawesome/brands/github
       link: https://github.com/somespecialone
     - icon: fontawesome/solid/envelope
-      link: mailto:tkachenkodmitriy@yahoo.com
+      link: mailto:itsme@somespecial.one
     - icon: fontawesome/brands/linkedin
       link: https://www.linkedin.com/in/somespecialone/
     - icon: fontawesome/solid/globe

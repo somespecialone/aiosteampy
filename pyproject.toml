@@ -3,7 +3,7 @@ name = "aiosteampy"
 version = "0.3.0"
 description = "Simple library to trade and interact with steam market, webapi, guard"
 license = "MIT"
-authors = ["Dmytro Tkachenko <tkachenkodmitriy@yahoo.com>"]
+authors = ["Dmytro Tkachenko <itsme@somespecial.one>"]
 readme = "README.md"
 homepage = "https://aiosteampy.somespecial.one"
 repository = "https://github.com/somespecialone/aiosteampy"
@@ -15,7 +15,7 @@ classifiers = [
     "Topic :: Software Development :: Libraries",
     "Topic :: Software Development :: Libraries :: Python Modules",
     "Operating System :: OS Independent",
-    "Typing :: Typed"
+    "Typing :: Typed",
 ]
 
 include = ["LICENSE"]
@@ -26,11 +26,15 @@ packages = [{ include = "aiosteampy" }]
 
 [tool.poetry.dependencies]
 python = "^3.10"
-aiohttp = "^3.8.4"
+aiohttp = "^3.9.1"
 rsa = "^4.9"
+croniter = { version = "^2.0.1", optional = true }
+
+[tool.poetry.extras]
+converter = ["croniter"]
 
 [tool.poetry.group.dev.dependencies]
-black = "^23.10.1"
+black = "^23.12.1"
 
 [tool.poetry.group.test]
 optional = true

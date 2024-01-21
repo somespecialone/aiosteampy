@@ -23,8 +23,6 @@ if TYPE_CHECKING:
 __all__ = ("TradeMixin",)
 
 TRADE_OFFERS: TypeAlias = tuple[list[TradeOffer], list[TradeOffer]]
-ERROR_MSG = "You can't accept your offer! Are you trying to cancel outgoing offer?"
-PRED: TypeAlias = Callable[[TradeOffer], bool]
 
 
 class TradeMixin:
@@ -67,7 +65,7 @@ class TradeMixin:
         You can override this method to provide your custom storage.
         """
 
-    async def get_trade_offers(self, predicate: PRED = None) -> list[TradeOffer]:
+    async def get_trade_offers(self, predicate: Callable[[TradeOffer], bool] = None) -> list[TradeOffer]:
         """
         Cached trade offers.
 
@@ -101,11 +99,11 @@ class TradeMixin:
             "get_descriptions": 1,
         }
         r = await self.session.get(STEAM_URL.API.IEconService.GetTradeOffer, params=params)
-        rj: dict[str, ...] = await r.json()
+        rj: dict = await r.json()
         if not rj.get("response"):
             raise ApiError(f"Can't fetch trade offer [{offer_id}].", rj)
 
-        data: dict[str, dict[str, ...] | list[dict[str, ...]]] = rj["response"]
+        data: dict[str, dict | list[dict]] = rj["response"]
         item_descrc_map = {}
         self._update_item_descrs_map_for_trades(data["descriptions"], item_descrc_map)
 
@@ -126,7 +124,7 @@ class TradeMixin:
 
     def _create_trade_offer(
         self: "SteamCommunityMixin",
-        data: dict[str, ...],
+        data: dict,
         item_descrs_map: dict[str, dict],
     ) -> TradeOffer:
         return TradeOffer(
@@ -146,7 +144,7 @@ class TradeMixin:
     @classmethod
     def _parse_items_for_trade(
         cls,
-        items: list[dict[str, ...]],
+        items: list[dict],
         item_descrs_map: dict[str, dict],
     ) -> list[TradeOfferItem]:
         return [
@@ -226,7 +224,7 @@ class TradeMixin:
             if not rj.get("response"):
                 raise ApiError(f"Can't fetch trade offers.", rj)
 
-            data: dict[str, dict[str, ...] | list[dict[str, ...]]] = rj["response"]
+            data: dict[str, dict | list[dict]] = rj["response"]
             offer_sent_datas.extend(data.get("trade_offers_sent", ()))
             offer_received_datas.extend(data.get("trade_offers_received", ()))
             self._update_item_descrs_map_for_trades(data["descriptions"], item_descrs_map)
@@ -313,7 +311,7 @@ class TradeMixin:
             raise ApiError(f"Can't fetch trades history.", rj)
 
         item_descrs_map = {}
-        data: dict[str, int | bool | dict[str, ...] | list[dict[str, ...]]] = rj["response"]
+        data: dict[str, int | bool | dict | list[dict]] = rj["response"]
         self._update_item_descrs_map_for_trades(data["descriptions"], item_descrs_map)
 
         return (
@@ -339,7 +337,7 @@ class TradeMixin:
     @classmethod
     def _parse_items_for_history_trades(
         cls,
-        items: list[dict[str, ...]],
+        items: list[dict],
         item_descrs_map: dict[str, dict],
     ) -> list[HistoryTradeOfferItem]:
         return [
@@ -411,7 +409,7 @@ class TradeMixin:
         .. note::
             Auto confirm accepting if needed.
 
-            If you not pass ``partner`` but pass `trade offer id` -
+            If you not pass `partner` but pass `trade offer id` -
             fetches :class:`aiosteampy.models.TradeOffer` from `Steam`.
 
         :param offer: `TradeOffer` or trade offer id
@@ -422,7 +420,7 @@ class TradeMixin:
 
         if isinstance(offer, TradeOffer):
             if offer.is_our_offer:
-                raise ValueError(ERROR_MSG)
+                raise ValueError("You can't accept your offer! Are you trying to cancel outgoing offer?")
             offer_id = offer.id
             partner = offer.partner_id64
             to_remove = TradeOffer
@@ -444,7 +442,7 @@ class TradeMixin:
         }
         url_base = STEAM_URL.TRADE / str(offer_id)
         r = await self.session.post(url_base / "accept", data=data, headers={"Referer": str(url_base)})
-        rj: dict[str, ...] = await r.json()
+        rj: dict = await r.json()
         if rj.get("needs_mobile_confirmation"):
             await self.confirm_trade_offer(offer_id)
 

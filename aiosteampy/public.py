@@ -1,5 +1,4 @@
 from typing import Callable, TypeAlias, overload, TYPE_CHECKING
-from warnings import warn
 
 from aiohttp import ClientResponseError
 from yarl import URL
@@ -21,6 +20,8 @@ from .utils import create_ident_code
 
 if TYPE_CHECKING:
     from .client import SteamPublicClient
+
+__all__ = ("SteamPublicMixin", "INVENTORY_URL")
 
 INV_PAGE_SIZE = 2000  # steam new limit rule
 INVENTORY_URL = STEAM_URL.COMMUNITY / "inventory"
@@ -367,7 +368,7 @@ class SteamPublicMixin:
     ) -> ITEM_MARKET_LISTINGS_DATA:
         """
         Fetch item listings from market.
-        You can paginate by yourself passing ``start`` arg.
+        You can paginate by yourself passing `start` arg.
 
         .. warning:: This request is rate limited by Steam.
 
@@ -400,7 +401,7 @@ class SteamPublicMixin:
             **kwargs,
         }
         r = await self.session.get(base_url / "render/", params=params, headers={"Referer": str(base_url)})
-        rj: dict[str, int | dict[str, dict[str, ...]]] = await r.json()
+        rj: dict[str, int | dict[str, dict]] = await r.json()
         if not rj.get("success"):
             raise ApiError(f"Can't fetch market listings for `{name}`.", rj)
         if not rj["total_count"] or not rj["assets"]:
@@ -434,7 +435,7 @@ class SteamPublicMixin:
     @classmethod
     def _update_item_descrs_map_for_public(
         cls,
-        assets: dict[str, dict[str, dict[str, dict[str, ...]]]],
+        assets: dict[str, dict[str, dict[str, dict]]],
         item_descrs_map: dict[str, dict],
     ):
         for app_id, app_data in assets.items():
@@ -445,7 +446,7 @@ class SteamPublicMixin:
 
     @staticmethod
     def _parse_items_for_listings(
-        data: dict[str, dict[str, dict[str, dict[str, ...]]]],
+        data: dict[str, dict[str, dict[str, dict]]],
         item_descrs_map: dict[str, dict],
         econ_items_map: dict[str, MarketListingItem],
     ):

@@ -2,8 +2,8 @@ import asyncio
 from typing import TYPE_CHECKING
 from http.cookies import SimpleCookie
 from base64 import b64encode
-from aiohttp import ClientResponseError
 
+from aiohttp import ClientResponseError
 from rsa import PublicKey, encrypt
 
 from .exceptions import LoginError, ApiError
@@ -13,7 +13,7 @@ from .utils import get_cookie_value_from_session, generate_session_id
 if TYPE_CHECKING:
     from .client import SteamCommunityMixin
 
-__all__ = ("LoginMixin",)
+__all__ = ("LoginMixin", "REFERER_HEADER")
 
 REFERER_HEADER = {"Referer": str(STEAM_URL.COMMUNITY) + "/"}
 API_HEADERS = {
@@ -30,15 +30,15 @@ class LoginMixin:
     __slots__ = ()
 
     _is_logged: bool
-    _refresh_token: str
+    _refresh_token: str | None
     # Almost useless, but ...
     # https://github.com/DoctorMcKay/node-steam-session/blob/698469cdbad3e555dda10c81f580f1ee3960156f/src/LoginSession.ts#L230
-    _access_token: str
+    _access_token: str | None
 
-    def __init__(self, *args, **kwargs):
+    def __init__(self, *args, refresh_token: str = None, access_token: str = None, **kwargs):
         self._is_logged = False
-        self._refresh_token = ""
-        self._access_token = ""
+        self._refresh_token = refresh_token
+        self._access_token = access_token
 
         super().__init__(*args, **kwargs)
 
@@ -91,7 +91,7 @@ class LoginMixin:
     async def _perform_transfer(self: "SteamCommunityMixin", data: dict, steam_id: str | int = None) -> SimpleCookie:
         """
         Perform a transfer of params and tokens to steam login endpoints.
-        Similar behaviour to arrow function from link below.
+        Similar behavior to arrow function from link below.
 
         .. seealso:: https://github.com/DoctorMcKay/node-steam-session/blob/698469cdbad3e555dda10c81f580f1ee3960156f/src/LoginSession.ts#L845-L868
         """
@@ -106,7 +106,7 @@ class LoginMixin:
 
     def _set_web_cookies(self: "SteamCommunityMixin", cookie: SimpleCookie):
         """
-        Set web cookies to session for  main steam urls.
+        Set web cookies to session for main steam urls.
 
         .. seealso:: https://github.com/DoctorMcKay/node-steamcommunity/blob/7c564c1453a5ac413d9312b8cf8fe86e7578b309/index.js#L153-L175
         """
@@ -230,3 +230,21 @@ class LoginMixin:
             data={**REFERER_HEADER, "sessionid": self.session_id},
         )
         self._is_logged = False
+
+    async def refresh_access_token(self: "SteamCommunityMixin") -> str:
+        """"""
+
+        # TODO this
+        r = await self.session.post(
+            STEAM_URL.API.IAuthService.GenerateAccessTokenForApp,
+            data={"refresh_token": self._refresh_token, "steamid": self.steam_id},
+            headers={**API_HEADERS, **REFERER_HEADER},
+        )
+        rj = await r.json()
+
+        try:
+            self._access_token = rj["response"]["access_token"]
+        except KeyError:
+            raise ApiError("Can't renew access token.", rj)
+
+        return self._access_token

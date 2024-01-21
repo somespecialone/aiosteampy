@@ -1,0 +1,24 @@
+# This CITATION.cff file was generated with cffinit.
+# Visit https://bit.ly/cffinit to generate yours today!
+
+cff-version: 1.2.0
+title: aiosteampy
+message: >-
+  If you use this software, please cite it using the
+  metadata from this file.
+type: software
+authors:
+  - given-names: Dmytro
+    family-names: Tkachenko
+    email: itsme@somespecial.one
+repository-code: 'https://github.com/somespecialone/aiosteampy'
+url: 'https://aiosteampy.somespecial.one/'
+repository-artifact: 'https://pypi.org/project/aiosteampy/'
+abstract: >-
+  Simple library to trade and interact with steam market,
+  webapi, guard.
+keywords:
+  - python
+  - asyncio
+  - steam
+license: MIT

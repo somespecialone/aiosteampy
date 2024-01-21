@@ -1,6 +1,6 @@
 from typing import TypeAlias
 
-_json_types: TypeAlias = dict[str, ...] | list | str | int
+_json_types: TypeAlias = dict | list | str | int
 
 
 class _BaseExc(Exception):
@@ -26,4 +26,4 @@ class ConfirmationError(_BaseExc):
 
 
 class SessionExpired(Exception):
-    """Raised when session is expired, and you need to do login"""
+    """Raised when session is expired, and you need to do login."""

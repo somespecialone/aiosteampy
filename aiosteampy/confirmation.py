@@ -5,7 +5,7 @@ from datetime import datetime
 
 from .models import Confirmation, MyMarketListing, EconItem, TradeOffer, EconItemType
 from .constants import STEAM_URL, ConfirmationType, GameType, CORO
-from .exceptions import ApiError, ConfirmationError, SessionExpired
+from .exceptions import ApiError, ConfirmationError
 from .utils import create_ident_code
 
 if TYPE_CHECKING:
@@ -76,10 +76,10 @@ class ConfirmationMixin:
     async def confirm_sell_listing(self, obj: MyMarketListing | EconItemType | int, game: GameType = None) -> int:
         """
         Perform sell listing confirmation.
-        Pass ``game`` arg only with asset id.
+        Pass `game` arg only with asset id.
 
         :param obj: `MyMarketListing` or `EconItem` that you listed or listing id or asset id
-        :param game: `Game` or tuple with app and context id ints. Required when ``obj`` is asset id
+        :param game: `Game` or tuple with app and context id ints. Required when `obj` is asset id
         :return: listing id
         :raises ConfirmationError:
         """
@@ -132,7 +132,7 @@ class ConfirmationMixin:
 
     async def allow_all_confirmations(self, *, predicate: PRED = None) -> list[Confirmation]:
         """
-        Fetch all confirmations and allow its (which passes ``predicate``) with single request to Steam.
+        Fetch all confirmations and allow its (which passes `predicate`) with single request to Steam.
 
         :param predicate: callable with single argument `Confirmation`, must return boolean
         :return: list of allowed confirmations
@@ -145,7 +145,7 @@ class ConfirmationMixin:
         return confs
 
     def allow_confirmation(self, conf: Confirmation) -> CORO[None]:
-        """Shorthand for "send_confirmation(conf, 'allow')"."""
+        """Shorthand for `send_confirmation(conf, 'allow')`."""
 
         return self.send_confirmation(conf, "allow")
 
@@ -170,7 +170,7 @@ class ConfirmationMixin:
             )
 
     def allow_multiple_confirmations(self, confs: list[Confirmation]) -> CORO[None]:
-        """Shorthand for "send_multiple_confirmations(conf, 'allow')"."""
+        """Shorthand for `send_multiple_confirmations(conf, 'allow')`."""
 
         return self.send_multiple_confirmations(confs, "allow")
 
@@ -189,7 +189,7 @@ class ConfirmationMixin:
         data = await self._create_confirmation_params(tag)
         data |= {"op": tag, "cid[]": [conf.id for conf in confs], "ck[]": [conf.nonce for conf in confs]}
         r = await self.session.post(CONF_URL / "multiajaxop", data=data)
-        rj: dict[str, ...] = await r.json()
+        rj: dict = await r.json()
         # delete before raise error
         await self.remove_multiple_confirmations([c.asset_ident_code or c.creator_id for c in confs], confs)
 
@@ -216,7 +216,7 @@ class ConfirmationMixin:
         tag = "getlist"
         params = await self._create_confirmation_params(tag)
         r = await self.session.get(CONF_URL / tag, params=params)
-        rj: dict[str, ...] = await r.json()
+        rj: dict = await r.json()
         if not rj.get("success"):
             raise ApiError("Can't fetch confirmations.", rj)
 
@@ -241,7 +241,7 @@ class ConfirmationMixin:
         await self.store_multiple_confirmations([c.creator_id for c in confs], confs)
         return [c for c in confs if predicate(c)] if predicate else confs
 
-    async def _create_confirmation_params(self: "SteamCommunityMixin", tag: str) -> dict[str, ...]:
+    async def _create_confirmation_params(self: "SteamCommunityMixin", tag: str) -> dict:
         conf_key, ts = await self.gen_confirmation_key(tag=tag)
         return {
             "p": self.device_id,
@@ -259,5 +259,5 @@ class ConfirmationMixin:
         rj = await r.json()
         if not rj.get("success"):
             raise ApiError(f"Failed to fetch confirmation [{conf.id}] details.", rj)
-        data: dict[str, ...] = loads(ITEM_INFO_RE.search(rj["html"])["item_info"])
+        data: dict = loads(ITEM_INFO_RE.search(rj["html"])["item_info"])
         conf.asset_ident_code = create_ident_code(data["id"], data["appid"], data["contextid"])

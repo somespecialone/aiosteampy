@@ -31,28 +31,29 @@ But now it _standalone_ project. Created by myself for steam trading purposes mo
 
 ## Installation
 
-pip
-
 ```shell
 pip install aiosteampy
 ```
-
-pipenv
 
 ```shell
 pipenv install aiosteampy
 ```
 
-poetry
-
 ```shell
 poetry add aiosteampy
 ```
 
+Project have extra [currencies converter](https://aiosteampy.somespecial.one/ext/converter/) with
+target dependency `aiosteampy[converter]`. For instance:
+
+```shell
+poetry add aiosteampy[converter]
+```
+
 <!--install-end-->
 
-> [!TIP] > [Aiohttp docs](https://docs.aiohttp.org/en/stable/#library-installation) recommends installing speedups (`aiodns`
-> , `cchardet`, ...)
+> [!TIP]
+> [aiohttp docs](https://docs.aiohttp.org/en/stable/#installing-all-speedups-in-one-command) recommends installing speedups (`aiodns`, `cchardet`, ...)
 
 <!--intro-start-->
 

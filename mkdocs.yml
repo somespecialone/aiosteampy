@@ -72,14 +72,16 @@ markdown_extensions:
 nav:
   - Overview: index.md
   - Install: install.md
-  - 'Getting started 🚀': get_started.md
+  - "Getting started 🚀": get_started.md
   - Client: client.md
   - Market: market.md
   - Trade: trade.md
   - Public: public.md
-  - States&cache: states.md
+  - States&Cache: states.md
+  - Extensions:
+      - Converter: ext/converter.md
   - Examples:
-      - 'states mixin': examples/states.md
-      - 'session persistence': examples/session.md
-      - '3rd party sites auth': examples/auth_3rd_party_site.md
-  - 'Testing 🧪': tests.md
+      - "States mixin": examples/states.md
+      - "Session persistence": examples/session.md
+      - "3rd party sites auth": examples/auth_3rd_party_site.md
+  - "Testing 🧪": tests.md

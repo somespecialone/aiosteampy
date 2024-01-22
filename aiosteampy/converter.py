@@ -125,14 +125,15 @@ class CurrencyConverter(UserDict[Currency, tuple[float, datetime]]):
         :param currency: passed currency of `amount`
         :param target: target of returned value
         :return: converted amount
+        :raises KeyError: if provided currency is not present in `Converter`
         """
 
-        try:
-            source = self[currency][0]
+        source_rate = self[currency][0] if currency is not Currency.USD else 1
+        target_rate = self[target][0] if target is not Currency.USD else 1
 
-        except KeyError:
-            raise ValueError(f"There is no {currency.name} in rates!")
-
-        else:
-            usd_value = round(amount * round(1 / source, 2))
-            return usd_value if target is Currency.USD else round(source * usd_value, 2)
+        # direct conversion
+        # return round(amount * (target_rate / source_rate))
+        
+        # with USD in middle step
+        usd_amount = round(amount * (1 / source_rate))
+        return round(usd_amount * target_rate)

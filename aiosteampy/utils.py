@@ -24,12 +24,15 @@ __all__ = (
     "gen_two_factor_code",
     "generate_confirmation_key",
     "generate_device_id",
+    "extract_openid_payload",
     "do_session_steam_auth",
     "get_cookie_value_from_session",
     "async_throttle",
     "create_ident_code",
     "account_id_to_steam_id",
     "steam_id_to_account_id",
+    "id64_to_id32",
+    "id32_to_id64",
     "to_int_boolean",
     "restore_from_cookies",
     "get_jsonable_cookies",
@@ -76,11 +79,28 @@ def generate_device_id(steam_id: int) -> str:
     )
 
 
-# TODO make enum with service urls (loot.farm, ...)
+def extract_openid_payload(page_text: str) -> dict[str, str]:
+    """
+    Extract steam openid payload (specs) from page html raw text.
+    Use it if 3rd party websites have extra or non-cookie auth (JWT via service API call, for ex.).
+
+    :param page_text:
+    :return: dict with payload data
+    """
+
+    # not so beautiful as with bs4 but dependency free
+    return {
+        "action": re_search(r"id=\"actionInput\"[\w=\"\s]+value=\"(?P<action>\w+)\"", page_text)["action"],
+        "openid.mode": re_search(r"name=\"openid\.mode\"[\w=\"\s]+value=\"(?P<mode>\w+)\"", page_text)["mode"],
+        "openidparams": re_search(r"name=\"openidparams\"[\w=\"\s]+value=\"(?P<params>[\w=/]+)\"", page_text)["params"],
+        "nonce": re_search(r"name=\"nonce\"[\w=\"\s]+value=\"(?P<nonce>\w+)\"", page_text)["nonce"],
+    }
+
+
 async def do_session_steam_auth(session: ClientSession, auth_url: str | URL):
     """
     Request auth page, find specs of steam openid and log in through steam with passed session.
-    Use it when you need to log in 3rd party site trough Steam.
+    Use it when you need to log in 3rd party site trough Steam using only cookies.
 
     .. seealso:: https://aiosteampy.somespecial.one/examples/auth_3rd_party_site/
 
@@ -91,15 +111,9 @@ async def do_session_steam_auth(session: ClientSession, auth_url: str | URL):
     r = await session.get(auth_url)
     rt = await r.text()
 
-    # not so beautiful as with bs4 but dependency free
-    login_data = {
-        "action": re_search(r"id=\"actionInput\".+value=\"(?P<action>\w+)\"", rt)["action"],
-        "openid.mode": re_search(r"name=\"openid\.mode\".+value=\"(?P<mode>\w+)\"", rt)["mode"],
-        "openidparams": re_search(r"name=\"openidparams\".+value=\"(?P<params>[\w=]+)\"", rt)["params"],
-        "nonce": re_search(r"name=\"nonce\".+value=\"(?P<nonce>\w+)\"", rt)["nonce"],
-    }
+    data = extract_openid_payload(rt)
 
-    await session.post("https://steamcommunity.com/openid/login", data=login_data)
+    await session.post("https://steamcommunity.com/openid/login", data=data, allow_redirects=True)
 
 
 def get_cookie_value_from_session(session: ClientSession, url: URL, field: str) -> str | None:
@@ -208,6 +222,10 @@ def account_id_to_steam_id(account_id: int) -> int:
     """Convert steam id32 to steam id64."""
 
     return 1 << 56 | 1 << 52 | 1 << 32 | account_id
+
+
+id64_to_id32 = steam_id_to_account_id
+id32_to_id64 = account_id_to_steam_id
 
 
 def to_int_boolean(s):

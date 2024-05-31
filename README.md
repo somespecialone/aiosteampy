@@ -43,17 +43,19 @@ pipenv install aiosteampy
 poetry add aiosteampy
 ```
 
-Project have extra [currencies converter](https://aiosteampy.somespecial.one/ext/converter/) with
-target dependency `aiosteampy[converter]`. For instance:
+Project have some extras [currencies converter](https://aiosteampy.somespecial.one/ext/converter/),
+[socks proxies](https://aiosteampy.somespecial.one/proxies).
+To install them all, please, use `aiosteampy[all]` install target:
 
 ```shell
-poetry add aiosteampy[converter]
+poetry add aiosteampy[all]
 ```
 
 <!--install-end-->
 
 > [!TIP]
-> [aiohttp docs](https://docs.aiohttp.org/en/stable/#installing-all-speedups-in-one-command) recommends installing speedups (`aiodns`, `cchardet`, ...)
+> [aiohttp docs](https://docs.aiohttp.org/en/stable/#installing-all-speedups-in-one-command) recommends installing
+> speedups (`aiodns`, `cchardet`, ...)
 
 <!--intro-start-->
 
@@ -71,6 +73,7 @@ with modern async/await syntax.
 - Declarative: there is models almost for every data.
 - Typed: for editor support most things are typed.
 - Short: I really tried to fit most important for steam trading methods.
+- Connection behind web proxy.
 
 ## What can I do with this
 
@@ -107,6 +110,8 @@ I will be very grateful for helping me get the things right.
 ## Credits
 
 - [bukson/steampy](https://github.com/bukson/steampy)
+- [aiohttp-socks](https://github.com/romis2012/aiohttp-socks)
+- [croniter](https://github.com/kiorky/croniter)
 - [DoctorMcKay/node-steamcommunity](https://github.com/DoctorMcKay/node-steamcommunity)
 - [Identifying Steam items](https://dev.doctormckay.com/topic/332-identifying-steam-items/)
 - [Revadike/InternalSteamWebAPI](https://github.com/Revadike/InternalSteamWebAPI)

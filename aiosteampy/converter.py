@@ -1,3 +1,5 @@
+"""Currency converter extension."""
+
 import asyncio
 from collections import UserDict
 from datetime import datetime, timedelta
@@ -15,10 +17,7 @@ except ImportError:
         """
         The `aiosteampy.converter` module requires the `croniter` library to be installed
         to make the rates synchronization with backend service work.
-        In order You need this functionality, You can use `aiosteampy[converter]` dependency install target:
-        `pip install aiosteampy[converter]`
-        or
-        `poetry add aiosteampy[converter]`
+        In order You need this functionality, You can use `aiosteampy[converter]` dependency install target.
         """,
         category=RuntimeWarning,
     )
@@ -133,7 +132,7 @@ class CurrencyConverter(UserDict[Currency, tuple[float, datetime]]):
 
         # direct conversion
         # return round(amount * (target_rate / source_rate))
-        
+
         # with USD in middle step
         usd_amount = round(amount * (1 / source_rate))
         return round(usd_amount * target_rate)

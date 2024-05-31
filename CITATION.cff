@@ -11,12 +11,11 @@ authors:
   - given-names: Dmytro
     family-names: Tkachenko
     email: itsme@somespecial.one
-repository-code: 'https://github.com/somespecialone/aiosteampy'
-url: 'https://aiosteampy.somespecial.one/'
-repository-artifact: 'https://pypi.org/project/aiosteampy/'
+repository-code: "https://github.com/somespecialone/aiosteampy"
+url: "https://aiosteampy.somespecial.one/"
+repository-artifact: "https://pypi.org/project/aiosteampy/"
 abstract: >-
-  Simple library to trade and interact with steam market,
-  webapi, guard.
+  Trade and interact with steam market, webapi, guard.
 keywords:
   - python
   - asyncio

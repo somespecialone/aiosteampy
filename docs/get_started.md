@@ -24,7 +24,8 @@ await client.login()
 ???+ tip "User-Agent"
     [Aiohttp](https://docs.aiohttp.org/en/stable/) uses its own `User-Agent` header by default.
     It is strongly recommended to replace it with your own.
-    You can easily get one from [randua.somespecial.one](https://randua.somespecial.one).
+    You can easily get one from [randua.somespecial.one](https://randua.somespecial.one)
+    or use [User Agent Service](./ext/user_agents.md).
 
 ### Do work
 

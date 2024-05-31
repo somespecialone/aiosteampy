@@ -1,7 +1,7 @@
 [tool.poetry]
 name = "aiosteampy"
-version = "0.4.1"
-description = "Simple library to trade and interact with steam market, webapi, guard"
+version = "0.5.0"
+description = "Trade and interact with steam market, webapi, guard"
 license = "MIT"
 authors = ["Dmytro Tkachenko <itsme@somespecial.one>"]
 readme = "README.md"
@@ -29,9 +29,12 @@ python = "^3.10"
 aiohttp = "^3.9.1"
 rsa = "^4.9"
 croniter = { version = "^2.0.1", optional = true }
+aiohttp-socks = { version = "^0.8.4", optional = true }
 
 [tool.poetry.extras]
 converter = ["croniter"]
+socks = ["aiohttp-socks"]
+all = ["croniter", "aiohttp-socks"]
 
 [tool.poetry.group.dev.dependencies]
 black = "^23.12.1"

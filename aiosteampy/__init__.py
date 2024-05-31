@@ -1,5 +1,5 @@
 """
-Simple library to trade and interact with steam market, webapi, guard.
+Trade and interact with steam market, webapi, guard.
 """
 
 from .exceptions import ApiError, LoginError, ConfirmationError, SessionExpired

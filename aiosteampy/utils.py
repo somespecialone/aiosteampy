@@ -1,3 +1,5 @@
+"""Useful utils."""
+
 import asyncio
 from base64 import b64decode, b64encode
 from struct import pack, unpack
@@ -12,7 +14,7 @@ from secrets import token_hex
 from re import search as re_search
 from json import loads as j_loads
 
-from aiohttp import ClientSession
+from aiohttp import ClientSession, ClientResponse
 from yarl import URL
 
 from .typed import JWTToken
@@ -97,7 +99,7 @@ def extract_openid_payload(page_text: str) -> dict[str, str]:
     }
 
 
-async def do_session_steam_auth(session: ClientSession, auth_url: str | URL):
+async def do_session_steam_auth(session: ClientSession, auth_url: str | URL) -> ClientResponse:
     """
     Request auth page, find specs of steam openid and log in through steam with passed session.
     Use it when you need to log in 3rd party site trough Steam using only cookies.
@@ -106,6 +108,7 @@ async def do_session_steam_auth(session: ClientSession, auth_url: str | URL):
 
     :param session: just session.
     :param auth_url: url to site, which redirect you to steam login page.
+    :return: response with history, headers and data
     """
 
     r = await session.get(auth_url)
@@ -113,7 +116,7 @@ async def do_session_steam_auth(session: ClientSession, auth_url: str | URL):
 
     data = extract_openid_payload(rt)
 
-    await session.post("https://steamcommunity.com/openid/login", data=data, allow_redirects=True)
+    return await session.post("https://steamcommunity.com/openid/login", data=data, allow_redirects=True)
 
 
 def get_cookie_value_from_session(session: ClientSession, url: URL, field: str) -> str | None:
@@ -243,10 +246,11 @@ async def restore_from_cookies(
     *,
     init_data=True,
     **init_kwargs,
-):
+) -> bool:
     """
     Helper func. Restore client session from cookies.
     Login if session is not alive.
+    Return `True` if cookies are valid and not expired.
     """
 
     prepared = []
@@ -272,9 +276,11 @@ async def restore_from_cookies(
         client.session.cookie_jar.update_cookies(c)
     if not (await client.is_session_alive()):
         await client.login(init_data=init_data, **init_kwargs)
+        return False
     else:
         client._is_logged = True
         init_data and await client._init_data()
+        return True
 
 
 def get_jsonable_cookies(session: ClientSession) -> JSONABLE_COOKIE_JAR:
@@ -399,3 +405,7 @@ def decode_jwt(token: str) -> JWTToken:
         raise ValueError("Invalid JWT", parts)
 
     return j_loads(b64decode(parts[1] + "==", altchars="-_"))
+
+
+def patch_session_with_proxy(session: ClientSession, proxy: str):
+    pass

@@ -57,8 +57,7 @@ histogram = await client.fetch_item_orders_histogram(12345687)
 
 ### Proxies
 
-For proxies support you can use [aiohttp-socks](https://github.com/romis2012/aiohttp-socks) as you can create `session` by
-yourself.
+Read more about proxy support on the [dedicated page](./proxies.md)
 
 ### Inheritance
 

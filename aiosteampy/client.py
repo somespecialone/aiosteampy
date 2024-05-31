@@ -70,6 +70,7 @@ class SteamCommunityMixin(
         lang=Language.ENGLISH,
         tz_offset=0.0,
         session: ClientSession = None,
+        proxy: str = None,
         user_agent: str = None,
     ):
         self.username = username
@@ -84,7 +85,13 @@ class SteamCommunityMixin(
 
         self._wallet_country = wallet_country
 
-        super().__init__(session=session, user_agent=user_agent, access_token=access_token, refresh_token=refresh_token)
+        super().__init__(
+            session=session,
+            user_agent=user_agent,
+            access_token=access_token,
+            refresh_token=refresh_token,
+            proxy=proxy,
+        )
 
         self._set_init_cookies(lang, tz_offset)
 

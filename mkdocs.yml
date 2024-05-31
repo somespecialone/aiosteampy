@@ -1,7 +1,7 @@
 site_name: Aiosteampy
 site_url: https://aiosteampy.somespecial.one
 site_author: Dmytro Tkachenko
-site_description: Simple library to trade and interact with steam market, webapi, guard.
+site_description: Trade and interact with steam market, webapi, guard.
 
 repo_name: aiosteampy
 repo_url: https://github.com/somespecialone/aiosteampy
@@ -77,9 +77,11 @@ nav:
   - Market: market.md
   - Trade: trade.md
   - Public: public.md
+  - "Proxies 🌐": proxies.md
   - States&Cache: states.md
   - Extensions:
       - Converter: ext/converter.md
+      - "User Agents Service": ext/user_agents.md
   - Examples:
       - "States mixin": examples/states.md
       - "Session persistence": examples/session.md

@@ -1,4 +1,4 @@
-from typing import TYPE_CHECKING, overload, Literal, Type, TypeAlias, Callable
+from typing import TYPE_CHECKING, overload, Literal, Type, TypeAlias, Callable, Iterable, Sequence
 from datetime import datetime
 from json import dumps as jdumps
 
@@ -423,7 +423,7 @@ class TradeMixin:
                 raise ValueError("You can't accept your offer! Are you trying to cancel outgoing offer?")
             offer_id = offer.id
             partner = offer.partner_id64
-            to_remove = TradeOffer
+            to_remove = offer
         else:  # int
             if not partner:
                 fetched = await self.get_or_fetch_trade_offer(offer)
@@ -452,8 +452,8 @@ class TradeMixin:
     async def make_trade_offer(
         self,
         obj: int,
-        to_give: list[EconItemType] = ...,
-        to_receive: list[EconItemType] = ...,
+        to_give: Sequence[EconItemType] = ...,
+        to_receive: Sequence[EconItemType] = ...,
         message: str = ...,
         *,
         token: str = ...,
@@ -466,8 +466,8 @@ class TradeMixin:
     async def make_trade_offer(
         self,
         obj: str,
-        to_give: list[EconItemType] = ...,
-        to_receive: list[EconItemType] = ...,
+        to_give: Sequence[EconItemType] = ...,
+        to_receive: Sequence[EconItemType] = ...,
         message: str = ...,
         *,
         confirm: bool = ...,
@@ -478,8 +478,8 @@ class TradeMixin:
     async def make_trade_offer(
         self: "SteamCommunityMixin",
         obj: int | str,
-        to_give: list[EconItemType] = (),
-        to_receive: list[EconItemType] = (),
+        to_give: Sequence[EconItemType] = (),
+        to_receive: Sequence[EconItemType] = (),
         message="",
         *,
         token: str = None,
@@ -493,13 +493,13 @@ class TradeMixin:
         .. note:: Make sure that partner is in friends list if you not pass trade url or trade token.
 
         :param obj: partner trade url, partner id(id32 or id64)
-        :param token:
-        :param to_give:
-        :param to_receive:
-        :param message:
-        :param confirm:
-        :param countered_id:
-        :param kwargs:
+        :param token: trade token (mandatory if `obj` is partner id)
+        :param to_give: sequence of items that you want to give
+        :param to_receive: sequence of items that you want to receive
+        :param message: message to the partner
+        :param confirm: auto-confirm offer
+        :param countered_id: id of offer that you want to counter. Use `counter_trade_offer` method for this
+        :param kwargs: additional data to send in payload
         :return: trade offer id
         :raises ValueError: trade is empty
         """
@@ -571,8 +571,8 @@ class TradeMixin:
     async def counter_trade_offer(
         self,
         obj: TradeOffer,
-        to_give: list[EconItemType] = (),
-        to_receive: list[EconItemType] = (),
+        to_give: Sequence[EconItemType] = (),
+        to_receive: Sequence[EconItemType] = (),
         message="",
         *,
         confirm: bool = ...,
@@ -583,8 +583,8 @@ class TradeMixin:
     async def counter_trade_offer(
         self,
         obj: int,
-        to_give: list[EconItemType] = (),
-        to_receive: list[EconItemType] = (),
+        to_give: Sequence[EconItemType] = (),
+        to_receive: Sequence[EconItemType] = (),
         message="",
         *,
         partner_id: int,
@@ -595,8 +595,8 @@ class TradeMixin:
     def counter_trade_offer(
         self,
         obj: TradeOffer | int,
-        to_give: list[EconItemType] = (),
-        to_receive: list[EconItemType] = (),
+        to_give: Sequence[EconItemType] = (),
+        to_receive: Sequence[EconItemType] = (),
         message="",
         *,
         partner_id: int = None,

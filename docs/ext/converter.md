@@ -1,6 +1,6 @@
 # Currencies converter
 
-A dict-like class to handle converting steam currencies.
+A `dict-like` class to handle converting steam currencies.
 
 !!! note ""
     Instance is an API consumer of [SERT](https://github.com/somespecialone/sert) and use service endpoints.

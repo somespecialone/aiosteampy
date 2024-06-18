@@ -231,20 +231,20 @@ class LoginMixin:
         )
         self._is_logged = False
 
-    async def refresh_access_token(self: "SteamCommunityMixin") -> str:
-        """"""
-
-        # TODO this
-        r = await self.session.post(
-            STEAM_URL.API.IAuthService.GenerateAccessTokenForApp,
-            data={"refresh_token": self._refresh_token, "steamid": self.steam_id},
-            headers={**API_HEADERS, **REFERER_HEADER},
-        )
-        rj = await r.json()
-
-        try:
-            self._access_token = rj["response"]["access_token"]
-        except KeyError:
-            raise ApiError("Can't renew access token.", rj)
-
-        return self._access_token
+    # async def refresh_access_token(self: "SteamCommunityMixin") -> str:
+    #     """"""
+    #
+    #     # TODO this
+    #     r = await self.session.post(
+    #         STEAM_URL.API.IAuthService.GenerateAccessTokenForApp,
+    #         data={"refresh_token": self._refresh_token, "steamid": self.steam_id},
+    #         headers={**API_HEADERS, **REFERER_HEADER},
+    #     )
+    #     rj = await r.json()
+    #
+    #     try:
+    #         self._access_token = rj["response"]["access_token"]
+    #     except KeyError:
+    #         raise ApiError("Can't renew access token.", rj)
+    #
+    #     return self._access_token

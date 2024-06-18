@@ -38,6 +38,7 @@ __all__ = (
     "to_int_boolean",
     "restore_from_cookies",
     "get_jsonable_cookies",
+    "update_session_cookies",
     "buyer_pays_to_receive",
     "receive_to_buyer_pays",
     "generate_session_id",
@@ -240,6 +241,23 @@ def to_int_boolean(s):
 JSONABLE_COOKIE_JAR: TypeAlias = list[dict[str, dict[str, str, None, bool]]]
 
 
+def update_session_cookies(cookies: JSONABLE_COOKIE_JAR, session: ClientSession):
+    """Update the session cookies from jsonable cookie jar."""
+
+    for cookie_data in cookies:
+        c = SimpleCookie()
+        for k, v in cookie_data.items():
+            copied = dict(**v)  # copy to avoid modification of the arg
+            m = Morsel()
+            m._value = copied.pop("value")
+            m._key = copied.pop("key")
+            m._coded_value = copied.pop("coded_value")
+            m.update(copied)
+            c[k] = m
+
+        session.cookie_jar.update_cookies(c)
+
+
 async def restore_from_cookies(
     cookies: JSONABLE_COOKIE_JAR,
     client: "SteamCommunityMixin",
@@ -253,27 +271,18 @@ async def restore_from_cookies(
     Return `True` if cookies are valid and not expired.
     """
 
-    prepared = []
-    for cookie_data in cookies:
-        c = SimpleCookie()
-        for k, v in cookie_data.items():
-            m = Morsel()
-            m._value = v.pop("value")
-            m._key = v.pop("key")
-            m._coded_value = v.pop("coded_value")
-            m.update(v)
-            c[k] = m
+    update_session_cookies(cookies, client.session)
 
-            if m.key == "steamLoginSecure":
+    # find access token
+    for cookie_data in cookies:
+        for k, v in cookie_data.items():
+            if v["key"] == "steamLoginSecure":
                 try:
-                    client._access_token = m.value.split("%7C%7C")[1]
+                    client._access_token = v["value"].split("%7C%7C")[1]
+                    break
                 except IndexError:
                     pass
 
-        prepared.append(c)
-
-    for c in prepared:
-        client.session.cookie_jar.update_cookies(c)
     if not (await client.is_session_alive()):
         await client.login(init_data=init_data, **init_kwargs)
         return False

@@ -34,7 +34,7 @@ class UserAgentsService(UserList[str]):
     async def load(self):
         async with ClientSession(raise_for_status=True) as sess:
             r = await sess.get(self._api_url / "all")
-            agents: list[str] = await r.json()
+            agents: list[str] = (await r.text()).splitlines()
 
         self.data = agents
 

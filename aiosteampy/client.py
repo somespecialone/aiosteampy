@@ -312,10 +312,11 @@ class SteamPublicClient(SteamPublicMixin, SteamHTTPTransportMixin):
         currency=Currency.USD,
         country=DEF_COUNTRY,
         session: ClientSession = None,
-        user_agent: str = "",
+        proxy: str = None,
+        user_agent: str = None,
     ):
         self.language = language
         self.currency = currency
         self.country = country
 
-        super().__init__(session=session, user_agent=user_agent)
+        super().__init__(session=session, user_agent=user_agent, proxy=proxy)

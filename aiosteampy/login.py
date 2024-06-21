@@ -77,7 +77,10 @@ class LoginMixin:
         fin_data = await self._finalize_login()  # there can be retrieved steam id
 
         # https://github.com/DoctorMcKay/node-steam-session/blob/64463d7468c1c860afb80164b8c5831e629f657f/src/LoginSession.ts#L845
-        transfers = [self._perform_transfer(d, fin_data["steamID"]) for d in fin_data["transfer_info"]]
+        loop = asyncio.get_event_loop()
+        transfers = [
+            loop.create_task(self._perform_transfer(d, fin_data["steamID"])) for d in fin_data["transfer_info"]
+        ]
         done, _ = await asyncio.wait(transfers, return_when=asyncio.FIRST_COMPLETED)
 
         # Transfers exception check ?

@@ -430,6 +430,7 @@ class SteamPublicMixin:
                 converted_price=int(l_data["converted_price"]),
             )
             for l_data in rj["listinginfo"].values()
+            if l_data["asset"]["amount"]
         ], rj["total_count"]
 
     @classmethod

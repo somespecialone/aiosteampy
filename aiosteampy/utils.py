@@ -120,10 +120,13 @@ async def do_session_steam_auth(session: ClientSession, auth_url: str | URL) -> 
     return await session.post("https://steamcommunity.com/openid/login", data=data, allow_redirects=True)
 
 
-def get_cookie_value_from_session(session: ClientSession, url: URL, field: str) -> str | None:
-    """Just get value from session cookies."""
+def get_cookie_value_from_session(session: ClientSession, url: URL | str, field: str) -> str | None:
+    """
+    Get value from session cookies.
+    Passed `url` must include scheme (for ex. `https://url.com`)
+    """
 
-    c = session.cookie_jar.filter_cookies(url)
+    c = session.cookie_jar.filter_cookies(URL(url))
     return c[field].value if field in c else None
 
 

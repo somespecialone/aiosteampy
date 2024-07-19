@@ -2,6 +2,8 @@ from dataclasses import dataclass, field
 from typing import Literal, TypeAlias
 from datetime import datetime
 
+from yarl import URL
+
 from .constants import (
     STEAM_URL,
     GameType,
@@ -103,12 +105,16 @@ class ItemDescription:
         return self.id
 
     @property
-    def icon_url(self) -> str:
-        return str(STEAM_URL.STATIC / f"economy/image/{self.icon}/96fx96f")
+    def icon_url(self) -> URL:
+        return STEAM_URL.STATIC / f"economy/image/{self.icon}/96fx96f"
 
     @property
-    def icon_large_url(self) -> str | None:
-        return str(STEAM_URL.STATIC / f"economy/image/{self.icon_large}/330x192") if self.icon_large else None
+    def icon_large_url(self) -> URL | None:
+        return STEAM_URL.STATIC / f"economy/image/{self.icon_large}/330x192" if self.icon_large else None
+
+    @property
+    def market_url(self) -> URL:
+        return STEAM_URL.MARKET / f"listings/{self.game[0]}/{self.market_hash_name}"
 
     def __eq__(self, other: "ItemDescription"):
         return self.id == other.id

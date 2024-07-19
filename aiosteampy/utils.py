@@ -11,7 +11,7 @@ from typing import Callable, overload, ParamSpec, TypeVar, TYPE_CHECKING, TypeAl
 from http.cookies import SimpleCookie, Morsel
 from math import floor
 from secrets import token_hex
-from re import search as re_search
+from re import search as re_search, compile as re_compile
 from json import loads as j_loads
 
 from aiohttp import ClientSession, ClientResponse
@@ -43,6 +43,7 @@ __all__ = (
     "receive_to_buyer_pays",
     "generate_session_id",
     "decode_jwt",
+    "find_item_nameid_in_text",
 )
 
 
@@ -419,5 +420,11 @@ def decode_jwt(token: str) -> JWTToken:
     return j_loads(b64decode(parts[1] + "==", altchars="-_"))
 
 
-def patch_session_with_proxy(session: ClientSession, proxy: str):
-    pass
+_ITEM_NAMEID_RE = re_compile(r"Market_LoadOrderSpread\(\s?(?P<nameid>\d+)\s?\)")
+
+
+def find_item_nameid_in_text(text: str) -> int | None:
+    """Find and return`item_nameid` in HTML text response from Steam Community Market page"""
+
+    res = _ITEM_NAMEID_RE.search(text)
+    return int(res["nameid"]) if res is not None else res

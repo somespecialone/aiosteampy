@@ -16,7 +16,7 @@ from .models import (
 from .constants import STEAM_URL, Game, Currency, GameType, Language, T_KWARGS
 from .typed import ItemOrdersHistogram, ItemOrdersActivity, PriceOverview
 from .exceptions import ApiError
-from .utils import create_ident_code
+from .utils import create_ident_code, find_item_nameid_in_text
 
 if TYPE_CHECKING:
     from .client import SteamPublicClient
@@ -463,3 +463,32 @@ class SteamPublicMixin:
                             unowned_context_id=int(a_data["unowned_contextid"]),
                             **item_descrs_map[create_ident_code(a_data["classid"], app_id)],
                         )
+
+    @overload
+    async def get_item_nameid(self: "SteamPublicClient", obj: ItemDescription | EconItem) -> int:
+        ...
+
+    @overload
+    async def get_item_nameid(self: "SteamPublicClient", obj: str, app_id: int) -> int:
+        ...
+
+    async def get_item_nameid(
+        self: "SteamPublicClient",
+        obj: str | ItemDescription | EconItem,
+        app_id: int = None,
+    ) -> int:
+        """
+        Get `item_name_id` from item Steam Community Market page.
+
+        .. seealso:: https://github.com/somespecialone/steam-item-name-ids
+        """
+
+        if isinstance(obj, ITEM_DESCR_TUPLE):
+            url = obj.market_url
+        else:  # str
+            url = STEAM_URL.MARKET / f"listings/{app_id}/{obj}"
+
+        res = await self.session.get(url)
+        text = await res.text()
+
+        return find_item_nameid_in_text(text)

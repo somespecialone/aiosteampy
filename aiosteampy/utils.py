@@ -6,8 +6,8 @@ from struct import pack, unpack
 from time import time as time_time
 from hmac import new as hmac_new
 from hashlib import sha1
-from functools import wraps
-from typing import Callable, overload, ParamSpec, TypeVar, TYPE_CHECKING, TypeAlias
+from functools import wraps, partial
+from typing import Callable, overload, TypeVar, TYPE_CHECKING, TypeAlias
 from http.cookies import SimpleCookie, Morsel
 from math import floor
 from secrets import token_hex
@@ -44,6 +44,7 @@ __all__ = (
     "generate_session_id",
     "decode_jwt",
     "find_item_nameid_in_text",
+    "patch_session_with_http_proxy",
 )
 
 
@@ -131,31 +132,25 @@ def get_cookie_value_from_session(session: ClientSession, url: URL | str, field:
     return c[field].value if field in c else None
 
 
-_P = ParamSpec("_P")
 _R = TypeVar("_R")
 
 
 @overload
-def async_throttle(seconds: float, *, arg_index: int):
+def async_throttle(seconds: float, *, arg_index: int) -> Callable[[Callable[..., _R]], Callable[..., _R]]:
     ...
 
 
 @overload
-def async_throttle(seconds: float, *, arg_name: str):
+def async_throttle(seconds: float, *, arg_name: str) -> Callable[[Callable[..., _R]], Callable[..., _R]]:
     ...
 
 
 @overload
-def async_throttle(seconds: float):
+def async_throttle(seconds: float) -> Callable[[Callable[..., _R]], Callable[..., _R]]:
     ...
 
 
-def async_throttle(
-    seconds: float,
-    *,
-    arg_index: int = None,
-    arg_name: str = None,
-) -> Callable[[Callable[_P, _R]], Callable[_P, _R]]:
+def async_throttle(seconds, *, arg_index=None, arg_name=None):
     """
     Prevents the decorated function from being called more than once per `seconds`.
     Throttle (`await asyncio.sleep`) before call wrapped async func,
@@ -181,9 +176,9 @@ def async_throttle(
 
     ts_map: dict[..., float] = {}
 
-    def decorator(f: Callable[_P, _R]) -> Callable[_P, _R]:
+    def decorator(f: Callable[..., _R]) -> Callable[..., _R]:
         @wraps(f)
-        async def wrapper(*args: _P.args, **kwargs: _P.kwargs) -> _R:
+        async def wrapper(*args, **kwargs) -> _R:
             key = get_key(args, kwargs)
             ts = time_time()
             diff = ts - ts_map.get(key, 0)
@@ -428,3 +423,8 @@ def find_item_nameid_in_text(text: str) -> int | None:
 
     res = _ITEM_NAMEID_RE.search(text)
     return int(res["nameid"]) if res is not None else res
+
+
+def patch_session_with_http_proxy(session: ClientSession, proxy: str | URL) -> ClientSession:
+    session._request = partial(session._request, proxy=proxy)
+    return session

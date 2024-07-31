@@ -13,7 +13,7 @@ from .models import (
     MarketListingItem,
     ITEM_DESCR_TUPLE,
 )
-from .constants import STEAM_URL, Game, Currency, GameType, Language, T_KWARGS
+from .constants import STEAM_URL, Game, Currency, GameType, Language, T_PARAMS
 from .typed import ItemOrdersHistogram, ItemOrdersActivity, PriceOverview
 from .exceptions import ApiError
 from .utils import create_ident_code, find_item_nameid_in_text
@@ -21,12 +21,9 @@ from .utils import create_ident_code, find_item_nameid_in_text
 if TYPE_CHECKING:
     from .client import SteamPublicClient
 
-__all__ = ("SteamPublicMixin", "INVENTORY_URL")
-
-INV_PAGE_SIZE = 2000  # steam new limit rule
+INV_PAGE_SIZE = 2000  # steam limit rule
 INVENTORY_URL = STEAM_URL.COMMUNITY / "inventory"
 PREDICATE: TypeAlias = Callable[[EconItem], bool]
-PRIVATE_USER_EXC_MSG = "User inventory is private."
 ITEM_MARKET_LISTINGS_DATA: TypeAlias = tuple[list[MarketListing], int]
 
 
@@ -44,7 +41,8 @@ class SteamPublicMixin:
         *,
         predicate: PREDICATE = None,
         page_size=INV_PAGE_SIZE,
-        **kwargs: T_KWARGS,
+        params: T_PARAMS = None,
+        **headers: str,
     ) -> list[EconItem]:
         """
         Fetches inventory of user.
@@ -53,13 +51,15 @@ class SteamPublicMixin:
         :param game: just Steam Game
         :param page_size: max items on page. Current Steam limit is 2000
         :param predicate: callable with single arg `EconItem`, must return bool
+        :param params: extra params to pass to url
+        :param headers: extra headers to send with request
         :return: list of `EconItem`
         :raises ApiError: if response data `success` is False or user inventory is private
         """
 
         inv_url = INVENTORY_URL / f"{steam_id}/"
-        params = {"l": self.language, "count": page_size, **kwargs}
-        headers = {"Referer": str(inv_url)}
+        params = {"l": self.language, "count": page_size, **(params or {})}
+        headers = {"Referer": str(inv_url), **headers}
         url = inv_url / f"{game[0]}/{game[1]}"
 
         item_descrs_map = {}
@@ -82,15 +82,18 @@ class SteamPublicMixin:
         url: URL,
         params: dict,
         headers: dict,
-    ) -> dict[str, list[dict] | int]:
+    ) -> dict[str, list[dict]]:
         try:
             r = await self.session.get(url, params=params, headers=headers)
         except ClientResponseError as e:
-            raise ApiError(PRIVATE_USER_EXC_MSG, str(url)) if e.status == 403 else e
+            raise ApiError("User inventory is private") if e.status == 403 else e
 
-        rj: dict[str, list[dict] | int] = await r.json()
-        if not rj.get("success"):
-            raise ApiError(f"Can't fetch inventory.", rj)
+        rj: dict[str, list[dict]] = await r.json()
+        success = rj.get("success")
+        if success is None:
+            raise ApiError("Failed to fetch inventory", data=rj)
+        elif success != 1:
+            raise ApiError(rj["message"], success)
 
         return rj
 
@@ -190,7 +193,8 @@ class SteamPublicMixin:
         lang: Language = None,
         country: str = None,
         currency: Currency = None,
-        **kwargs: T_KWARGS,
+        params: T_PARAMS = None,
+        **headers: str,
     ) -> ItemOrdersHistogram:
         """
         Do what described in method name.
@@ -205,6 +209,8 @@ class SteamPublicMixin:
         :param lang:
         :param country:
         :param currency:
+        :param params: extra params to pass to url
+        :param headers: extra headers to send with request
         :return: `ItemOrdersHistogram` dict
         :raises ApiError:
         """
@@ -215,12 +221,15 @@ class SteamPublicMixin:
             "country": country or self.country,
             "currency": currency or self.currency,
             "item_nameid": item_nameid,
-            **kwargs,
+            **(params or {}),
         }
-        r = await self.session.get(STEAM_URL.MARKET / "itemordershistogram", params=params)
+        r = await self.session.get(STEAM_URL.MARKET / "itemordershistogram", params=params, headers=headers)
         rj: ItemOrdersHistogram = await r.json()
-        if not rj.get("success"):
-            raise ApiError(f"Can't fetch item orders histogram for {item_nameid}.", rj)
+        success = rj.get("success")
+        if success is None:
+            raise ApiError("Failed to fetch items order histogram", data=rj)
+        elif success != 1:
+            raise ApiError(rj["message"], success)
 
         return rj
 
@@ -231,7 +240,8 @@ class SteamPublicMixin:
         lang: Language = None,
         country: str = None,
         currency: Currency = None,
-        **kwargs: T_KWARGS,
+        params: T_PARAMS = None,
+        **headers: str,
     ) -> ItemOrdersActivity:
         """
         Do what described in method name.
@@ -244,6 +254,8 @@ class SteamPublicMixin:
         :param lang:
         :param country:
         :param currency:
+        :param params: extra params to pass to url
+        :param headers: extra headers to send with request
         :return: `ItemOrdersActivity` dict
         :raises ApiError:
         """
@@ -254,12 +266,15 @@ class SteamPublicMixin:
             "country": country or self.country,
             "currency": currency or self.currency,
             "item_nameid": item_name_id,
-            **kwargs,
+            **(params or {}),
         }
-        r = await self.session.get(STEAM_URL.MARKET / "itemordersactivity", params=params)
+        r = await self.session.get(STEAM_URL.MARKET / "itemordersactivity", params=params, headers=headers)
         rj: ItemOrdersActivity = await r.json()
-        if not rj.get("success"):
-            raise ApiError(f"Can't fetch item orders activity for {item_name_id}.", rj)
+        success = rj.get("success")
+        if success is None:
+            raise ApiError("Failed to fetch items order activity", data=rj)
+        elif success != 1:
+            raise ApiError(rj["message"], success)
 
         return rj
 
@@ -270,6 +285,8 @@ class SteamPublicMixin:
         *,
         country: str = ...,
         currency: Currency = ...,
+        params: T_PARAMS = ...,
+        **headers: str,
     ) -> PriceOverview:
         ...
 
@@ -281,6 +298,8 @@ class SteamPublicMixin:
         *,
         country: str = ...,
         currency: Currency = ...,
+        params: T_PARAMS = ...,
+        **headers: str,
     ) -> PriceOverview:
         ...
 
@@ -291,7 +310,8 @@ class SteamPublicMixin:
         *,
         country: str = None,
         currency: Currency = None,
-        **kwargs: T_KWARGS,
+        params: T_PARAMS = None,
+        **headers: str,
     ) -> PriceOverview:
         """
         Fetch price data.
@@ -302,6 +322,8 @@ class SteamPublicMixin:
         :param app_id:
         :param country:
         :param currency:
+        :param params: extra params to pass to url
+        :param headers: extra headers to send with request
         :return: `PriceOverview` dict
         :raises ApiError:
         """
@@ -317,12 +339,15 @@ class SteamPublicMixin:
             "currency": currency or self.currency,
             "market_hash_name": name,
             "appid": app_id,
-            **kwargs,
+            **(params or {}),
         }
-        r = await self.session.get(STEAM_URL.MARKET / "priceoverview", params=params)
+        r = await self.session.get(STEAM_URL.MARKET / "priceoverview", params=params, headers=headers)
         rj: PriceOverview = await r.json()
-        if not rj.get("success"):
-            raise ApiError(f"Can't fetch price overview for `{name}`.", rj)
+        success = rj.get("success")
+        if success is None:
+            raise ApiError("Failed to fetch price overview", data=rj)
+        elif success != 1:
+            raise ApiError(rj["message"], success)
 
         return rj
 
@@ -336,6 +361,8 @@ class SteamPublicMixin:
         query: str = ...,
         start: int = ...,
         count: int = ...,
+        params: T_PARAMS = ...,
+        **headers: str,
     ) -> ITEM_MARKET_LISTINGS_DATA:
         ...
 
@@ -350,6 +377,8 @@ class SteamPublicMixin:
         query: str = ...,
         start: int = ...,
         count: int = ...,
+        params: T_PARAMS = ...,
+        **headers: str,
     ) -> ITEM_MARKET_LISTINGS_DATA:
         ...
 
@@ -364,7 +393,8 @@ class SteamPublicMixin:
         query="",
         start: int = 0,
         count: int = 10,
-        **kwargs: T_KWARGS,
+        params: T_PARAMS = None,
+        **headers: str,
     ) -> ITEM_MARKET_LISTINGS_DATA:
         """
         Fetch item listings from market.
@@ -380,6 +410,8 @@ class SteamPublicMixin:
         :param count: page size, Steam limit this size to 10 for now
         :param start: offset position
         :param query: raw search query
+        :param params: extra params to pass to url
+        :param headers: extra headers to send with request
         :return: list of `MarketListing`, total listings count
         :raises ApiError:
         """
@@ -398,13 +430,23 @@ class SteamPublicMixin:
             "start": start,
             "count": count,
             "language": lang or self.language,
-            **kwargs,
+            **(params or {}),
         }
-        r = await self.session.get(base_url / "render/", params=params, headers={"Referer": str(base_url)})
+        r = await self.session.get(
+            base_url / "render/",
+            params=params,
+            headers={"Referer": str(base_url), **headers},
+        )
+        if r.status == 304:  # not modified if header "If-Modified-Since" is provided
+            return [], 0
+
         rj: dict[str, int | dict[str, dict]] = await r.json()
-        if not rj.get("success"):
-            raise ApiError(f"Can't fetch market listings for `{name}`.", rj)
-        if not rj["total_count"] or not rj["assets"]:
+        success = rj.get("success")
+        if success is None:
+            raise ApiError("Failed to fetch item listings", data=rj)
+        elif success != 1:
+            raise ApiError(rj["message"], success)
+        elif not rj["total_count"] or not rj["assets"]:
             return [], 0
 
         item_descrs_map = {}

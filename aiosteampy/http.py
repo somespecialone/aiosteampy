@@ -1,5 +1,3 @@
-from functools import partial
-
 from yarl import URL
 from aiohttp import ClientSession, InvalidURL
 
@@ -8,8 +6,7 @@ try:
 except ImportError:
     ProxyConnector = None
 
-
-__all__ = ("SteamHTTPTransportMixin",)
+from .utils import patch_session_with_http_proxy
 
 
 class SteamHTTPTransportMixin:
@@ -46,7 +43,7 @@ class SteamHTTPTransportMixin:
                 except ValueError as e:
                     raise InvalidURL(proxy) from e
 
-                self.session._request = partial(self.session._request, proxy=proxy)  # patch session instance
+                patch_session_with_http_proxy(self.session, proxy)  # patch session instance
 
         elif session:
             self.session = session

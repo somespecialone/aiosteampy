@@ -1,6 +1,6 @@
 """Constants and enums, some types"""
 
-from typing import TypeAlias, ClassVar, Any, TypeVar, Coroutine
+from typing import TypeAlias, ClassVar, Any, TypeVar, Coroutine, Mapping
 from enum import Enum, IntEnum
 
 from yarl import URL
@@ -246,4 +246,5 @@ class STEAM_URL:
             GenerateAccessTokenForApp = _Base / "GenerateAccessTokenForApp" / _v
 
 
-T_KWARGS: TypeAlias = int | str | float
+T_PARAMS: TypeAlias = Mapping[str, int | str | float]
+T_PAYLOAD: TypeAlias = Mapping[str, str | int | float | bool | None | list | Mapping]

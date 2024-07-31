@@ -6,14 +6,12 @@ from base64 import b64encode
 from aiohttp import ClientResponseError
 from rsa import PublicKey, encrypt
 
-from .exceptions import LoginError, ApiError
+from .exceptions import ApiError
 from .constants import STEAM_URL
 from .utils import get_cookie_value_from_session, generate_session_id
 
 if TYPE_CHECKING:
     from .client import SteamCommunityMixin
-
-__all__ = ("LoginMixin", "REFERER_HEADER")
 
 REFERER_HEADER = {"Referer": str(STEAM_URL.COMMUNITY) + "/"}
 API_HEADERS = {
@@ -103,7 +101,7 @@ class LoginMixin:
         # https://github.com/DoctorMcKay/node-steam-session/blob/698469cdbad3e555dda10c81f580f1ee3960156f/src/LoginSession.ts#L864
         # make sure that `steamLoginSecure` cookie is present
         if not r.cookies.get("steamLoginSecure"):
-            raise ApiError("No `steamLoginSecure` cookie in result.")
+            raise ApiError("`steamLoginSecure` cookie is not present in result")
 
         return r.cookies
 
@@ -189,7 +187,7 @@ class LoginMixin:
         )
         rj = await r.json()
         if rj.get("response", {"had_remote_interaction": True})["had_remote_interaction"]:
-            raise ApiError("Error polling auth session status.", rj)
+            raise ApiError("Error polling auth session status", rj)
 
         self._refresh_token = rj["response"]["refresh_token"]
         self._access_token = rj["response"]["access_token"]
@@ -206,16 +204,18 @@ class LoginMixin:
             headers={**API_HEADERS, **REFERER_HEADER},
         )
         rj: dict = await r.json()
-
         if rj and rj.get("error"):
-            raise LoginError("Get error response when performing login finalization.", rj)
+            raise ApiError("Get error response when performing login finalization", data=rj)
         elif not rj or not rj.get("transfer_info"):
-            raise LoginError("Malformed login response.", rj)
+            raise ApiError("Malformed login response", data=rj)
 
         return rj
 
     async def _get_rsa_key(self: "SteamCommunityMixin") -> tuple[PublicKey, int]:
-        r = await self.session.get(STEAM_URL.API.IAuthService.GetPasswordRSAPublicKey % {"account_name": self.username})
+        r = await self.session.get(
+            STEAM_URL.API.IAuthService.GetPasswordRSAPublicKey,
+            params={"account_name": self.username},
+        )
         rj = await r.json()
         try:
             rsa_mod = int(rj["response"]["publickey_mod"], 16)

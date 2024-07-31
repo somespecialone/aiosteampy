@@ -3,9 +3,6 @@
 from typing import TypedDict, Literal
 
 
-SUCCESS = Literal[0, 1]
-
-
 class SellOrderTable(TypedDict):
     price: str
     price_with_fee: str
@@ -18,7 +15,7 @@ class BuyOrderTable(TypedDict):
 
 
 class ItemOrdersHistogram(TypedDict):
-    success: SUCCESS
+    success: int
     sell_order_count: str
     sell_order_price: str
     sell_order_table: list[SellOrderTable]
@@ -53,13 +50,13 @@ class Activity(TypedDict):
 
 
 class ItemOrdersActivity(TypedDict):
-    success: SUCCESS
+    success: int
     activity: list[Activity]
     timestamp: int
 
 
 class PriceOverview(TypedDict):
-    success: SUCCESS
+    success: int
     lowest_price: str
     volume: str
     median_price: str
@@ -91,8 +88,26 @@ class WalletInfo(TypedDict):
     wallet_delayed_balance: str
     wallet_max_balance: str
     wallet_trade_max_balance: str
-    success: SUCCESS
+    success: int
     rwgrsn: int
+
+
+class UserWallet(TypedDict):
+    amount: str  # int
+    currency: str
+
+
+class FundWalletInfo(TypedDict):
+    """From `https://store.steampowered.com/api/getfundwalletinfo`"""
+
+    success: int
+    currency: str
+    country_code: str
+    alternate_min_amount: bool
+    amounts: list[int]
+    related_trans_type: bool
+    related_trainsid: bool
+    user_wallet: UserWallet
 
 
 class JWTToken(TypedDict):

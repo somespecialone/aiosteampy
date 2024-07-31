@@ -6,6 +6,8 @@ from random import choice
 from yarl import URL
 from aiohttp import ClientSession
 
+__all__ = ("UserAgentsService", "API_URL")
+
 API_URL = URL("https://randua.somespecial.one")
 
 

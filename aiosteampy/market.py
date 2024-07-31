@@ -19,18 +19,16 @@ from .models import (
     MarketListing,
     ITEM_DESCR_TUPLE,
 )
+from .decorators import wallet_currency_required
 from .typed import WalletInfo
-from .constants import STEAM_URL, GameType, MarketListingStatus, MarketHistoryEventType, T_KWARGS
+from .constants import STEAM_URL, GameType, MarketListingStatus, MarketHistoryEventType, T_PARAMS, T_PAYLOAD
 from .utils import create_ident_code, buyer_pays_to_receive
 
 if TYPE_CHECKING:
     from .client import SteamCommunityMixin
 
-__all__ = ("MarketMixin",)
-
 MY_LISTINGS: TypeAlias = tuple[list[MyMarketListing], list[MyMarketListing], list[BuyOrder]]
 PREDICATE: TypeAlias = Callable[[MarketHistoryEvent], bool]
-PRICE_HISTORY_ENTRY_DATE_FORMAT = "%b %d %Y"
 
 
 class MarketMixin:
@@ -44,23 +42,61 @@ class MarketMixin:
     __slots__ = ()
 
     @overload
-    async def place_sell_listing(self, asset: EconItem, *, price: int) -> int:
+    async def place_sell_listing(
+        self,
+        asset: EconItem,
+        *,
+        price: int,
+        payload: T_PAYLOAD = ...,
+        **headers: str,
+    ) -> int:
         ...
 
     @overload
-    async def place_sell_listing(self, asset: EconItem, *, price: int, confirm: Literal[False] = ...) -> None:
+    async def place_sell_listing(
+        self,
+        asset: EconItem,
+        *,
+        price: int,
+        confirm: Literal[False] = ...,
+        payload: T_PAYLOAD = ...,
+        **headers: str,
+    ) -> None:
         ...
 
     @overload
-    async def place_sell_listing(self, asset: EconItem, *, to_receive: int) -> int:
+    async def place_sell_listing(
+        self,
+        asset: EconItem,
+        *,
+        to_receive: int,
+        payload: T_PAYLOAD = ...,
+        **headers: str,
+    ) -> int:
         ...
 
     @overload
-    async def place_sell_listing(self, asset: EconItem, *, to_receive: int, confirm: Literal[False] = ...) -> None:
+    async def place_sell_listing(
+        self,
+        asset: EconItem,
+        *,
+        to_receive: int,
+        confirm: Literal[False] = ...,
+        payload: T_PAYLOAD = ...,
+        **headers: str,
+    ) -> None:
         ...
 
     @overload
-    async def place_sell_listing(self, asset: int, game: GameType, *, price: int) -> int:
+    async def place_sell_listing(
+        self,
+        asset: int,
+        game: GameType,
+        *,
+        price: int,
+        payload: T_PAYLOAD = ...,
+        **headers: str,
+    ) -> int:
         ...
 
     @overload
@@ -71,11 +107,21 @@ class MarketMixin:
         *,
         price: int,
         confirm: Literal[False] = ...,
+        payload: T_PAYLOAD = ...,
+        **headers: str,
     ) -> None:
         ...
 
     @overload
-    async def place_sell_listing(self, asset: int, game: GameType, *, to_receive: int) -> int:
+    async def place_sell_listing(
+        self,
+        asset: int,
+        game: GameType,
+        *,
+        to_receive: int,
+        payload: T_PAYLOAD = ...,
+        **headers: str,
+    ) -> int:
         ...
 
     @overload
@@ -86,6 +132,8 @@ class MarketMixin:
         *,
         to_receive: int,
         confirm: Literal[False] = ...,
+        payload: T_PAYLOAD = ...,
+        **headers: str,
     ) -> None:
         ...
 
@@ -97,7 +145,8 @@ class MarketMixin:
         price: int = None,
         to_receive: int = None,
         confirm=True,
-        **kwargs: T_KWARGS,
+        payload: T_PAYLOAD = None,
+        **headers: str,
     ) -> int | None:
         """
         Create and place sell listing.
@@ -110,6 +159,8 @@ class MarketMixin:
         :param price: money that buyer must pay. Include fees
         :param to_receive: money that you want to receive
         :param confirm: confirm listing or not if steam demands mobile confirmation
+        :param payload: extra payload data
+        :param headers: extra headers to send with request
         :return: sell listing id or None
         :raises ApiError:
         """
@@ -129,37 +180,66 @@ class MarketMixin:
             "appid": game[0],
             "amount": 1,
             "price": to_receive,
-            **kwargs,
+            **(payload or {}),
         }
-        headers = {"Referer": str(STEAM_URL.COMMUNITY / f"profiles/{self.steam_id}/inventory")}
+        headers = {"Referer": str(STEAM_URL.COMMUNITY / f"profiles/{self.steam_id}/inventory"), **headers}
         r = await self.session.post(STEAM_URL.MARKET / "sellitem/", data=data, headers=headers)
         rj: dict = await r.json()
-        if not rj.get("success"):
-            raise ApiError("Failed to place sell listing.", rj)
+        success = rj.get("success")
+        if success is None:
+            raise ApiError("Failed to place sell listing", data=rj)
+        elif success != 1:
+            raise ApiError(rj["message"], success)
 
         if rj.get("needs_mobile_confirmation") and confirm:
             return await self.confirm_sell_listing(asset_id, game)
 
-    def cancel_sell_listing(self: "SteamCommunityMixin", obj: MyMarketListing | int):
+    def cancel_sell_listing(
+        self: "SteamCommunityMixin",
+        obj: MyMarketListing | int,
+        *,
+        payload: T_PAYLOAD = None,
+        **headers: str,
+    ):
         """
         Just cancel sell listing.
 
         :param obj: `MyMarketListing` or listing id
+        :param payload: extra payload data
+        :param headers: extra headers to send with request
         """
 
         listing_id: int = obj.id if isinstance(obj, MyMarketListing) else obj
-        data = {"sessionid": self.session_id}
-        headers = {"Referer": str(STEAM_URL.MARKET)}
+        data = {"sessionid": self.session_id, **(payload or {})}
+        headers = {"Referer": str(STEAM_URL.MARKET), **headers}
         return self.session.post(STEAM_URL.MARKET / f"removelisting/{listing_id}", data=data, headers=headers)
 
     @overload
-    async def place_buy_order(self, obj: ItemDescription, *, price: int, quantity: int = ...) -> int:
+    async def place_buy_order(
+        self,
+        obj: ItemDescription,
+        *,
+        price: int,
+        quantity: int = ...,
+        payload: T_PAYLOAD = ...,
+        **headers: str,
+    ) -> int:
         ...
 
     @overload
-    async def place_buy_order(self, obj: str, app_id: int, *, price: int, quantity: int = ...) -> int:
+    async def place_buy_order(
+        self,
+        obj: str,
+        app_id: int,
+        *,
+        price: int,
+        quantity: int = ...,
+        payload: T_PAYLOAD = ...,
+        **headers: str,
+    ) -> int:
         ...
 
+    @wallet_currency_required
     async def place_buy_order(
         self: "SteamCommunityMixin",
         obj: str | ItemDescription,
@@ -167,7 +247,8 @@ class MarketMixin:
         *,
         price: int,
         quantity=1,
-        **kwargs: T_KWARGS,
+        payload: T_PAYLOAD = None,
+        **headers: str,
     ) -> int:
         """
         Place buy order on market.
@@ -176,6 +257,8 @@ class MarketMixin:
         :param app_id: app id if `obj` is market hash name
         :param price: price of single item
         :param quantity: just quantity
+        :param payload: extra payload data
+        :param headers: extra headers to send with request
         :return: buy order id
         :raises ApiError:
         """
@@ -193,21 +276,32 @@ class MarketMixin:
             "market_hash_name": name,
             "price_total": price * quantity,
             "quantity": quantity,
-            **kwargs,
+            **(payload or {}),
         }
-        headers = {"Referer": str(STEAM_URL.MARKET / f"listings/{app_id}/{name}")}
+        headers = {"Referer": str(STEAM_URL.MARKET / f"listings/{app_id}/{name}"), **headers}
         r = await self.session.post(STEAM_URL.MARKET / "createbuyorder/", data=data, headers=headers)
         rj: dict = await r.json()
-        if not rj.get("success"):
-            raise ApiError("Failed to create buy order.", rj)
+        success = rj.get("success")
+        if success is None:  # malformed
+            raise ApiError("Failed to create buy order", data=rj)
+        elif success != 1:
+            raise ApiError(rj["message"], success)
 
         return int(rj["buy_orderid"])
 
-    async def cancel_buy_order(self: "SteamCommunityMixin", order: int | BuyOrder):
+    async def cancel_buy_order(
+        self: "SteamCommunityMixin",
+        order: int | BuyOrder,
+        *,
+        payload: T_PAYLOAD = None,
+        **headers: str,
+    ):
         """
         Just cancel buy order.
 
         :param order: `BuyOrder` or buy order id
+        :param payload: extra payload data
+        :param headers: extra headers to send with request
         :raises ApiError:
         """
 
@@ -216,25 +310,36 @@ class MarketMixin:
         else:
             order_id = order
 
-        data = {"sessionid": self.session_id, "buy_orderid": order_id}
-        headers = {"Referer": str(STEAM_URL.MARKET)}
+        data = {"sessionid": self.session_id, "buy_orderid": order_id, **(payload or {})}
+        headers = {"Referer": str(STEAM_URL.MARKET), **headers}
         r = await self.session.post(STEAM_URL.MARKET / "cancelbuyorder/", data=data, headers=headers)
         rj = await r.json()
-        if not rj.get("success"):
-            raise ApiError(f"Failed to cancel buy order [{order_id}].", rj)
+        success = rj.get("success")
+        if success is None:
+            raise ApiError("Failed to cancel buy order", data=rj)
+        elif success != 1:
+            raise ApiError(rj["message"], success)
 
-    async def get_my_listings(self: "SteamCommunityMixin", *, page_size=100, **kwargs: T_KWARGS) -> MY_LISTINGS:
+    async def get_my_listings(
+        self: "SteamCommunityMixin",
+        *,
+        page_size=100,
+        params: T_PARAMS = None,
+        **headers: str,
+    ) -> MY_LISTINGS:
         """
         Fetch users market listings.
 
         :param page_size: listings per page. Steam do not accept greater than 100
+        :param params: extra params to pass to url
+        :param headers: extra headers to send with request
         :return: active listings, listings to confirm, buy orders
         :raises ApiError:
         :raises SessionExpired:
         """
 
         url = STEAM_URL.MARKET / "mylistings"
-        params = {"norender": 1, "start": 0, "count": page_size, **kwargs}
+        params = {"norender": 1, "start": 0, "count": page_size, **(params or {})}
         active = []
         to_confirm = []
         buy_orders = []
@@ -243,7 +348,7 @@ class MarketMixin:
         # pagination only for active listings. Don't know how to be with others
         more_listings = True
         while more_listings:
-            data = await self._fetch_listings(url, params)
+            data = await self._fetch_listings(url, params, headers)
             if data["num_active_listings"] > data["pagesize"]:
                 more_listings = True
                 params["start"] += data["pagesize"]
@@ -258,15 +363,18 @@ class MarketMixin:
 
         return active, to_confirm, buy_orders
 
-    async def _fetch_listings(self: "SteamCommunityMixin", url: URL, params: dict) -> dict:
+    async def _fetch_listings(self: "SteamCommunityMixin", url: URL, params: dict, headers: dict) -> dict:
         try:
-            r = await self.session.get(url, params=params)
+            r = await self.session.get(url, params=params, headers=headers)
         except ClientResponseError as e:
             raise SessionExpired if e.status == 400 else e
 
         rj: dict = await r.json()
-        if not rj.get("success"):
-            raise ApiError("Failed to fetch user listings.", rj)
+        success = rj.get("success")
+        if success is None:
+            raise ApiError("Failed to fetch user listings", data=rj)
+        elif success != 1:
+            raise ApiError(rj["message"], success)
 
         return rj
 
@@ -340,7 +448,13 @@ class MarketMixin:
         return orders_list
 
     @overload
-    async def buy_market_listing(self, listing: MarketListing) -> WalletInfo:
+    async def buy_market_listing(
+        self,
+        listing: MarketListing,
+        *,
+        payload: T_PAYLOAD = ...,
+        **headers: str,
+    ) -> WalletInfo:
         ...
 
     @overload
@@ -352,9 +466,12 @@ class MarketMixin:
         game: GameType,
         *,
         fee: int = ...,
+        payload: T_PAYLOAD = ...,
+        **headers: str,
     ) -> WalletInfo:
         ...
 
+    @wallet_currency_required
     async def buy_market_listing(
         self: "SteamCommunityMixin",
         listing: int | MarketListing,
@@ -363,6 +480,8 @@ class MarketMixin:
         game: GameType = None,
         *,
         fee: int = None,
+        payload: T_PAYLOAD = None,
+        **headers: str,
     ) -> WalletInfo:
         """
         Buy item listing from market.
@@ -378,6 +497,8 @@ class MarketMixin:
         :param fee: if fee of listing is different from default one,
             can be found on listing data in Steam under field `converted_fee` divided by 100.
             If you don't know what is this - then you definitely do not need it
+        :param payload: extra payload data
+        :param headers: extra headers to send with request
         :return: wallet info
         :raises ApiError: for regular reasons
         :raises ValueError:
@@ -406,27 +527,40 @@ class MarketMixin:
             "fee": fee,
             "total": price + fee,
             "quantity": 1,
+            **(payload or {}),
         }
-        headers = {"Referer": str(STEAM_URL.MARKET / f"listings/{game[0]}/{market_hash_name}")}
+        headers = {"Referer": str(STEAM_URL.MARKET / f"listings/{game[0]}/{market_hash_name}"), **headers}
         r = await self.session.post(STEAM_URL.MARKET / f"buylisting/{listing_id}", data=data, headers=headers)
         rj: dict[str, dict[str, str]] = await r.json()
-        if not rj.get("wallet_info", {}).get("success"):
-            raise ApiError(
-                f"Failed to buy listing [{listing_id}] of `{market_hash_name}` "
-                f"for {(price + fee) / 100} {self._wallet_currency.name}.",
-                rj,
-            )
+        wallet_info: WalletInfo = rj.get("wallet_info", {})
+        success = wallet_info.get("success")
+        if success is None:
+            raise ApiError("Failed to buy listing", data=rj)
+        elif success != 1:
+            raise ApiError(rj.get("message") or wallet_info.get("message", ""), success)  # don't know where message is
 
-        return rj["wallet_info"]
+        # how about to return remaining balance only?
+        return wallet_info
 
     async def get_my_market_history(
         self: "SteamCommunityMixin",
         *,
         predicate: PREDICATE = None,
         page_size=500,
+        params: T_PARAMS = None,
+        **headers: str,
     ) -> list[MarketHistoryEvent]:
+        """
+        Fetch market history of the user
+
+        :param predicate:
+        :param page_size:
+        :param params: extra params to pass to url
+        :param headers: extra headers to send with request
+        """
+
         url = STEAM_URL.MARKET / "myhistory"
-        params = {"norender": 1, "start": 0, "count": page_size}
+        params = {"norender": 1, "start": 0, "count": page_size, **(params or {})}
         events = []
         item_descrs_map = {}  # ident code: ... , shared classes within whole listings
         econ_item_map = {}  # ident code: ...
@@ -434,7 +568,7 @@ class MarketMixin:
 
         more_listings = True
         while more_listings:
-            data = await self._fetch_listings(url, params)
+            data = await self._fetch_listings(url, params, headers)
             if data["total_count"] > data["pagesize"]:
                 more_listings = True
                 params["start"] += data["pagesize"]
@@ -537,14 +671,34 @@ class MarketMixin:
         return events
 
     @overload
-    async def fetch_price_history(self, obj: ItemDescription | EconItem) -> list[PriceHistoryEntry]:
+    async def fetch_price_history(
+        self,
+        obj: ItemDescription | EconItem,
+        *,
+        params: T_PARAMS = ...,
+        **headers: str,
+    ) -> list[PriceHistoryEntry]:
         ...
 
     @overload
-    async def fetch_price_history(self, obj: str, app_id: int) -> list[PriceHistoryEntry]:
+    async def fetch_price_history(
+        self,
+        obj: str,
+        app_id: int,
+        *,
+        params: T_PARAMS = ...,
+        **headers: str,
+    ) -> list[PriceHistoryEntry]:
         ...
 
-    async def fetch_price_history(self: "SteamCommunityMixin", obj: str, app_id: int = None) -> list[PriceHistoryEntry]:
+    async def fetch_price_history(
+        self: "SteamCommunityMixin",
+        obj: str,
+        app_id: int = None,
+        *,
+        params: T_PARAMS = None,
+        **headers: str,
+    ) -> list[PriceHistoryEntry]:
         """
         Fetch price history.
         Prices always will be same currency as a wallet.
@@ -555,6 +709,8 @@ class MarketMixin:
 
         :param obj: `EconItem` or `ItemDescription` or market hash name
         :param app_id:
+        :param params: extra params to pass to url
+        :param headers: extra headers to send with request
         :return: list of `PriceHistoryEntry`
         :raises ApiError:
         """
@@ -565,15 +721,18 @@ class MarketMixin:
         else:  # str
             name = obj
 
-        params = {"appid": app_id, "market_hash_name": name}
-        r = await self.session.get(STEAM_URL.MARKET / "pricehistory", params=params)
+        params = {"appid": app_id, "market_hash_name": name, **(params or {})}
+        r = await self.session.get(STEAM_URL.MARKET / "pricehistory", params=params, headers=headers)
         rj: dict[str, list[list]] = await r.json()
-        if not rj.get("success"):
-            raise ApiError(f"Failed to fetch `{name}` price history.", rj)
+        success = rj.get("success")
+        if success is None:
+            raise ApiError("Failed to fetch price history", data=rj)
+        elif success != 1:
+            raise ApiError(rj["message"], success)
 
         return [
             PriceHistoryEntry(
-                date=datetime.strptime(e_data[0], PRICE_HISTORY_ENTRY_DATE_FORMAT),
+                date=datetime.strptime(e_data[0], "%b %d %Y"),
                 price=e_data[1],
                 daily_volume=int(e_data[2]),
             )

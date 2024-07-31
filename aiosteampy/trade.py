@@ -5,7 +5,7 @@ from json import dumps as jdumps
 from yarl import URL
 
 from .exceptions import ApiError
-from .constants import STEAM_URL, CORO, T_KWARGS
+from .constants import STEAM_URL, CORO
 from .models import (
     TradeOffer,
     TradeOfferItem,
@@ -14,15 +14,18 @@ from .models import (
     HistoryTradeOfferItem,
     EconItemType,
 )
+from .decorators import api_key_required
 from .utils import create_ident_code, to_int_boolean, steam_id_to_account_id, account_id_to_steam_id
 from .typed import TradeOffersSummary
 
 if TYPE_CHECKING:
     from .client import SteamCommunityMixin
 
-__all__ = ("TradeMixin",)
-
 TRADE_OFFERS: TypeAlias = tuple[list[TradeOffer], list[TradeOffer]]
+
+# TODO params, payload and headers
+
+T_KWARGS = str
 
 
 class TradeMixin:
@@ -85,9 +88,14 @@ class TradeMixin:
 
         return trade
 
+    # TODO get trades without api key, like a browser does
+
+    @api_key_required
     async def fetch_trade(self: "SteamCommunityMixin", offer_id: int) -> TradeOffer:
         """
         Fetch trade offer from Steam.
+
+        .. warning:: Method requires API key
 
         :raises ApiError:
         """
@@ -100,8 +108,11 @@ class TradeMixin:
         }
         r = await self.session.get(STEAM_URL.API.IEconService.GetTradeOffer, params=params)
         rj: dict = await r.json()
-        if not rj.get("response"):
-            raise ApiError(f"Can't fetch trade offer [{offer_id}].", rj)
+        success = rj.get("success")
+        if success is None:
+            raise ApiError("Failed to fetch trade offer", data=rj)
+        elif success != 1:
+            raise ApiError(rj["message"], success)
 
         data: dict[str, dict | list[dict]] = rj["response"]
         item_descrc_map = {}
@@ -179,6 +190,7 @@ class TradeMixin:
     ) -> TRADE_OFFERS:
         ...
 
+    @api_key_required
     async def fetch_trade_offers(
         self: "SteamCommunityMixin",
         *,
@@ -191,6 +203,8 @@ class TradeMixin:
     ) -> TRADE_OFFERS:
         """
         Fetch trade offers from Steam Web Api.
+
+        .. warning:: Method requires API key
 
         :param active_only: fetch active, changed since `time_historical_cutoff` tradeoffs only or not
         :param time_historical_cutoff: timestamp for `active_only`
@@ -221,8 +235,11 @@ class TradeMixin:
         while True:
             r = await self.session.get(STEAM_URL.API.IEconService.GetTradeOffers, params=params)
             rj = await r.json()
-            if not rj.get("response"):
-                raise ApiError(f"Can't fetch trade offers.", rj)
+            success = rj.get("success")
+            if success is None:
+                raise ApiError("Failed to fetch trade offers", data=rj)
+            elif success != 1:
+                raise ApiError(rj["message"], success)
 
             data: dict[str, dict | list[dict]] = rj["response"]
             offer_sent_datas.extend(data.get("trade_offers_sent", ()))
@@ -243,14 +260,19 @@ class TradeMixin:
 
         return o_sent, o_received
 
+    @api_key_required
     async def get_trade_offers_summary(self: "SteamCommunityMixin") -> TradeOffersSummary:
         r = await self.session.get(STEAM_URL.API.IEconService.GetTradeOffersSummary, params={"key": self._api_key})
         rj: dict[str, TradeOffersSummary] = await r.json()
-        if not rj.get("response"):
-            raise ApiError(f"Can't fetch trade offers summary.", rj)
+        success = rj.get("success")
+        if success is None:
+            raise ApiError("Failed to fetch trade offers summary", data=rj)
+        elif success != 1:
+            raise ApiError(rj["message"], success)
 
         return rj["response"]
 
+    @api_key_required
     async def get_trade_receipt(self: "SteamCommunityMixin", offer_id: int, **kwargs: T_KWARGS) -> HistoryTradeOffer:
         """Fetch single trade offer from history."""
 
@@ -262,15 +284,19 @@ class TradeMixin:
             **kwargs,
         }
         r = await self.session.get(STEAM_URL.API.IEconService.GetTradeStatus, params=params)
-        rj = await r.json()
-        if not rj.get("response"):
-            raise ApiError(f"Can't fetch trade status.", rj)
+        rj: dict[str, dict[str, ...]] = await r.json()
+        success = rj.get("success")
+        if success is None:
+            raise ApiError("Failed to fetch trade receipt", data=rj)
+        elif success != 1:
+            raise ApiError(rj["message"], success)
 
         item_descrs_map = {}
         self._update_item_descrs_map_for_trades(rj["response"]["descriptions"], item_descrs_map)
 
         return self._create_history_trade_offer(rj["response"]["trades"][0], item_descrs_map)
 
+    @api_key_required
     async def get_trade_history(
         self: "SteamCommunityMixin",
         max_trades=100,
@@ -284,6 +310,8 @@ class TradeMixin:
         """
         Fetch history trades with changed assets data.
         You can paginate by yourself with this method.
+
+        .. warning:: Method requires API key
 
         :param max_trades: page size
         :param start_after_time: timestamp
@@ -307,8 +335,11 @@ class TradeMixin:
         }
         r = await self.session.get(STEAM_URL.API.IEconService.GetTradeHistory, params=params)
         rj = await r.json()
-        if not rj.get("response"):
-            raise ApiError(f"Can't fetch trades history.", rj)
+        success = rj.get("success")
+        if success is None:
+            raise ApiError("Failed to fetch trades history", data=rj)
+        elif success != 1:
+            raise ApiError(rj["message"], success)
 
         item_descrs_map = {}
         data: dict[str, int | bool | dict | list[dict]] = rj["response"]
@@ -355,13 +386,16 @@ class TradeMixin:
         self: "SteamCommunityMixin",
         offer_id: int,
         action: Literal["cancel", "decline"],
-    ) -> int:
+    ) -> dict[str, str]:
         r = await self.session.post(STEAM_URL.TRADE / f"{offer_id}/{action}", data={"sessionid": self.session_id})
-        rj: dict[str, str] = await r.json()
-        return int(rj.get("tradeofferid", 0))
+        return await r.json()
 
     async def cancel_trade_offer(self: "SteamCommunityMixin", offer: int | TradeOffer):
-        """Cancel outgoing trade offer. Remove offer from cache."""
+        """
+        Cancel outgoing trade offer. Remove offer from cache
+
+        :raises ApiError:
+        """
 
         if isinstance(offer, TradeOffer):
             if not offer.is_our_offer:
@@ -371,9 +405,10 @@ class TradeMixin:
         else:
             offer_id = offer
             to_remove = None
-        resp_offer_id = await self._do_action_with_offer(offer_id, "cancel")
+        offer_data = await self._do_action_with_offer(offer_id, "cancel")
+        resp_offer_id = int(offer_data.get("tradeofferid", 0))
         if not resp_offer_id or resp_offer_id != offer_id:
-            raise ApiError(f"Error while try to cancel offer [{offer_id}].")
+            raise ApiError(f"Failed to cancel trade offer", data=offer_data)
 
         await self.remove_trade_offer(offer_id, to_remove)  # remove after making sure that all is okay
 
@@ -388,9 +423,10 @@ class TradeMixin:
         else:
             offer_id = offer
             to_remove = None
-        resp_offer_id = await self._do_action_with_offer(offer_id, "decline")
+        offer_data = await self._do_action_with_offer(offer_id, "decline")
+        resp_offer_id = int(offer_data.get("tradeofferid", 0))
         if not resp_offer_id or resp_offer_id != offer_id:
-            raise ApiError(f"Error while try to decline offer [{offer_id}].")
+            raise ApiError(f"Failed to decline trade offer", data=offer_data)
 
         await self.remove_trade_offer(offer_id, to_remove)  # remove after making sure that all is okay
 
@@ -620,7 +656,7 @@ class TradeMixin:
             to_give_updated = [*obj.items_to_give, *to_give]
             to_receive_updated = [*obj.items_to_receive, *to_receive]
             if obj.is_our_offer:
-                raise ValueError("You can't counter yours offer!")
+                raise ValueError("You can't counter your offer!")
         else:  # trade id
             offer_id = obj
             to_give_updated = to_give

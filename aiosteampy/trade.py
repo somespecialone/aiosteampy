@@ -5,7 +5,7 @@ from json import dumps as jdumps
 from yarl import URL
 
 from .exceptions import ApiError
-from .constants import STEAM_URL, CORO
+from .constants import STEAM_URL, CORO, T_HEADERS, T_PARAMS, T_PAYLOAD
 from .models import (
     TradeOffer,
     TradeOfferItem,
@@ -22,10 +22,6 @@ if TYPE_CHECKING:
     from .client import SteamCommunityMixin
 
 TRADE_OFFERS: TypeAlias = tuple[list[TradeOffer], list[TradeOffer]]
-
-# TODO params, payload and headers
-
-T_KWARGS = str
 
 
 class TradeMixin:
@@ -91,12 +87,21 @@ class TradeMixin:
     # TODO get trades without api key, like a browser does
 
     @api_key_required
-    async def fetch_trade(self: "SteamCommunityMixin", offer_id: int) -> TradeOffer:
+    async def fetch_trade(
+        self: "SteamCommunityMixin",
+        offer_id: int,
+        *,
+        params: T_PARAMS = {},
+        headers: T_HEADERS = {},
+    ) -> TradeOffer:
         """
         Fetch trade offer from Steam.
 
         .. warning:: Method requires API key
 
+        :param offer_id:
+        :param params: extra params to pass to url
+        :param headers: extra headers to send with request
         :raises ApiError:
         """
 
@@ -105,8 +110,9 @@ class TradeMixin:
             "tradeofferid": offer_id,
             "language": self.language,
             "get_descriptions": 1,
+            **params,
         }
-        r = await self.session.get(STEAM_URL.API.IEconService.GetTradeOffer, params=params)
+        r = await self.session.get(STEAM_URL.API.IEconService.GetTradeOffer, params=params, headers=headers)
         rj: dict = await r.json()
         success = rj.get("success")
         if success is None:
@@ -176,6 +182,8 @@ class TradeMixin:
         time_historical_cutoff: int = ...,
         sent: bool = ...,
         received: bool = ...,
+        params: T_PARAMS = ...,
+        headers: T_HEADERS = ...,
     ) -> TRADE_OFFERS:
         ...
 
@@ -187,6 +195,8 @@ class TradeMixin:
         historical_only: Literal[True],
         sent: bool = ...,
         received: bool = ...,
+        params: T_PARAMS = ...,
+        headers: T_HEADERS = ...,
     ) -> TRADE_OFFERS:
         ...
 
@@ -199,7 +209,8 @@ class TradeMixin:
         historical_only=False,
         sent=True,
         received=True,
-        **kwargs: T_KWARGS,
+        params: T_PARAMS = {},
+        headers: T_HEADERS = {},
     ) -> TRADE_OFFERS:
         """
         Fetch trade offers from Steam Web Api.
@@ -211,7 +222,10 @@ class TradeMixin:
         :param historical_only: opposite for `active_only`
         :param sent: include sent offers or not
         :param received: include received offers or not
+        :param params: extra params to pass to url
+        :param headers: extra headers to send with request
         :return: sent trades, received trades lists
+        :raises ApiError:
         """
 
         params = {
@@ -223,7 +237,7 @@ class TradeMixin:
             "get_descriptions": 1,
             "cursor": 0,
             "language": self.language,
-            **kwargs,
+            **params,
         }
         if active_only and time_historical_cutoff is not None:
             params["time_historical_cutoff"] = time_historical_cutoff
@@ -233,7 +247,7 @@ class TradeMixin:
         offer_received_datas = []
 
         while True:
-            r = await self.session.get(STEAM_URL.API.IEconService.GetTradeOffers, params=params)
+            r = await self.session.get(STEAM_URL.API.IEconService.GetTradeOffers, params=params, headers=headers)
             rj = await r.json()
             success = rj.get("success")
             if success is None:
@@ -261,8 +275,26 @@ class TradeMixin:
         return o_sent, o_received
 
     @api_key_required
-    async def get_trade_offers_summary(self: "SteamCommunityMixin") -> TradeOffersSummary:
-        r = await self.session.get(STEAM_URL.API.IEconService.GetTradeOffersSummary, params={"key": self._api_key})
+    async def get_trade_offers_summary(
+        self: "SteamCommunityMixin",
+        *,
+        params: T_PARAMS = {},
+        headers: T_HEADERS = {},
+    ) -> TradeOffersSummary:
+        """
+        Get trade offers summary from Steam Web Api.
+
+        :param params: extra params to pass to url
+        :param headers: extra headers to send with request
+        :return: trade offers summary
+        :raises ApiError:
+        """
+
+        r = await self.session.get(
+            STEAM_URL.API.IEconService.GetTradeOffersSummary,
+            params={"key": self._api_key, **params},
+            headers=headers,
+        )
         rj: dict[str, TradeOffersSummary] = await r.json()
         success = rj.get("success")
         if success is None:
@@ -273,17 +305,31 @@ class TradeMixin:
         return rj["response"]
 
     @api_key_required
-    async def get_trade_receipt(self: "SteamCommunityMixin", offer_id: int, **kwargs: T_KWARGS) -> HistoryTradeOffer:
-        """Fetch single trade offer from history."""
+    async def get_trade_receipt(
+        self: "SteamCommunityMixin",
+        offer_id: int,
+        *,
+        params: T_PARAMS = {},
+        headers: T_HEADERS = {},
+    ) -> HistoryTradeOffer:
+        """
+        Fetch single trade offer from history.
+
+        :param offer_id:
+        :param params: extra params to pass to url
+        :param headers: extra headers to send with request
+        :returns HistoryTradeOffer
+        :raises ApiError:
+        """
 
         params = {
             "key": self._api_key,
             "tradeid": offer_id,
             "get_descriptions": 1,
             "language": self.language,
-            **kwargs,
+            **params,
         }
-        r = await self.session.get(STEAM_URL.API.IEconService.GetTradeStatus, params=params)
+        r = await self.session.get(STEAM_URL.API.IEconService.GetTradeStatus, params=params, headers=headers)
         rj: dict[str, dict[str, ...]] = await r.json()
         success = rj.get("success")
         if success is None:
@@ -305,7 +351,8 @@ class TradeMixin:
         start_after_trade_id=0,
         navigating_back=False,
         include_failed=True,
-        **kwargs: T_KWARGS,
+        params: T_PARAMS = {},
+        headers: T_HEADERS = {},
     ) -> tuple[list[HistoryTradeOffer], int]:
         """
         Fetch history trades with changed assets data.
@@ -318,7 +365,10 @@ class TradeMixin:
         :param start_after_trade_id:
         :param navigating_back:
         :param include_failed:
+        :param params: extra params to pass to url
+        :param headers: extra headers to send with request
         :return: list of `HistoryTradeOffer`, total trades count
+        :raises ApiError:
         """
 
         params = {
@@ -331,9 +381,9 @@ class TradeMixin:
             "start_after_time": start_after_time,
             "start_after_tradeid": start_after_trade_id,
             "language": self.language,
-            **kwargs,
+            **params,
         }
-        r = await self.session.get(STEAM_URL.API.IEconService.GetTradeHistory, params=params)
+        r = await self.session.get(STEAM_URL.API.IEconService.GetTradeHistory, params=params, headers=headers)
         rj = await r.json()
         success = rj.get("success")
         if success is None:
@@ -386,14 +436,29 @@ class TradeMixin:
         self: "SteamCommunityMixin",
         offer_id: int,
         action: Literal["cancel", "decline"],
+        payload: T_PAYLOAD,
+        headers: T_HEADERS,
     ) -> dict[str, str]:
-        r = await self.session.post(STEAM_URL.TRADE / f"{offer_id}/{action}", data={"sessionid": self.session_id})
+        r = await self.session.post(
+            STEAM_URL.TRADE / f"{offer_id}/{action}",
+            data={"sessionid": self.session_id, **payload},
+            headers=headers,
+        )
         return await r.json()
 
-    async def cancel_trade_offer(self: "SteamCommunityMixin", offer: int | TradeOffer):
+    async def cancel_trade_offer(
+        self: "SteamCommunityMixin",
+        offer: int | TradeOffer,
+        *,
+        payload: T_PAYLOAD = {},
+        headers: T_HEADERS = {},
+    ):
         """
-        Cancel outgoing trade offer. Remove offer from cache
+        Cancel outgoing trade offer. Remove offer from cache.
 
+        :param offer:
+        :param payload: extra payload data
+        :param headers: extra headers to send with request
         :raises ApiError:
         """
 
@@ -405,15 +470,28 @@ class TradeMixin:
         else:
             offer_id = offer
             to_remove = None
-        offer_data = await self._do_action_with_offer(offer_id, "cancel")
+        offer_data = await self._do_action_with_offer(offer_id, "cancel", payload, headers)
         resp_offer_id = int(offer_data.get("tradeofferid", 0))
         if not resp_offer_id or resp_offer_id != offer_id:
             raise ApiError(f"Failed to cancel trade offer", data=offer_data)
 
         await self.remove_trade_offer(offer_id, to_remove)  # remove after making sure that all is okay
 
-    async def decline_trade_offer(self: "SteamCommunityMixin", offer: int | TradeOffer):
-        """Decline incoming trade offer. Remove offer from cache."""
+    async def decline_trade_offer(
+        self: "SteamCommunityMixin",
+        offer: int | TradeOffer,
+        *,
+        payload: T_PAYLOAD = {},
+        headers: T_HEADERS = {},
+    ):
+        """
+        Decline incoming trade offer. Remove offer from cache.
+
+        :param offer:
+        :param payload: extra payload data
+        :param headers: extra headers to send with request
+        :raises ApiError:
+        """
 
         if isinstance(offer, TradeOffer):
             if offer.is_our_offer:
@@ -423,7 +501,7 @@ class TradeMixin:
         else:
             offer_id = offer
             to_remove = None
-        offer_data = await self._do_action_with_offer(offer_id, "decline")
+        offer_data = await self._do_action_with_offer(offer_id, "decline", payload, headers)
         resp_offer_id = int(offer_data.get("tradeofferid", 0))
         if not resp_offer_id or resp_offer_id != offer_id:
             raise ApiError(f"Failed to decline trade offer", data=offer_data)
@@ -431,14 +509,34 @@ class TradeMixin:
         await self.remove_trade_offer(offer_id, to_remove)  # remove after making sure that all is okay
 
     @overload
-    async def accept_trade_offer(self, offer: TradeOffer):
+    async def accept_trade_offer(
+        self,
+        offer: TradeOffer,
+        *,
+        payload: T_PAYLOAD = ...,
+        headers: T_HEADERS = ...,
+    ):
         ...
 
     @overload
-    async def accept_trade_offer(self, offer: int, partner: int = ...):
+    async def accept_trade_offer(
+        self,
+        offer: int,
+        partner: int = ...,
+        *,
+        payload: T_PAYLOAD = ...,
+        headers: T_HEADERS = ...,
+    ):
         ...
 
-    async def accept_trade_offer(self: "SteamCommunityMixin", offer: int | TradeOffer, partner: int = None):
+    async def accept_trade_offer(
+        self: "SteamCommunityMixin",
+        offer: int | TradeOffer,
+        partner: int = None,
+        *,
+        payload: T_PAYLOAD = {},
+        headers: T_HEADERS = {},
+    ):
         """
         Accept trade offer, yes. Remove offer from cache.
 
@@ -450,7 +548,8 @@ class TradeMixin:
 
         :param offer: `TradeOffer` or trade offer id
         :param partner: partner account id (id32) or steam id (id64)
-        :raises ConfirmationError: if confirmation can't be found or while do action with
+        :param payload: extra payload data
+        :param headers: extra headers to send with request
         :raises ApiError: if there is error when trying to fetch `TradeOffer`
         """
 
@@ -475,9 +574,10 @@ class TradeMixin:
             "serverid": 1,
             "partner": partner,
             "captcha": "",
+            **payload,
         }
         url_base = STEAM_URL.TRADE / str(offer_id)
-        r = await self.session.post(url_base / "accept", data=data, headers={"Referer": str(url_base)})
+        r = await self.session.post(url_base / "accept", data=data, headers={"Referer": str(url_base), **headers})
         rj: dict = await r.json()
         if rj.get("needs_mobile_confirmation"):
             await self.confirm_trade_offer(offer_id)
@@ -495,6 +595,8 @@ class TradeMixin:
         token: str = ...,
         confirm: bool = ...,
         countered_id: int = ...,
+        payload: T_PAYLOAD = ...,
+        headers: T_HEADERS = ...,
     ) -> int:
         ...
 
@@ -508,6 +610,8 @@ class TradeMixin:
         *,
         confirm: bool = ...,
         countered_id: int = ...,
+        payload: T_PAYLOAD = ...,
+        headers: T_HEADERS = ...,
     ) -> int:
         ...
 
@@ -521,7 +625,8 @@ class TradeMixin:
         token: str = None,
         confirm=True,
         countered_id: int = None,
-        **kwargs: T_KWARGS,
+        payload: T_PAYLOAD = {},
+        headers: T_HEADERS = {},
     ) -> int:
         """
         Make (send) steam trade offer to partner.
@@ -535,7 +640,8 @@ class TradeMixin:
         :param message: message to the partner
         :param confirm: auto-confirm offer
         :param countered_id: id of offer that you want to counter. Use `counter_trade_offer` method for this
-        :param kwargs: additional data to send in payload
+        :param payload: extra payload data
+        :param headers: extra headers to send with request
         :return: trade offer id
         :raises ValueError: trade is empty
         """
@@ -565,13 +671,12 @@ class TradeMixin:
             ),
             "captcha": "",
             "trade_offer_create_params": jdumps(offer_params),
-            **kwargs,
+            **payload,
         }
         if countered_id:
             data["tradeofferid_countered"] = countered_id
 
-        headers = {"Referer": str(referer)}
-        r = await self.session.post(base_url / "send", data=data, headers=headers)
+        r = await self.session.post(base_url / "send", data=data, headers={"Referer": str(referer), **headers})
         rj = await r.json()
         offer_id = int(rj["tradeofferid"])
         if confirm and rj.get("needs_mobile_confirmation"):
@@ -612,6 +717,8 @@ class TradeMixin:
         message="",
         *,
         confirm: bool = ...,
+        payload: T_PAYLOAD = ...,
+        headers: T_HEADERS = ...,
     ) -> int:
         ...
 
@@ -625,6 +732,8 @@ class TradeMixin:
         *,
         partner_id: int,
         confirm: bool = ...,
+        payload: T_PAYLOAD = ...,
+        headers: T_HEADERS = ...,
     ) -> int:
         ...
 
@@ -637,7 +746,8 @@ class TradeMixin:
         *,
         partner_id: int = None,
         confirm=True,
-        **kwargs: T_KWARGS,
+        payload: T_PAYLOAD = {},
+        headers: T_HEADERS = {},
     ) -> CORO[int]:
         """
         Counter trade offer with another.
@@ -648,7 +758,9 @@ class TradeMixin:
         :param message:
         :param partner_id:
         :param confirm:
-        :return:
+        :param payload: extra payload data
+        :param headers: extra headers to send with request
+        :return: trade offer id
         """
 
         if isinstance(obj, TradeOffer):
@@ -669,5 +781,6 @@ class TradeMixin:
             message,
             confirm=confirm,
             countered_id=offer_id,
-            **kwargs,
+            payload=payload,
+            headers=headers,
         )

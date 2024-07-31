@@ -179,7 +179,7 @@ class SteamCommunityMixin(
 
     async def get_wallet_balance(self) -> int:
         """
-        Fetch wallet balance
+        Fetch wallet balance.
 
         :raises ApiError:
         """
@@ -230,7 +230,7 @@ class SteamCommunityMixin(
         """
         Register new api key, cache it and return.
 
-        :param domain: On which domain api key will be registered
+        :param domain: on which domain api key will be registered
         :return: api key
         """
 

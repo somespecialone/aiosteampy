@@ -248,3 +248,4 @@ class STEAM_URL:
 
 T_PARAMS: TypeAlias = Mapping[str, int | str | float]
 T_PAYLOAD: TypeAlias = Mapping[str, str | int | float | bool | None | list | Mapping]
+T_HEADERS: TypeAlias = Mapping[str, str]

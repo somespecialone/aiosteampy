@@ -21,7 +21,7 @@ from .models import (
 )
 from .decorators import wallet_currency_required
 from .typed import WalletInfo
-from .constants import STEAM_URL, GameType, MarketListingStatus, MarketHistoryEventType, T_PARAMS, T_PAYLOAD
+from .constants import STEAM_URL, GameType, MarketListingStatus, MarketHistoryEventType, T_PARAMS, T_PAYLOAD, T_HEADERS
 from .utils import create_ident_code, buyer_pays_to_receive
 
 if TYPE_CHECKING:
@@ -48,7 +48,7 @@ class MarketMixin:
         *,
         price: int,
         payload: T_PAYLOAD = ...,
-        **headers: str,
+        headers: T_HEADERS = ...,
     ) -> int:
         ...
 
@@ -60,7 +60,7 @@ class MarketMixin:
         price: int,
         confirm: Literal[False] = ...,
         payload: T_PAYLOAD = ...,
-        **headers: str,
+        headers: T_HEADERS = ...,
     ) -> None:
         ...
 
@@ -71,7 +71,7 @@ class MarketMixin:
         *,
         to_receive: int,
         payload: T_PAYLOAD = ...,
-        **headers: str,
+        headers: T_HEADERS = ...,
     ) -> int:
         ...
 
@@ -83,7 +83,7 @@ class MarketMixin:
         to_receive: int,
         confirm: Literal[False] = ...,
         payload: T_PAYLOAD = ...,
-        **headers: str,
+        headers: T_HEADERS = ...,
     ) -> None:
         ...
 
@@ -95,7 +95,7 @@ class MarketMixin:
         *,
         price: int,
         payload: T_PAYLOAD = ...,
-        **headers: str,
+        headers: T_HEADERS = ...,
     ) -> int:
         ...
 
@@ -108,7 +108,7 @@ class MarketMixin:
         price: int,
         confirm: Literal[False] = ...,
         payload: T_PAYLOAD = ...,
-        **headers: str,
+        headers: T_HEADERS = ...,
     ) -> None:
         ...
 
@@ -120,7 +120,7 @@ class MarketMixin:
         *,
         to_receive: int,
         payload: T_PAYLOAD = ...,
-        **headers: str,
+        headers: T_HEADERS = ...,
     ) -> int:
         ...
 
@@ -133,7 +133,7 @@ class MarketMixin:
         to_receive: int,
         confirm: Literal[False] = ...,
         payload: T_PAYLOAD = ...,
-        **headers: str,
+        headers: T_HEADERS = ...,
     ) -> None:
         ...
 
@@ -145,8 +145,8 @@ class MarketMixin:
         price: int = None,
         to_receive: int = None,
         confirm=True,
-        payload: T_PAYLOAD = None,
-        **headers: str,
+        payload: T_PAYLOAD = {},
+        headers: T_HEADERS = {},
     ) -> int | None:
         """
         Create and place sell listing.
@@ -180,7 +180,7 @@ class MarketMixin:
             "appid": game[0],
             "amount": 1,
             "price": to_receive,
-            **(payload or {}),
+            **payload,
         }
         headers = {"Referer": str(STEAM_URL.COMMUNITY / f"profiles/{self.steam_id}/inventory"), **headers}
         r = await self.session.post(STEAM_URL.MARKET / "sellitem/", data=data, headers=headers)
@@ -198,8 +198,8 @@ class MarketMixin:
         self: "SteamCommunityMixin",
         obj: MyMarketListing | int,
         *,
-        payload: T_PAYLOAD = None,
-        **headers: str,
+        payload: T_PAYLOAD = {},
+        headers: T_HEADERS = {},
     ):
         """
         Just cancel sell listing.
@@ -210,7 +210,7 @@ class MarketMixin:
         """
 
         listing_id: int = obj.id if isinstance(obj, MyMarketListing) else obj
-        data = {"sessionid": self.session_id, **(payload or {})}
+        data = {"sessionid": self.session_id, **payload}
         headers = {"Referer": str(STEAM_URL.MARKET), **headers}
         return self.session.post(STEAM_URL.MARKET / f"removelisting/{listing_id}", data=data, headers=headers)
 
@@ -222,7 +222,7 @@ class MarketMixin:
         price: int,
         quantity: int = ...,
         payload: T_PAYLOAD = ...,
-        **headers: str,
+        headers: T_HEADERS = ...,
     ) -> int:
         ...
 
@@ -235,7 +235,7 @@ class MarketMixin:
         price: int,
         quantity: int = ...,
         payload: T_PAYLOAD = ...,
-        **headers: str,
+        headers: T_HEADERS = ...,
     ) -> int:
         ...
 
@@ -247,8 +247,8 @@ class MarketMixin:
         *,
         price: int,
         quantity=1,
-        payload: T_PAYLOAD = None,
-        **headers: str,
+        payload: T_PAYLOAD = {},
+        headers: T_HEADERS = {},
     ) -> int:
         """
         Place buy order on market.
@@ -276,7 +276,7 @@ class MarketMixin:
             "market_hash_name": name,
             "price_total": price * quantity,
             "quantity": quantity,
-            **(payload or {}),
+            **payload,
         }
         headers = {"Referer": str(STEAM_URL.MARKET / f"listings/{app_id}/{name}"), **headers}
         r = await self.session.post(STEAM_URL.MARKET / "createbuyorder/", data=data, headers=headers)
@@ -293,8 +293,8 @@ class MarketMixin:
         self: "SteamCommunityMixin",
         order: int | BuyOrder,
         *,
-        payload: T_PAYLOAD = None,
-        **headers: str,
+        payload: T_PAYLOAD = {},
+        headers: T_HEADERS = {},
     ):
         """
         Just cancel buy order.
@@ -310,7 +310,7 @@ class MarketMixin:
         else:
             order_id = order
 
-        data = {"sessionid": self.session_id, "buy_orderid": order_id, **(payload or {})}
+        data = {"sessionid": self.session_id, "buy_orderid": order_id, **payload}
         headers = {"Referer": str(STEAM_URL.MARKET), **headers}
         r = await self.session.post(STEAM_URL.MARKET / "cancelbuyorder/", data=data, headers=headers)
         rj = await r.json()
@@ -324,8 +324,8 @@ class MarketMixin:
         self: "SteamCommunityMixin",
         *,
         page_size=100,
-        params: T_PARAMS = None,
-        **headers: str,
+        params: T_PARAMS = {},
+        headers: T_HEADERS = {},
     ) -> MY_LISTINGS:
         """
         Fetch users market listings.
@@ -339,7 +339,7 @@ class MarketMixin:
         """
 
         url = STEAM_URL.MARKET / "mylistings"
-        params = {"norender": 1, "start": 0, "count": page_size, **(params or {})}
+        params = {"norender": 1, "start": 0, "count": page_size, **params}
         active = []
         to_confirm = []
         buy_orders = []
@@ -453,7 +453,7 @@ class MarketMixin:
         listing: MarketListing,
         *,
         payload: T_PAYLOAD = ...,
-        **headers: str,
+        headers: T_HEADERS = ...,
     ) -> WalletInfo:
         ...
 
@@ -467,7 +467,7 @@ class MarketMixin:
         *,
         fee: int = ...,
         payload: T_PAYLOAD = ...,
-        **headers: str,
+        headers: T_HEADERS = ...,
     ) -> WalletInfo:
         ...
 
@@ -480,8 +480,8 @@ class MarketMixin:
         game: GameType = None,
         *,
         fee: int = None,
-        payload: T_PAYLOAD = None,
-        **headers: str,
+        payload: T_PAYLOAD = {},
+        headers: T_HEADERS = {},
     ) -> WalletInfo:
         """
         Buy item listing from market.
@@ -527,7 +527,7 @@ class MarketMixin:
             "fee": fee,
             "total": price + fee,
             "quantity": 1,
-            **(payload or {}),
+            **payload,
         }
         headers = {"Referer": str(STEAM_URL.MARKET / f"listings/{game[0]}/{market_hash_name}"), **headers}
         r = await self.session.post(STEAM_URL.MARKET / f"buylisting/{listing_id}", data=data, headers=headers)
@@ -547,11 +547,11 @@ class MarketMixin:
         *,
         predicate: PREDICATE = None,
         page_size=500,
-        params: T_PARAMS = None,
-        **headers: str,
+        params: T_PARAMS = {},
+        headers: T_HEADERS = {},
     ) -> list[MarketHistoryEvent]:
         """
-        Fetch market history of the user
+        Fetch market history of the user.
 
         :param predicate:
         :param page_size:
@@ -560,7 +560,7 @@ class MarketMixin:
         """
 
         url = STEAM_URL.MARKET / "myhistory"
-        params = {"norender": 1, "start": 0, "count": page_size, **(params or {})}
+        params = {"norender": 1, "start": 0, "count": page_size, **params}
         events = []
         item_descrs_map = {}  # ident code: ... , shared classes within whole listings
         econ_item_map = {}  # ident code: ...
@@ -676,7 +676,7 @@ class MarketMixin:
         obj: ItemDescription | EconItem,
         *,
         params: T_PARAMS = ...,
-        **headers: str,
+        headers: T_HEADERS = ...,
     ) -> list[PriceHistoryEntry]:
         ...
 
@@ -687,7 +687,7 @@ class MarketMixin:
         app_id: int,
         *,
         params: T_PARAMS = ...,
-        **headers: str,
+        headers: T_HEADERS = ...,
     ) -> list[PriceHistoryEntry]:
         ...
 
@@ -696,8 +696,8 @@ class MarketMixin:
         obj: str,
         app_id: int = None,
         *,
-        params: T_PARAMS = None,
-        **headers: str,
+        params: T_PARAMS = {},
+        headers: T_HEADERS = {},
     ) -> list[PriceHistoryEntry]:
         """
         Fetch price history.
@@ -721,7 +721,7 @@ class MarketMixin:
         else:  # str
             name = obj
 
-        params = {"appid": app_id, "market_hash_name": name, **(params or {})}
+        params = {"appid": app_id, "market_hash_name": name, **params}
         r = await self.session.get(STEAM_URL.MARKET / "pricehistory", params=params, headers=headers)
         rj: dict[str, list[list]] = await r.json()
         success = rj.get("success")

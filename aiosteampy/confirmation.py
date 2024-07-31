@@ -80,7 +80,6 @@ class ConfirmationMixin:
         :param obj: `MyMarketListing` or `EconItem` that you listed or listing id or asset id
         :param game: `Game` or tuple with app and context id ints. Required when `obj` is asset id
         :return: listing id
-        :raises ConfirmationError:
         """
 
         update = False
@@ -108,7 +107,6 @@ class ConfirmationMixin:
 
         :param offer: trade offer id or `TradeOffer`
         :return: trade id
-        :raises ConfirmationError:
         """
 
         conf = await self.get_or_fetch_confirmation(offer.id if isinstance(offer, TradeOffer) else offer)
@@ -145,7 +143,6 @@ class ConfirmationMixin:
 
         :param predicate: callable with single argument `Confirmation`, must return boolean
         :return: list of allowed confirmations
-        :raises ConfirmationError:
         :raises ApiError:
         """
 
@@ -165,7 +162,6 @@ class ConfirmationMixin:
 
         :param conf: `Confirmation` that you wand to proceed
         :param tag: string literal of conf tag. Can be 'allow' or 'cancel'
-        :raises ConfirmationError:
         """
 
         params = await self._create_confirmation_params(tag)
@@ -195,7 +191,6 @@ class ConfirmationMixin:
 
         :param confs: list of `Confirmation` that you wand to proceed
         :param tag: string literal of conf tag. Can be 'allow' or 'cancel'
-        :raises ConfirmationError:
         """
 
         data = await self._create_confirmation_params(tag)

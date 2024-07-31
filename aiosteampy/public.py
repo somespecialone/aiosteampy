@@ -13,7 +13,7 @@ from .models import (
     MarketListingItem,
     ITEM_DESCR_TUPLE,
 )
-from .constants import STEAM_URL, Game, Currency, GameType, Language, T_PARAMS
+from .constants import STEAM_URL, Game, Currency, GameType, Language, T_PARAMS, T_HEADERS
 from .typed import ItemOrdersHistogram, ItemOrdersActivity, PriceOverview
 from .exceptions import ApiError
 from .utils import create_ident_code, find_item_nameid_in_text
@@ -41,8 +41,8 @@ class SteamPublicMixin:
         *,
         predicate: PREDICATE = None,
         page_size=INV_PAGE_SIZE,
-        params: T_PARAMS = None,
-        **headers: str,
+        params: T_PARAMS = {},
+        headers: T_HEADERS = {},
     ) -> list[EconItem]:
         """
         Fetches inventory of user.
@@ -58,7 +58,7 @@ class SteamPublicMixin:
         """
 
         inv_url = INVENTORY_URL / f"{steam_id}/"
-        params = {"l": self.language, "count": page_size, **(params or {})}
+        params = {"l": self.language, "count": page_size, **params}
         headers = {"Referer": str(inv_url), **headers}
         url = inv_url / f"{game[0]}/{game[1]}"
 
@@ -193,8 +193,8 @@ class SteamPublicMixin:
         lang: Language = None,
         country: str = None,
         currency: Currency = None,
-        params: T_PARAMS = None,
-        **headers: str,
+        params: T_PARAMS = {},
+        headers: T_HEADERS = {},
     ) -> ItemOrdersHistogram:
         """
         Do what described in method name.
@@ -221,7 +221,7 @@ class SteamPublicMixin:
             "country": country or self.country,
             "currency": currency or self.currency,
             "item_nameid": item_nameid,
-            **(params or {}),
+            **params,
         }
         r = await self.session.get(STEAM_URL.MARKET / "itemordershistogram", params=params, headers=headers)
         rj: ItemOrdersHistogram = await r.json()
@@ -240,8 +240,8 @@ class SteamPublicMixin:
         lang: Language = None,
         country: str = None,
         currency: Currency = None,
-        params: T_PARAMS = None,
-        **headers: str,
+        params: T_PARAMS = {},
+        headers: T_HEADERS = {},
     ) -> ItemOrdersActivity:
         """
         Do what described in method name.
@@ -266,7 +266,7 @@ class SteamPublicMixin:
             "country": country or self.country,
             "currency": currency or self.currency,
             "item_nameid": item_name_id,
-            **(params or {}),
+            **params,
         }
         r = await self.session.get(STEAM_URL.MARKET / "itemordersactivity", params=params, headers=headers)
         rj: ItemOrdersActivity = await r.json()
@@ -286,7 +286,7 @@ class SteamPublicMixin:
         country: str = ...,
         currency: Currency = ...,
         params: T_PARAMS = ...,
-        **headers: str,
+        headers: T_HEADERS = ...,
     ) -> PriceOverview:
         ...
 
@@ -299,7 +299,7 @@ class SteamPublicMixin:
         country: str = ...,
         currency: Currency = ...,
         params: T_PARAMS = ...,
-        **headers: str,
+        headers: T_HEADERS = ...,
     ) -> PriceOverview:
         ...
 
@@ -310,8 +310,8 @@ class SteamPublicMixin:
         *,
         country: str = None,
         currency: Currency = None,
-        params: T_PARAMS = None,
-        **headers: str,
+        params: T_PARAMS = {},
+        headers: T_HEADERS = {},
     ) -> PriceOverview:
         """
         Fetch price data.
@@ -339,7 +339,7 @@ class SteamPublicMixin:
             "currency": currency or self.currency,
             "market_hash_name": name,
             "appid": app_id,
-            **(params or {}),
+            **params,
         }
         r = await self.session.get(STEAM_URL.MARKET / "priceoverview", params=params, headers=headers)
         rj: PriceOverview = await r.json()
@@ -362,7 +362,7 @@ class SteamPublicMixin:
         start: int = ...,
         count: int = ...,
         params: T_PARAMS = ...,
-        **headers: str,
+        headers: T_HEADERS = ...,
     ) -> ITEM_MARKET_LISTINGS_DATA:
         ...
 
@@ -378,7 +378,7 @@ class SteamPublicMixin:
         start: int = ...,
         count: int = ...,
         params: T_PARAMS = ...,
-        **headers: str,
+        headers: T_HEADERS = ...,
     ) -> ITEM_MARKET_LISTINGS_DATA:
         ...
 
@@ -393,8 +393,8 @@ class SteamPublicMixin:
         query="",
         start: int = 0,
         count: int = 10,
-        params: T_PARAMS = None,
-        **headers: str,
+        params: T_PARAMS = {},
+        headers: T_HEADERS = {},
     ) -> ITEM_MARKET_LISTINGS_DATA:
         """
         Fetch item listings from market.
@@ -430,7 +430,7 @@ class SteamPublicMixin:
             "start": start,
             "count": count,
             "language": lang or self.language,
-            **(params or {}),
+            **params,
         }
         r = await self.session.get(
             base_url / "render/",
@@ -507,20 +507,37 @@ class SteamPublicMixin:
                         )
 
     @overload
-    async def get_item_nameid(self: "SteamPublicClient", obj: ItemDescription | EconItem) -> int:
+    async def get_item_nameid(
+        self: "SteamPublicClient",
+        obj: ItemDescription | EconItem,
+        *,
+        headers: T_HEADERS = ...,
+    ) -> int:
         ...
 
     @overload
-    async def get_item_nameid(self: "SteamPublicClient", obj: str, app_id: int) -> int:
+    async def get_item_nameid(
+        self: "SteamPublicClient",
+        obj: str,
+        app_id: int,
+        *,
+        headers: T_HEADERS = ...,
+    ) -> int:
         ...
 
     async def get_item_nameid(
         self: "SteamPublicClient",
         obj: str | ItemDescription | EconItem,
         app_id: int = None,
+        *,
+        headers: T_HEADERS = {},
     ) -> int:
         """
         Get `item_name_id` from item Steam Community Market page.
+
+        :param obj: `ItemDescription` , `EconItem` or `market_hash_name` of Steam Market item
+        :param app_id:
+        :param headers: extra headers to send with request
 
         .. seealso:: https://github.com/somespecialone/steam-item-name-ids
         """
@@ -530,7 +547,7 @@ class SteamPublicMixin:
         else:  # str
             url = STEAM_URL.MARKET / f"listings/{app_id}/{obj}"
 
-        res = await self.session.get(url)
+        res = await self.session.get(url, headers=headers)
         text = await res.text()
 
         return find_item_nameid_in_text(text)

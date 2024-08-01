@@ -6,7 +6,7 @@ from base64 import b64encode
 from aiohttp import ClientResponseError
 from rsa import PublicKey, encrypt
 
-from .exceptions import ApiError
+from .exceptions import LoginError
 from .constants import STEAM_URL
 from .utils import get_cookie_value_from_session, generate_session_id
 
@@ -61,7 +61,7 @@ class LoginMixin:
         :param init_data: fetch initial required data (api key, trade token, wallet_currency/wallet_country)
         :param init_session: init session before start auth process.
             Set this to False if you already make requests to steam from current client.
-        :raises ApiError: when failed to obtain rsa key, update steam guard code
+        :raises EResultError: when failed to obtain rsa key, update steam guard code
         :raises LoginError: other login process errors
         """
 
@@ -101,7 +101,7 @@ class LoginMixin:
         # https://github.com/DoctorMcKay/node-steam-session/blob/698469cdbad3e555dda10c81f580f1ee3960156f/src/LoginSession.ts#L864
         # make sure that `steamLoginSecure` cookie is present
         if not r.cookies.get("steamLoginSecure"):
-            raise ApiError("`steamLoginSecure` cookie is not present in result")
+            raise LoginError("`steamLoginSecure` cookie is not present in result", r.cookies)
 
         return r.cookies
 
@@ -172,8 +172,8 @@ class LoginMixin:
                 data=data,
                 headers=REFERER_HEADER,
             )
-        except ClientResponseError:
-            raise ApiError("Error updating steam guard code")
+        except ClientResponseError as e:
+            raise LoginError("Error updating steam guard code") from e
 
     async def _poll_auth_session_status(self: "SteamCommunityMixin", session_resp: dict):
         data = {
@@ -187,7 +187,7 @@ class LoginMixin:
         )
         rj = await r.json()
         if rj.get("response", {"had_remote_interaction": True})["had_remote_interaction"]:
-            raise ApiError("Error polling auth session status", rj)
+            raise LoginError("Error polling auth session status", rj)
 
         self._refresh_token = rj["response"]["refresh_token"]
         self._access_token = rj["response"]["access_token"]
@@ -205,9 +205,9 @@ class LoginMixin:
         )
         rj: dict = await r.json()
         if rj and rj.get("error"):
-            raise ApiError("Get error response when performing login finalization", data=rj)
+            raise LoginError("Get error response when performing login finalization", rj)
         elif not rj or not rj.get("transfer_info"):
-            raise ApiError("Malformed login response", data=rj)
+            raise LoginError("Malformed login response", rj)
 
         return rj
 
@@ -225,7 +225,7 @@ class LoginMixin:
             return PublicKey(rsa_mod, rsa_exp), rsa_timestamp
 
         except KeyError:
-            raise ApiError("Could not obtain rsa-key.", rj)
+            raise LoginError("Could not obtain rsa-key", rj)
 
     async def logout(self: "SteamCommunityMixin") -> None:
         await self.session.post(
@@ -248,6 +248,6 @@ class LoginMixin:
     #     try:
     #         self._access_token = rj["response"]["access_token"]
     #     except KeyError:
-    #         raise ApiError("Can't renew access token.", rj)
+    #         raise EResultError("Can't renew access token.", rj)
     #
     #     return self._access_token

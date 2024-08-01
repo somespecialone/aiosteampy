@@ -13,15 +13,15 @@ from .models import (
     MarketListingItem,
     ITEM_DESCR_TUPLE,
 )
-from .constants import STEAM_URL, Game, Currency, GameType, Language, T_PARAMS, T_HEADERS
+from .constants import STEAM_URL, Game, Currency, GameType, Language, T_PARAMS, T_HEADERS, EResult
 from .typed import ItemOrdersHistogram, ItemOrdersActivity, PriceOverview
-from .exceptions import ApiError
+from .exceptions import EResultError, SteamError
 from .utils import create_ident_code, find_item_nameid_in_text
 
 if TYPE_CHECKING:
     from .client import SteamPublicClient
 
-INV_PAGE_SIZE = 2000  # steam limit rule
+INV_PAGE_SIZE = 5000  # steam limit rule
 INVENTORY_URL = STEAM_URL.COMMUNITY / "inventory"
 PREDICATE: TypeAlias = Callable[[EconItem], bool]
 ITEM_MARKET_LISTINGS_DATA: TypeAlias = tuple[list[MarketListing], int]
@@ -34,6 +34,7 @@ class SteamPublicMixin:
 
     # init method with attr in client
 
+    # TODO pagination
     async def get_user_inventory(
         self: "SteamPublicClient",
         steam_id: int,
@@ -54,7 +55,7 @@ class SteamPublicMixin:
         :param params: extra params to pass to url
         :param headers: extra headers to send with request
         :return: list of `EconItem`
-        :raises ApiError: if response data `success` is False or user inventory is private
+        :raises EResultError:
         """
 
         inv_url = INVENTORY_URL / f"{steam_id}/"
@@ -86,14 +87,12 @@ class SteamPublicMixin:
         try:
             r = await self.session.get(url, params=params, headers=headers)
         except ClientResponseError as e:
-            raise ApiError("User inventory is private") if e.status == 403 else e
+            raise SteamError("User inventory is private") if e.status == 403 else e
 
         rj: dict[str, list[dict]] = await r.json()
-        success = rj.get("success")
-        if success is None:
-            raise ApiError("Failed to fetch inventory", data=rj)
-        elif success != 1:
-            raise ApiError(rj["message"], success)
+        success = EResult(rj.get("success"))
+        if success is not EResult.OK:
+            raise EResultError(rj.get("message", "Failed to fetch inventory"), success, rj)
 
         return rj
 
@@ -212,7 +211,7 @@ class SteamPublicMixin:
         :param params: extra params to pass to url
         :param headers: extra headers to send with request
         :return: `ItemOrdersHistogram` dict
-        :raises ApiError:
+        :raises EResultError:
         """
 
         params = {
@@ -225,11 +224,9 @@ class SteamPublicMixin:
         }
         r = await self.session.get(STEAM_URL.MARKET / "itemordershistogram", params=params, headers=headers)
         rj: ItemOrdersHistogram = await r.json()
-        success = rj.get("success")
-        if success is None:
-            raise ApiError("Failed to fetch items order histogram", data=rj)
-        elif success != 1:
-            raise ApiError(rj["message"], success)
+        success = EResult(rj.get("success"))
+        if success is not EResult.OK:
+            raise EResultError(rj.get("message", "Failed to fetch items order histogram"), success, rj)
 
         return rj
 
@@ -257,7 +254,7 @@ class SteamPublicMixin:
         :param params: extra params to pass to url
         :param headers: extra headers to send with request
         :return: `ItemOrdersActivity` dict
-        :raises ApiError:
+        :raises EResultError:
         """
 
         params = {
@@ -270,11 +267,9 @@ class SteamPublicMixin:
         }
         r = await self.session.get(STEAM_URL.MARKET / "itemordersactivity", params=params, headers=headers)
         rj: ItemOrdersActivity = await r.json()
-        success = rj.get("success")
-        if success is None:
-            raise ApiError("Failed to fetch items order activity", data=rj)
-        elif success != 1:
-            raise ApiError(rj["message"], success)
+        success = EResult(rj.get("success"))
+        if success is not EResult.OK:
+            raise EResultError(rj.get("message", "Failed to fetch items order activity"), success, rj)
 
         return rj
 
@@ -325,7 +320,7 @@ class SteamPublicMixin:
         :param params: extra params to pass to url
         :param headers: extra headers to send with request
         :return: `PriceOverview` dict
-        :raises ApiError:
+        :raises EResultError:
         """
 
         if isinstance(obj, ITEM_DESCR_TUPLE):
@@ -343,11 +338,9 @@ class SteamPublicMixin:
         }
         r = await self.session.get(STEAM_URL.MARKET / "priceoverview", params=params, headers=headers)
         rj: PriceOverview = await r.json()
-        success = rj.get("success")
-        if success is None:
-            raise ApiError("Failed to fetch price overview", data=rj)
-        elif success != 1:
-            raise ApiError(rj["message"], success)
+        success = EResult(rj.get("success"))
+        if success is not EResult.OK:
+            raise EResultError(rj.get("message", "Failed to fetch price overview"), success, rj)
 
         return rj
 
@@ -398,7 +391,8 @@ class SteamPublicMixin:
     ) -> ITEM_MARKET_LISTINGS_DATA:
         """
         Fetch item listings from market.
-        You can paginate by yourself passing `start` arg.
+
+        .. note:: You can paginate by yourself passing `start` arg.
 
         .. warning:: This request is rate limited by Steam.
 
@@ -413,7 +407,7 @@ class SteamPublicMixin:
         :param params: extra params to pass to url
         :param headers: extra headers to send with request
         :return: list of `MarketListing`, total listings count
-        :raises ApiError:
+        :raises EResultError:
         """
 
         if isinstance(obj, ITEM_DESCR_TUPLE):
@@ -441,11 +435,9 @@ class SteamPublicMixin:
             return [], 0
 
         rj: dict[str, int | dict[str, dict]] = await r.json()
-        success = rj.get("success")
-        if success is None:
-            raise ApiError("Failed to fetch item listings", data=rj)
-        elif success != 1:
-            raise ApiError(rj["message"], success)
+        success = EResult(rj.get("success"))
+        if success is not EResult.OK:
+            raise EResultError(rj.get("message", "Failed to fetch item listings"), success, rj)
         elif not rj["total_count"] or not rj["assets"]:
             return [], 0
 

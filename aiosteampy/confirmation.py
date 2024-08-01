@@ -4,8 +4,8 @@ from re import compile
 from datetime import datetime
 
 from .models import Confirmation, MyMarketListing, EconItem, TradeOffer, EconItemType
-from .constants import STEAM_URL, ConfirmationType, GameType, CORO
-from .exceptions import ApiError
+from .constants import STEAM_URL, ConfirmationType, GameType, CORO, EResult
+from .exceptions import EResultError
 from .decorators import identity_secret_required
 from .utils import create_ident_code
 
@@ -26,6 +26,7 @@ class ConfirmationMixin:
 
     __slots__ = ()
 
+    # TODO remove storage methods
     async def remove_confirmation(self, id_or_ident: str | int, conf: Confirmation):
         """
         Remove confirmation silently from cache.
@@ -133,7 +134,7 @@ class ConfirmationMixin:
         :param update:
         :return: Confirmation
         :raises KeyError: when unable to find confirmation by key
-        :raises ApiError:
+        :raises EResultError:
         """
 
         conf = await self.get_confirmation(key)
@@ -155,7 +156,7 @@ class ConfirmationMixin:
 
         :param predicate: callable with single argument `Confirmation`, must return boolean
         :return: list of allowed confirmations
-        :raises ApiError:
+        :raises EResultError:
         """
 
         confs = await self.fetch_confirmations(predicate=predicate)
@@ -182,11 +183,9 @@ class ConfirmationMixin:
         rj = await r.json()
         await self.remove_confirmation(conf.asset_ident_code or conf.creator_id, conf)  # delete before raise error
 
-        success = rj.get("success")
-        if success is None:
-            raise ApiError("Failed to perform confirmation action", data=rj)
-        elif success != 1:
-            raise ApiError(rj["message"], success)
+        success = EResult(rj.get("success"))
+        if success is not EResult.OK:
+            raise EResultError(rj.get("message", "Failed to perform confirmation action"), success, rj)
 
     def allow_multiple_confirmations(self, confs: list[Confirmation]) -> CORO[None]:
         """Shorthand for `send_multiple_confirmations(conf, 'allow')`."""
@@ -211,11 +210,9 @@ class ConfirmationMixin:
         rj: dict = await r.json()
         # delete before raise error
         await self.remove_multiple_confirmations([c.asset_ident_code or c.creator_id for c in confs], confs)
-        success = rj.get("success")
-        if success is None:
-            raise ApiError("Failed to perform action for multiple confirmations", data=rj)
-        elif success != 1:
-            raise ApiError(rj["message"], success)
+        success = EResult(rj.get("success"))
+        if success is not EResult.OK:
+            raise EResultError(rj.get("message", "Failed to perform action for multiple confirmations"), success, rj)
 
     @identity_secret_required
     async def fetch_confirmations(
@@ -232,18 +229,16 @@ class ConfirmationMixin:
             Requires to bind newly created sell listing to confirmation.
             You definitely don't need this
         :return: list of `Confirmation`
-        :raises ApiError:
+        :raises EResultError:
         """
 
         tag = "getlist"
         params = await self._create_confirmation_params(tag)
         r = await self.session.get(CONF_URL / tag, params=params)
         rj: dict = await r.json()
-        success = rj.get("success")
-        if success is None:
-            raise ApiError("Failed to fetch confirmations", data=rj)
-        elif success != 1:
-            raise ApiError(rj["message"], success)
+        success = EResult(rj.get("success"))
+        if success is not EResult.OK:
+            raise EResultError(rj.get("message", "Failed to fetch confirmations"), success, rj)
 
         confs = []
         if "conf" in rj:
@@ -282,11 +277,9 @@ class ConfirmationMixin:
         params = await self._create_confirmation_params(f"details{conf.id}")
         r = await self.session.get(CONF_URL / f"details/{conf.id}", params=params)
         rj = await r.json()
-        success = rj.get("success")
-        if success is None:
-            raise ApiError("Failed to fetch confirmation details", data=rj)
-        elif success != 1:
-            raise ApiError(rj["message"], success)
+        success = EResult(rj.get("success"))
+        if success is not EResult.OK:
+            raise EResultError(rj.get("message", "Failed to fetch confirmation details"), success, rj)
 
         data: dict = loads(ITEM_INFO_RE.search(rj["html"])["item_info"])
         conf.asset_ident_code = create_ident_code(data["id"], data["appid"], data["contextid"])

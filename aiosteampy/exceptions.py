@@ -1,11 +1,22 @@
-class ApiError(Exception):
-    """Raises when there is a problem with calling steam web/api methods (mostly due to `success` field)"""
+from constants import EResult
 
-    def __init__(self, msg: str, error_code: int | None = None, data=None):
+
+class SteamError(Exception):
+    """All errors related to Steam"""
+
+
+class EResultError(SteamError):
+    """Raised when Steam response data contain `success` field with error code"""
+
+    def __init__(self, msg: str, result: EResult, data=None):
         self.msg = msg
-        self.error_code = error_code
+        self.result = result
         self.data = data
 
 
-class SessionExpired(Exception):
-    """Raised when session is expired, and you need to do login."""
+class LoginError(SteamError):
+    """Raised when a problem with login process occurred"""
+
+
+class SessionExpired(SteamError):
+    """Raised when session is expired, and you need to do login"""

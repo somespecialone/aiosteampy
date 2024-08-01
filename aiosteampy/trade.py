@@ -4,8 +4,8 @@ from json import dumps as jdumps
 
 from yarl import URL
 
-from .exceptions import ApiError
-from .constants import STEAM_URL, CORO, T_HEADERS, T_PARAMS, T_PAYLOAD
+from .exceptions import EResultError, SteamError
+from .constants import STEAM_URL, CORO, T_HEADERS, T_PARAMS, T_PAYLOAD, EResult
 from .models import (
     TradeOffer,
     TradeOfferItem,
@@ -33,6 +33,7 @@ class TradeMixin:
 
     __slots__ = ()
 
+    # TODO remove storage methods
     async def remove_trade_offer(self, offer_id: int, offer: TradeOffer | None):
         """
         Remove trade offer silently from cache.
@@ -75,7 +76,7 @@ class TradeMixin:
         """
         Get specific trade from cache. Fetch it and store, if there is no one.
 
-        :raises ApiError: if there is error when trying to fetch `TradeOffer`
+        :raises EResultError: if there is error when trying to fetch `TradeOffer`
         """
 
         trade = await self.get_trade_offer(offer_id)
@@ -102,7 +103,7 @@ class TradeMixin:
         :param offer_id:
         :param params: extra params to pass to url
         :param headers: extra headers to send with request
-        :raises ApiError:
+        :raises EResultError:
         """
 
         params = {
@@ -114,11 +115,9 @@ class TradeMixin:
         }
         r = await self.session.get(STEAM_URL.API.IEconService.GetTradeOffer, params=params, headers=headers)
         rj: dict = await r.json()
-        success = rj.get("success")
-        if success is None:
-            raise ApiError("Failed to fetch trade offer", data=rj)
-        elif success != 1:
-            raise ApiError(rj["message"], success)
+        success = EResult(rj.get("success"))
+        if success is not EResult.OK:
+            raise EResultError(rj.get("message", "Failed to fetch trade offer"), success, rj)
 
         data: dict[str, dict | list[dict]] = rj["response"]
         item_descrc_map = {}
@@ -200,6 +199,7 @@ class TradeMixin:
     ) -> TRADE_OFFERS:
         ...
 
+    # TODO pagination
     @api_key_required
     async def fetch_trade_offers(
         self: "SteamCommunityMixin",
@@ -225,7 +225,7 @@ class TradeMixin:
         :param params: extra params to pass to url
         :param headers: extra headers to send with request
         :return: sent trades, received trades lists
-        :raises ApiError:
+        :raises EResultError:
         """
 
         params = {
@@ -249,11 +249,9 @@ class TradeMixin:
         while True:
             r = await self.session.get(STEAM_URL.API.IEconService.GetTradeOffers, params=params, headers=headers)
             rj = await r.json()
-            success = rj.get("success")
-            if success is None:
-                raise ApiError("Failed to fetch trade offers", data=rj)
-            elif success != 1:
-                raise ApiError(rj["message"], success)
+            success = EResult(rj.get("success"))
+            if success is not EResult.OK:
+                raise EResultError(rj.get("message", "Failed to fetch trade offers"), success, rj)
 
             data: dict[str, dict | list[dict]] = rj["response"]
             offer_sent_datas.extend(data.get("trade_offers_sent", ()))
@@ -287,7 +285,7 @@ class TradeMixin:
         :param params: extra params to pass to url
         :param headers: extra headers to send with request
         :return: trade offers summary
-        :raises ApiError:
+        :raises EResultError:
         """
 
         r = await self.session.get(
@@ -296,11 +294,9 @@ class TradeMixin:
             headers=headers,
         )
         rj: dict[str, TradeOffersSummary] = await r.json()
-        success = rj.get("success")
-        if success is None:
-            raise ApiError("Failed to fetch trade offers summary", data=rj)
-        elif success != 1:
-            raise ApiError(rj["message"], success)
+        success = EResult(rj.get("success"))
+        if success is not EResult.OK:
+            raise EResultError(rj.get("message", "Failed to fetch trade offers summary"), success, rj)
 
         return rj["response"]
 
@@ -319,7 +315,7 @@ class TradeMixin:
         :param params: extra params to pass to url
         :param headers: extra headers to send with request
         :returns HistoryTradeOffer
-        :raises ApiError:
+        :raises EResultError:
         """
 
         params = {
@@ -331,11 +327,9 @@ class TradeMixin:
         }
         r = await self.session.get(STEAM_URL.API.IEconService.GetTradeStatus, params=params, headers=headers)
         rj: dict[str, dict[str, ...]] = await r.json()
-        success = rj.get("success")
-        if success is None:
-            raise ApiError("Failed to fetch trade receipt", data=rj)
-        elif success != 1:
-            raise ApiError(rj["message"], success)
+        success = EResult(rj.get("success"))
+        if success is not EResult.OK:
+            raise EResultError(rj.get("message", "Failed to fetch trade receipt"), success, rj)
 
         item_descrs_map = {}
         self._update_item_descrs_map_for_trades(rj["response"]["descriptions"], item_descrs_map)
@@ -368,7 +362,7 @@ class TradeMixin:
         :param params: extra params to pass to url
         :param headers: extra headers to send with request
         :return: list of `HistoryTradeOffer`, total trades count
-        :raises ApiError:
+        :raises EResultError:
         """
 
         params = {
@@ -385,11 +379,9 @@ class TradeMixin:
         }
         r = await self.session.get(STEAM_URL.API.IEconService.GetTradeHistory, params=params, headers=headers)
         rj = await r.json()
-        success = rj.get("success")
-        if success is None:
-            raise ApiError("Failed to fetch trades history", data=rj)
-        elif success != 1:
-            raise ApiError(rj["message"], success)
+        success = EResult(rj.get("success"))
+        if success is not EResult.OK:
+            raise EResultError(rj.get("message", "Failed to fetch trades history"), success, rj)
 
         item_descrs_map = {}
         data: dict[str, int | bool | dict | list[dict]] = rj["response"]
@@ -459,7 +451,7 @@ class TradeMixin:
         :param offer:
         :param payload: extra payload data
         :param headers: extra headers to send with request
-        :raises ApiError:
+        :raises EResultError:
         """
 
         if isinstance(offer, TradeOffer):
@@ -473,7 +465,7 @@ class TradeMixin:
         offer_data = await self._do_action_with_offer(offer_id, "cancel", payload, headers)
         resp_offer_id = int(offer_data.get("tradeofferid", 0))
         if not resp_offer_id or resp_offer_id != offer_id:
-            raise ApiError(f"Failed to cancel trade offer", data=offer_data)
+            raise SteamError(f"Failed to cancel trade offer", offer_data)
 
         await self.remove_trade_offer(offer_id, to_remove)  # remove after making sure that all is okay
 
@@ -490,7 +482,7 @@ class TradeMixin:
         :param offer:
         :param payload: extra payload data
         :param headers: extra headers to send with request
-        :raises ApiError:
+        :raises EResultError:
         """
 
         if isinstance(offer, TradeOffer):
@@ -504,7 +496,7 @@ class TradeMixin:
         offer_data = await self._do_action_with_offer(offer_id, "decline", payload, headers)
         resp_offer_id = int(offer_data.get("tradeofferid", 0))
         if not resp_offer_id or resp_offer_id != offer_id:
-            raise ApiError(f"Failed to decline trade offer", data=offer_data)
+            raise SteamError(f"Failed to decline trade offer", offer_data)
 
         await self.remove_trade_offer(offer_id, to_remove)  # remove after making sure that all is okay
 
@@ -550,7 +542,7 @@ class TradeMixin:
         :param partner: partner account id (id32) or steam id (id64)
         :param payload: extra payload data
         :param headers: extra headers to send with request
-        :raises ApiError: if there is error when trying to fetch `TradeOffer`
+        :raises EResultError: if there is error when trying to fetch `TradeOffer`
         """
 
         if isinstance(offer, TradeOffer):
@@ -615,6 +607,39 @@ class TradeMixin:
     ) -> int:
         ...
 
+    @overload
+    async def make_trade_offer(
+        self,
+        obj: int,
+        to_give: Sequence[EconItemType] = ...,
+        to_receive: Sequence[EconItemType] = ...,
+        message: str = ...,
+        *,
+        token: str = ...,
+        fetch: Literal[True] = ...,
+        confirm: bool = ...,
+        countered_id: int = ...,
+        payload: T_PAYLOAD = ...,
+        headers: T_HEADERS = ...,
+    ) -> TradeOffer:
+        ...
+
+    @overload
+    async def make_trade_offer(
+        self,
+        obj: str,
+        to_give: Sequence[EconItemType] = ...,
+        to_receive: Sequence[EconItemType] = ...,
+        message: str = ...,
+        *,
+        fetch: Literal[True] = ...,
+        confirm: bool = ...,
+        countered_id: int = ...,
+        payload: T_PAYLOAD = ...,
+        headers: T_HEADERS = ...,
+    ) -> TradeOffer:
+        ...
+
     async def make_trade_offer(
         self: "SteamCommunityMixin",
         obj: int | str,
@@ -623,11 +648,12 @@ class TradeMixin:
         message="",
         *,
         token: str = None,
+        fetch=False,
         confirm=True,
         countered_id: int = None,
         payload: T_PAYLOAD = {},
         headers: T_HEADERS = {},
-    ) -> int:
+    ) -> int | TradeOffer:
         """
         Make (send) steam trade offer to partner.
 
@@ -635,6 +661,7 @@ class TradeMixin:
 
         :param obj: partner trade url, partner id(id32 or id64)
         :param token: trade token (mandatory if `obj` is partner id)
+        :param fetch: make a request, fetch and return trade offer
         :param to_give: sequence of items that you want to give
         :param to_receive: sequence of items that you want to receive
         :param message: message to the partner
@@ -683,7 +710,7 @@ class TradeMixin:
             conf = await self.confirm_trade_offer(offer_id)
             offer_id = conf.creator_id
 
-        return offer_id
+        return await self.fetch_trade(offer_id, headers=headers) if fetch else offer_id
 
     @staticmethod
     def _to_asset_dict(obj: EconItemType) -> dict[str, int | str]:

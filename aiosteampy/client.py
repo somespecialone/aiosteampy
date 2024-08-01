@@ -7,6 +7,12 @@ from aiohttp import ClientSession
 from aiohttp.client import _RequestContextManager
 from yarl import URL
 
+from .models import Notifications, EconItem
+from .typed import WalletInfo, FundWalletInfo
+from .constants import STEAM_URL, Currency, GameType, Language, EResult
+from .exceptions import EResultError, SessionExpired, SteamError
+from .utils import get_cookie_value_from_session, steam_id_to_account_id, account_id_to_steam_id
+
 from .http import SteamHTTPTransportMixin
 from .guard import SteamGuardMixin
 from .confirmation import ConfirmationMixin
@@ -15,15 +21,9 @@ from .trade import TradeMixin
 from .market import MarketMixin
 from .public import SteamPublicMixin, INV_PAGE_SIZE, PREDICATE
 
-from .models import Notifications, EconItem
-from .typed import WalletInfo, FundWalletInfo
-from .constants import STEAM_URL, Currency, GameType, Language
-from .exceptions import ApiError, SessionExpired
-from .utils import get_cookie_value_from_session, steam_id_to_account_id, account_id_to_steam_id
-
 API_KEY_RE = compile(r"<p>Key: (?P<api_key>[0-9A-F]+)</p>")
+STEAM_GUARD_REQ_CHECK_RE = compile(r"Your account requires (<a [^>]+>)?Steam Guard Mobile Authenticator")
 
-API_KEY_CHECK_STR = "You must have a validated email address to create a Steam Web API key"
 STEAM_LANG_COOKIE = "Steam_Language"
 DEF_COUNTRY = "UA"
 
@@ -163,17 +163,15 @@ class SteamCommunityMixin(
         .. warning:: May reset new items notifications count.
 
         :return: wallet info
-        :raises ApiError:
+        :raises EResultError:
         """
 
         r = await self.session.get(self.profile_url / "inventory", headers={"Referer": str(self.profile_url)})
         rt = await r.text()
         info: WalletInfo = loads(re_search(r"g_rgWalletInfo = (?P<info>.+);", rt)["info"])
-        success = info.get("success")
-        if success is None:
-            raise ApiError("Failed to fetch wallet info from inventory", data=info)
-        elif success != 1:
-            raise ApiError(info["message"], success)
+        success = EResult(info.get("success"))
+        if success is not EResult.OK:
+            raise EResultError(info.get("message", "Failed to fetch wallet info from inventory"), success, info)
 
         return info
 
@@ -181,17 +179,15 @@ class SteamCommunityMixin(
         """
         Fetch wallet balance.
 
-        :raises ApiError:
+        :raises EResultError:
         """
 
         # Why is this endpoint do not work sometimes?
         r = await self.session.get(STEAM_URL.STORE / "api/getfundwalletinfo")
         rj: FundWalletInfo = await r.json()
-        success = rj.get("success")
-        if success is None:
-            raise ApiError("Failed to fetch wallet balance", data=rj)
-        elif success != 1:
-            raise ApiError(rj["message"], success)
+        success = EResult(rj.get("success"))
+        if success is not EResult.OK:
+            raise EResultError(rj.get("message", "Failed to fetch wallet balance"), success, rj)
 
         if not self._wallet_currency:
             self._wallet_currency = Currency.by_name(rj["user_wallet"]["currency"])
@@ -217,20 +213,29 @@ class SteamCommunityMixin(
         search = re_search(r"\d+&token=(?P<token>.+)\" readonly", rt)
         return search["token"] if search else None
 
-    async def fetch_api_key(self) -> str | None:
+    async def fetch_api_key(self) -> str:
         """
         Fetch Steam Web Api Key, cache it and return.
 
-        :raises ApiError:
+        :raises SteamError:
         """
 
-        r = await self.session.get(STEAM_URL.COMMUNITY / "dev/apikey", params={"l": "english"})
+        # https://github.com/DoctorMcKay/node-steamcommunity/blob/b58745c8b74963eae808d33e558dbba6840c7053/components/webapi.js#L18
+        r = await self.session.get(STEAM_URL.COMMUNITY / "dev/apikey", params={"l": "english"}, allow_redirects=False)
         rt = await r.text()
-        if "<h2>Access Denied</h2>" in rt or API_KEY_CHECK_STR in rt:
-            raise ApiError(API_KEY_CHECK_STR)
+
+        if "You must have a validated email address to create a Steam Web API key" in rt:
+            raise SteamError("Validated email address required to create a Steam Web API key")
+        elif STEAM_GUARD_REQ_CHECK_RE.search(rt):
+            raise SteamError("")
+        elif "<h2>Access Denied</h2>" in rt:
+            raise SteamError("Access to Steam Web Api page is denied")
 
         search = API_KEY_RE.search(rt)
-        self._api_key = search["api_key"] if search else None
+        if not search:
+            raise SteamError("Failed to get Steam Web API key", rt)
+
+        self._api_key = search["api_key"]
         return self._api_key
 
     def revoke_api_key(self) -> _RequestContextManager:
@@ -247,9 +252,8 @@ class SteamCommunityMixin(
         Request registration of a new api key, confirm, cache it and return.
 
         :param domain: on which domain api key will be registered. Strongly recommended to pass non-default value
-        :param confirm:
         :return: Steam Web Api Key
-        :raises ApiError:
+        :raises EResultError:
         """
 
         # https://github.com/DoctorMcKay/node-steamcommunity/blob/b58745c8b74963eae808d33e558dbba6840c7053/components/webapi.js#L78
@@ -264,16 +268,16 @@ class SteamCommunityMixin(
         }
         r = await self.session.post(STEAM_URL.COMMUNITY / "dev/requestkey", data=data)
         rj: dict[str, str | int] = await r.json()
-        if rj["success"] == 22 and rj.get("requires_confirmation"):
+        success = EResult(rj.get("success"))
+
+        if success is EResult.PENDING and rj.get("requires_confirmation"):
             await self.confirm_api_key_request(rj["request_id"])
             r = await self.session.post(STEAM_URL.COMMUNITY / "dev/requestkey", data=data)
             rj: dict[str, str | int] = await r.json()
+            success = EResult(rj.get("success"))
 
-        success = rj.get("success")
-        if success is None or not rj["api_key"]:
-            raise ApiError("Failed to get Steam Web Api Key", data=rj)
-        elif success != 1:
-            raise ApiError(rj["message"], success)
+        if success is not EResult.OK or not rj["api_key"]:
+            raise EResultError(rj.get("message", "Failed to get Steam Web Api Key"), success, rj)
 
         self._api_key = rj["api_key"]
         return self._api_key
@@ -309,14 +313,14 @@ class SteamCommunityMixin(
         :param page_size: max items on page. Current Steam limit is 2000
         :param predicate: callable with single arg `EconItem`, must return bool
         :return: list of `EconItem`
-        :raises ApiError: for ordinary reasons
+        :raises EResultError: for ordinary reasons
         :raises SessionExpired:
         """
 
         try:
             inv = await self.get_user_inventory(self.steam_id, game, predicate=predicate, page_size=page_size)
-        except ApiError as e:
-            raise SessionExpired if "private" in e.msg else e  # self inventory can't be private
+        except SteamError as e:
+            raise SessionExpired if "private" in e.args[0] else e  # self inventory can't be private
         return inv
 
 

@@ -13,6 +13,7 @@
 [![codecov](https://codecov.io/gh/somespecialone/aiosteampy/branch/master/graph/badge.svg?token=SP7EQKPIQ3)](https://codecov.io/gh/somespecialone/aiosteampy)
 [![CodeFactor](https://www.codefactor.io/repository/github/somespecialone/aiosteampy/badge)](https://www.codefactor.io/repository/github/somespecialone/aiosteampy)
 [![black](https://img.shields.io/badge/code%20style-black-000000.svg)](https://github.com/psf/black)
+[![Poetry](https://img.shields.io/endpoint?url=https://python-poetry.org/badge/v0.json)](https://python-poetry.org/)
 
 Previously this library was a soft fork of [bukson/steampy](https://github.com/bukson/steampy) and created only to
 provide asynchronous methods and proxies support.
@@ -25,6 +26,9 @@ But now it _standalone_ project. Created by myself for steam trading purposes mo
 <!--header-end-->
 
 > [!IMPORTANT]
+> The project is unstable and there might be some breaking changes in the future unless stable (**first major**) version 
+> is released.
+> 
 > See full documentation [here](https://aiosteampy.somespecial.one/) 📖
 
 <!--install-start-->

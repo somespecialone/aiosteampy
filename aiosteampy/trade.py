@@ -680,7 +680,8 @@ class TradeMixin:
         rj = await r.json()
         offer_id = int(rj["tradeofferid"])
         if confirm and rj.get("needs_mobile_confirmation"):
-            offer_id = await self.confirm_trade_offer(offer_id)
+            conf = await self.confirm_trade_offer(offer_id)
+            offer_id = conf.creator_id
 
         return offer_id
 

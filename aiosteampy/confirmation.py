@@ -65,14 +65,17 @@ class ConfirmationMixin:
         """
 
     @overload
-    async def confirm_sell_listing(self, obj: int, game: GameType) -> int:
+    async def confirm_sell_listing(self, obj: int, game: GameType) -> Confirmation:
         ...
 
     @overload
-    async def confirm_sell_listing(self, obj: MyMarketListing | EconItemType | int) -> int:
+    async def confirm_sell_listing(self, obj: MyMarketListing | EconItemType | int) -> Confirmation:
         ...
 
-    async def confirm_sell_listing(self, obj: MyMarketListing | EconItemType | int, game: GameType = None) -> int:
+    @identity_secret_required
+    async def confirm_sell_listing(
+        self, obj: MyMarketListing | EconItemType | int, game: GameType = None
+    ) -> Confirmation:
         """
         Perform sell listing confirmation.
         Pass `game` arg only with asset id.
@@ -98,10 +101,19 @@ class ConfirmationMixin:
         conf = await self.get_or_fetch_confirmation(key, update)
         await self.allow_confirmation(conf)
 
-        return conf.creator_id
+        return conf
 
     @identity_secret_required
-    async def confirm_trade_offer(self, offer: int | TradeOffer) -> int:
+    async def confirm_api_key_request(self, request_id: str) -> Confirmation:
+        """Perform api key request confirmation."""
+
+        conf = await self.get_or_fetch_confirmation(request_id)
+        await self.allow_confirmation(conf)
+
+        return conf
+
+    @identity_secret_required
+    async def confirm_trade_offer(self, offer: int | TradeOffer) -> Confirmation:
         """
         Perform sell trade offer confirmation.
 
@@ -112,7 +124,7 @@ class ConfirmationMixin:
         conf = await self.get_or_fetch_confirmation(offer.id if isinstance(offer, TradeOffer) else offer)
         await self.allow_confirmation(conf)
 
-        return conf.creator_id
+        return conf
 
     async def get_or_fetch_confirmation(self, key: str | int, update=False) -> Confirmation:
         """

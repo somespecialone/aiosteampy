@@ -144,7 +144,7 @@ class SteamCommunityMixin(
 
     async def _init_data(self):
         if not self._api_key:
-            self._api_key = await self._fetch_api_key()
+            self._api_key = await self.fetch_api_key()
             not self._api_key and await self.register_new_api_key()
 
         if not self.trade_token:
@@ -217,34 +217,65 @@ class SteamCommunityMixin(
         search = re_search(r"\d+&token=(?P<token>.+)\" readonly", rt)
         return search["token"] if search else None
 
-    async def _fetch_api_key(self) -> str | None:
-        r = await self.session.get(STEAM_URL.COMMUNITY / "dev/apikey")
+    async def fetch_api_key(self) -> str | None:
+        """
+        Fetch Steam Web Api Key, cache it and return.
+
+        :raises ApiError:
+        """
+
+        r = await self.session.get(STEAM_URL.COMMUNITY / "dev/apikey", params={"l": "english"})
         rt = await r.text()
         if "<h2>Access Denied</h2>" in rt or API_KEY_CHECK_STR in rt:
             raise ApiError(API_KEY_CHECK_STR)
 
         search = API_KEY_RE.search(rt)
-        return search["api_key"] if search else None
+        self._api_key = search["api_key"] if search else None
+        return self._api_key
 
-    async def register_new_api_key(self, domain="https://github.com/somespecialone/aiosteampy") -> str:
-        """
-        Register new api key, cache it and return.
+    def revoke_api_key(self) -> _RequestContextManager:
+        """Revoke old Steam Web API Key."""
 
-        :param domain: on which domain api key will be registered
-        :return: api key
+        data = {
+            "sessionid": self.session_id,
+            "Revoke": "Revoke My Steam Web API Key",
+        }
+        return self.session.post(STEAM_URL.COMMUNITY / "dev/revokekey", data=data, allow_redirects=False)
+
+    async def register_new_api_key(self, domain="github.com/somespecialone/aiosteampy") -> str:
         """
+        Request registration of a new api key, confirm, cache it and return.
+
+        :param domain: on which domain api key will be registered. Strongly recommended to pass non-default value
+        :param confirm:
+        :return: Steam Web Api Key
+        :raises ApiError:
+        """
+
+        # https://github.com/DoctorMcKay/node-steamcommunity/blob/b58745c8b74963eae808d33e558dbba6840c7053/components/webapi.js#L78
+
+        await self.revoke_api_key()  # revoke old one as website do
 
         data = {
             "domain": domain,
-            "agreeToTerms": "agreed",
+            "request_id": 0,
             "sessionid": self.session_id,
-            "Submit": "Register",
+            "agreeToTerms": "true",
         }
-        r = await self.session.post(STEAM_URL.COMMUNITY / "dev/registerkey", data=data)
-        rt = await r.text()
+        r = await self.session.post(STEAM_URL.COMMUNITY / "dev/requestkey", data=data)
+        rj: dict[str, str | int] = await r.json()
+        if rj["success"] == 22 and rj.get("requires_confirmation"):
+            await self.confirm_api_key_request(rj["request_id"])
+            r = await self.session.post(STEAM_URL.COMMUNITY / "dev/requestkey", data=data)
+            rj: dict[str, str | int] = await r.json()
 
-        # TODO catch steam errors
-        self._api_key = API_KEY_RE.search(rt)["api_key"]
+        success = rj.get("success")
+        if success is None or not rj["api_key"]:
+            raise ApiError("Failed to get Steam Web Api Key", data=rj)
+        elif success != 1:
+            raise ApiError(rj["message"], success)
+
+        self._api_key = rj["api_key"]
         return self._api_key
 
     async def get_notifications(self) -> Notifications:

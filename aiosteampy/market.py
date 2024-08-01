@@ -192,7 +192,8 @@ class MarketMixin:
             raise ApiError(rj["message"], success)
 
         if rj.get("needs_mobile_confirmation") and confirm:
-            return await self.confirm_sell_listing(asset_id, game)
+            conf = await self.confirm_sell_listing(asset_id, game)
+            return conf.creator_id
 
     def cancel_sell_listing(
         self: "SteamCommunityMixin",

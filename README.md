@@ -114,23 +114,34 @@ with modern async/await syntax.
 
 ## TODO 📃
 
-Hard to say **roadmap**. Can be a little changed or updated later, get ready.
+> Hard to say **roadmap**. Can be a little changed or updated later, get ready.
+
+Path to first **stable release**. Non-exhaustive list, scheduled tasks can be done earlier than the version mentioned,
+but not otherwise.
 
 ### v0.6.0
 
 - [ ] Listings, items, offers pagination/iteration
+- [ ] Get single item from inventory as browser does
 - [ ] Change client username method
-- [ ] Remove storage methods. Caching entities must be user responsibility
-- [ ] Rename `fetch_...` methods to `get_...` to remove annoying methods symantic mess
 
 ### v0.7.0
 
-- [ ] `Steam user` model with minimal attrs, retrieving/fetching
+- [ ] Remove storage methods. Caching entities must be user responsibility
+- [ ] Rename `fetch_...` methods to `get_...` to remove annoying methods symantic mess
 - [ ] Web browser mechanism to fetch trade offers from `Steam`, avoiding `Steam Web Api`
 
-### v1.0.0
+### v0.8.0
 
-Path to first **stable release**
+- [ ] Context managers as helpers to login/logout, load/dump or get/put cookies
+- [ ] Fetch/paginate over market search pages
+
+### v0.9.0
+
+- [ ] `Steam user` model with minimal attrs, retrieving/fetching
+- [ ] Refresh `access_token` mechanism
+
+### v1.0.0
 
 - [ ] Tests with `Steam API` mocking. Target coverage ~70%. Key points (listings, inventory items, trade offers) testing
 suits is mandatory

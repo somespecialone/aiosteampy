@@ -2,6 +2,7 @@
 
 import asyncio
 from base64 import b64decode, b64encode
+from datetime import datetime
 from struct import pack, unpack
 from time import time as time_time
 from hmac import new as hmac_new
@@ -45,6 +46,8 @@ __all__ = (
     "decode_jwt",
     "find_item_nameid_in_text",
     "patch_session_with_http_proxy",
+    "parse_header_time",
+    "format_header_time",
 )
 
 
@@ -428,3 +431,16 @@ def find_item_nameid_in_text(text: str) -> int | None:
 def patch_session_with_http_proxy(session: ClientSession, proxy: str | URL) -> ClientSession:
     session._request = partial(session._request, proxy=proxy)
     return session
+
+
+_HEADER_TIME_FORMAT = "%a, %d %b %Y %H:%M:%S %Z"
+
+
+def parse_header_time(value: str) -> datetime:
+    """Parse header time (`Last-Modified`, `Expires`, ...) to a timezone naive datetime object"""
+    return datetime.strptime(value, _HEADER_TIME_FORMAT)
+
+
+def format_header_time(d: datetime) -> str:
+    """Format timezone naive datetime object to header acceptable string"""
+    return d.strftime(_HEADER_TIME_FORMAT) + "GMT"  # simple case

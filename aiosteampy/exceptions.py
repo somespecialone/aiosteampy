@@ -1,4 +1,4 @@
-from constants import EResult
+from .constants import EResult
 
 
 class SteamError(Exception):
@@ -20,3 +20,7 @@ class LoginError(SteamError):
 
 class SessionExpired(SteamError):
     """Raised when session is expired, and you need to do login"""
+
+
+class RateLimitExceededError(SteamError):
+    """Raised when Steam decided you were in need of a bit of a rest :)"""

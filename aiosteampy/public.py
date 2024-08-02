@@ -1,4 +1,5 @@
-from typing import Callable, TypeAlias, overload, TYPE_CHECKING
+from typing import Callable, TypeAlias, overload, TYPE_CHECKING, AsyncIterator
+from datetime import datetime
 
 from aiohttp import ClientResponseError
 from yarl import URL
@@ -15,16 +16,22 @@ from .models import (
 )
 from .constants import STEAM_URL, Game, Currency, GameType, Language, T_PARAMS, T_HEADERS, EResult
 from .typed import ItemOrdersHistogram, ItemOrdersActivity, PriceOverview
-from .exceptions import EResultError, SteamError
-from .utils import create_ident_code, find_item_nameid_in_text
+from .exceptions import EResultError, SteamError, RateLimitExceededError
+from .utils import create_ident_code, find_item_nameid_in_text, parse_header_time, format_header_time
 
 if TYPE_CHECKING:
     from .client import SteamPublicClient
 
-INV_PAGE_SIZE = 5000  # steam limit rule
+# steam limit rules
+INV_COUNT = 5000
+LISTING_COUNT = 10
+
 INVENTORY_URL = STEAM_URL.COMMUNITY / "inventory"
 PREDICATE: TypeAlias = Callable[[EconItem], bool]
-ITEM_MARKET_LISTINGS_DATA: TypeAlias = tuple[list[MarketListing], int]
+
+# listings, total count, last modified
+MARKET_ITEM_LISTINGS_DATA: TypeAlias = tuple[list[MarketListing], int, datetime]
+INV_ITEM_DATA: TypeAlias = tuple[list[EconItem], int, int | None]  # items, total count, last asset id for pagination
 
 
 class SteamPublicMixin:
@@ -34,49 +41,67 @@ class SteamPublicMixin:
 
     # init method with attr in client
 
-    # TODO pagination
     async def get_user_inventory(
         self: "SteamPublicClient",
         steam_id: int,
         game: GameType,
         *,
-        predicate: PREDICATE = None,
-        page_size=INV_PAGE_SIZE,
+        last_assetid: int = None,
+        count=INV_COUNT,
         params: T_PARAMS = {},
         headers: T_HEADERS = {},
-    ) -> list[EconItem]:
+        _item_descriptions_map: dict = None,
+    ) -> INV_ITEM_DATA:
         """
         Fetches inventory of user.
 
+        .. note::
+            * You can paginate by yourself passing `last_assetid` arg
+            * `count` arg value that less than 2000 lead to responses with strange amount of assets
+
         :param steam_id: steamid64 of user
-        :param game: just Steam Game
-        :param page_size: max items on page. Current Steam limit is 2000
-        :param predicate: callable with single arg `EconItem`, must return bool
+        :param game: Steam Game
+        :param last_assetid:
+        :param count: page size
         :param params: extra params to pass to url
         :param headers: extra headers to send with request
-        :return: list of `EconItem`
-        :raises EResultError:
+        :return: list of `EconItem`, total count of items in inventory, last asset id of the list
+        :raises SteamError: if inventory is private
+        :raises EResultError: for ordinary reasons
+        :raises RateLimitExceededError: when you hit rate limit
         """
 
         inv_url = INVENTORY_URL / f"{steam_id}/"
-        params = {"l": self.language, "count": page_size, **params}
+        params = {"l": self.language, "count": count, **params}
+        if last_assetid:
+            params["last_assetid"] = last_assetid
         headers = {"Referer": str(inv_url), **headers}
-        url = inv_url / f"{game[0]}/{game[1]}"
 
-        item_descrs_map = {}
-        items = []
-        more_items = True
-        last_assetid = None
-        while more_items:
-            params_pag = {**params, "start_assetid": last_assetid} if last_assetid else params
-            data = await self._fetch_inventory(url, params_pag, headers)
-            more_items = data.get("more_items", False)
-            if more_items:
-                last_assetid = data.get("last_assetid")
+        try:
+            r = await self.session.get(inv_url / f"{game[0]}/{game[1]}", params=params, headers=headers)
+        except ClientResponseError as e:
+            if e.status == 403:
+                raise SteamError("Steam user inventory is private") from e
+            elif e.status == 429:  # never faced this, but let it be
+                raise RateLimitExceededError("You have been rate limited, rest for a while!") from e
+            else:
+                raise e
 
-            items.extend(self._parse_items(data, steam_id, item_descrs_map))
+        rj: dict[str, list[dict] | int] = await r.json()
+        success = EResult(rj.get("success"))
+        if success is not EResult.OK:
+            raise EResultError(rj.get("message", "Failed to fetch inventory"), success, rj)
 
-        return [i for i in items if predicate(i)] if predicate else items
+        total_count = rj["total_inventory_count"]
+        last_assetid_return = int(rj["last_assetid"]) if "last_assetid" in rj else None
+
+        if "descriptions" not in rj:  # count<=101, last_assetid=None and we got there
+            return [], total_count, last_assetid_return
+
+        _item_descriptions_map = _item_descriptions_map if _item_descriptions_map is not None else {}
+        items = self._parse_items(rj, steam_id, _item_descriptions_map)
+
+        return items, total_count, last_assetid_return
 
     async def _fetch_inventory(
         self: "SteamPublicClient",
@@ -110,19 +135,19 @@ class SteamPublicMixin:
         cls,
         data: dict[str, list[dict]],
         steam_id: int,
-        item_descrs_map: dict[str, dict],
+        item_descriptions_map: dict[str, dict],
     ) -> list[EconItem]:
         for d_data in data["descriptions"]:
             key = d_data["classid"]
-            if key not in item_descrs_map:
-                item_descrs_map[key] = cls._create_item_description_kwargs(d_data, data["assets"])
+            if key not in item_descriptions_map:
+                item_descriptions_map[key] = cls._create_item_description_kwargs(d_data, data["assets"])
 
         return [
             EconItem(
                 asset_id=int(asset_data["assetid"]),
                 owner_id=steam_id,
                 amount=int(asset_data["amount"]),
-                **item_descrs_map[asset_data["classid"]],
+                **item_descriptions_map[asset_data["classid"]],
             )
             for asset_data in data["assets"]
         ]
@@ -185,6 +210,51 @@ class SteamPublicMixin:
             fraud_warnings=tuple(*data.get("fraudwarnings", ())),
         )
 
+    async def user_inventory(
+        self: "SteamPublicClient",
+        steam_id: int,
+        game: GameType,
+        *,
+        last_assetid: int = None,
+        count=INV_COUNT,
+        params: T_PARAMS = {},
+        headers: T_HEADERS = {},
+    ) -> AsyncIterator[INV_ITEM_DATA]:
+        """
+        Fetches inventory of user. Return async iterator to paginate over inventory pages.
+
+        .. note:: `count` arg value that less than 2000 lead to responses with strange amount of assets
+
+        :param steam_id: steamid64 of user
+        :param game: Steam Game
+        :param last_assetid:
+        :param count: page size
+        :param params: extra params to pass to url
+        :param headers: extra headers to send with request
+        :return: `AsyncIterator` that yields list of `EconItem`, total count of items in inventory, last asset id of the list
+        :raises EResultError: for ordinary reasons
+        :raises RateLimitExceededError: when you hit rate limit
+        """
+
+        _item_descriptions_map = {}  # shared descriptions instances across calls
+
+        more_items = True
+        while more_items:
+            # browser do first request with count=75, receiving data with `last_assetid` only
+            items, total_count, last_assetid = await self.get_user_inventory(
+                steam_id,
+                game,
+                last_assetid=last_assetid,
+                count=count,
+                params=params,
+                headers=headers,
+                _item_descriptions_map=_item_descriptions_map,
+            )
+            # let's assume that field "last_assetid" always present with "more_items" so we can depend on it
+            more_items = bool(last_assetid)
+
+            yield items, total_count, last_assetid
+
     async def fetch_item_orders_histogram(
         self: "SteamPublicClient",
         item_nameid: int,
@@ -222,7 +292,14 @@ class SteamPublicMixin:
             "item_nameid": item_nameid,
             **params,
         }
-        r = await self.session.get(STEAM_URL.MARKET / "itemordershistogram", params=params, headers=headers)
+        try:
+            r = await self.session.get(STEAM_URL.MARKET / "itemordershistogram", params=params, headers=headers)
+        except ClientResponseError as e:
+            if e.status == 429:
+                raise RateLimitExceededError("You have been rate limited, rest for a while!") from e
+            else:
+                raise e
+
         rj: ItemOrdersHistogram = await r.json()
         success = EResult(rj.get("success"))
         if success is not EResult.OK:
@@ -266,6 +343,7 @@ class SteamPublicMixin:
             **params,
         }
         r = await self.session.get(STEAM_URL.MARKET / "itemordersactivity", params=params, headers=headers)
+        # Can we hit a rate limit there?
         rj: ItemOrdersActivity = await r.json()
         success = EResult(rj.get("success"))
         if success is not EResult.OK:
@@ -336,7 +414,14 @@ class SteamPublicMixin:
             "appid": app_id,
             **params,
         }
-        r = await self.session.get(STEAM_URL.MARKET / "priceoverview", params=params, headers=headers)
+        try:
+            r = await self.session.get(STEAM_URL.MARKET / "priceoverview", params=params, headers=headers)
+        except ClientResponseError as e:
+            if e.status == 429:
+                raise RateLimitExceededError("You have been rate limited, rest for a while!") from e
+            else:
+                raise e
+
         rj: PriceOverview = await r.json()
         success = EResult(rj.get("success"))
         if success is not EResult.OK:
@@ -354,9 +439,10 @@ class SteamPublicMixin:
         query: str = ...,
         start: int = ...,
         count: int = ...,
+        if_modified_since: datetime | str = ...,
         params: T_PARAMS = ...,
         headers: T_HEADERS = ...,
-    ) -> ITEM_MARKET_LISTINGS_DATA:
+    ) -> MARKET_ITEM_LISTINGS_DATA:
         ...
 
     @overload
@@ -370,9 +456,10 @@ class SteamPublicMixin:
         query: str = ...,
         start: int = ...,
         count: int = ...,
+        if_modified_since: datetime | str = ...,
         params: T_PARAMS = ...,
         headers: T_HEADERS = ...,
-    ) -> ITEM_MARKET_LISTINGS_DATA:
+    ) -> MARKET_ITEM_LISTINGS_DATA:
         ...
 
     async def get_item_listings(
@@ -383,31 +470,37 @@ class SteamPublicMixin:
         country: str = None,
         currency: Currency = None,
         lang: str = None,
-        query="",
+        query: str = "",
         start: int = 0,
-        count: int = 10,
+        count: int = LISTING_COUNT,
+        if_modified_since: datetime | str = None,
         params: T_PARAMS = {},
         headers: T_HEADERS = {},
-    ) -> ITEM_MARKET_LISTINGS_DATA:
+        # for inner use, maps of shared instances
+        _item_descriptions_map: dict = None,
+        _econ_items_map: dict = None,
+    ) -> MARKET_ITEM_LISTINGS_DATA:
         """
         Fetch item listings from market.
 
-        .. note:: You can paginate by yourself passing `start` arg.
+        .. note:: You can paginate by yourself passing `start` arg. or use `market_listings` method
 
-        .. warning:: This request is rate limited by Steam.
+        .. warning:: This request is rate limited by Steam. It is strongly recommended to use `if_modified_since`
 
         :param obj: market hash name or `EconItem` or `ItemDescription`
         :param app_id:
         :param country:
         :param currency:
         :param lang:
-        :param count: page size, Steam limit this size to 10 for now
+        :param count: page size
         :param start: offset position
         :param query: raw search query
+        :param if_modified_since: `If-Modified-Since` header value
         :param params: extra params to pass to url
         :param headers: extra headers to send with request
-        :return: list of `MarketListing`, total listings count
-        :raises EResultError:
+        :return: list of `MarketListing`, total listings count, datetime object when resource was last modified
+        :raises EResultError: for ordinary reasons
+        :raises RateLimitExceededError: when you hit rate limit
         """
 
         if isinstance(obj, ITEM_DESCR_TUPLE):
@@ -426,63 +519,79 @@ class SteamPublicMixin:
             "language": lang or self.language,
             **params,
         }
-        r = await self.session.get(
-            base_url / "render/",
-            params=params,
-            headers={"Referer": str(base_url), **headers},
-        )
+        headers = {"Referer": str(base_url), **headers}
+        if if_modified_since:
+            if isinstance(if_modified_since, datetime):
+                headers["If-Modified-Since"] = format_header_time(if_modified_since)
+            else:  # str
+                headers["If-Modified-Since"] = if_modified_since
+
+        try:
+            r = await self.session.get(base_url / "render/", params=params, headers=headers)
+        except ClientResponseError as e:
+            if e.status == 429:
+                raise RateLimitExceededError("You have been rate limited, rest for a while!") from e
+            else:
+                raise e
+
+        last_modified = parse_header_time(r.headers["Last-Modified"])
+
         if r.status == 304:  # not modified if header "If-Modified-Since" is provided
-            return [], 0
+            return [], 0, last_modified
 
         rj: dict[str, int | dict[str, dict]] = await r.json()
         success = EResult(rj.get("success"))
         if success is not EResult.OK:
             raise EResultError(rj.get("message", "Failed to fetch item listings"), success, rj)
         elif not rj["total_count"] or not rj["assets"]:
-            return [], 0
+            return [], 0, last_modified
 
-        item_descrs_map = {}
-        econ_items_map = {}
-        self._update_item_descrs_map_for_public(rj["assets"], item_descrs_map)
-        self._parse_items_for_listings(rj["assets"], item_descrs_map, econ_items_map)
+        _item_descriptions_map = _item_descriptions_map if _item_descriptions_map is not None else {}
+        _econ_items_map = _econ_items_map if _econ_items_map is not None else {}
+        self._update_item_descriptions_map_for_public(rj["assets"], _item_descriptions_map)
+        self._parse_items_for_listings(rj["assets"], _item_descriptions_map, _econ_items_map)
 
-        return [
-            MarketListing(
-                id=int(l_data["listingid"]),
-                item=econ_items_map[
-                    create_ident_code(
-                        l_data["asset"]["id"],
-                        l_data["asset"]["appid"],
-                        l_data["asset"]["contextid"],
-                    )
-                ],
-                currency=Currency(int(l_data["currencyid"]) - 2000),
-                price=int(l_data["price"]),
-                fee=int(l_data["fee"]),
-                converted_currency=Currency(int(l_data["converted_currencyid"]) - 2000),
-                converted_fee=int(l_data["converted_fee"]),
-                converted_price=int(l_data["converted_price"]),
-            )
-            for l_data in rj["listinginfo"].values()
-            if l_data["asset"]["amount"]
-        ], rj["total_count"]
+        return (
+            [
+                MarketListing(
+                    id=int(l_data["listingid"]),
+                    item=_econ_items_map[
+                        create_ident_code(
+                            l_data["asset"]["id"],
+                            l_data["asset"]["appid"],
+                            l_data["asset"]["contextid"],
+                        )
+                    ],
+                    currency=Currency(int(l_data["currencyid"]) - 2000),
+                    price=int(l_data["price"]),
+                    fee=int(l_data["fee"]),
+                    converted_currency=Currency(int(l_data["converted_currencyid"]) - 2000),
+                    converted_fee=int(l_data["converted_fee"]),
+                    converted_price=int(l_data["converted_price"]),
+                )
+                for l_data in rj["listinginfo"].values()
+                if l_data["asset"]["amount"]
+            ],
+            rj["total_count"],
+            last_modified,
+        )
 
     @classmethod
-    def _update_item_descrs_map_for_public(
+    def _update_item_descriptions_map_for_public(
         cls,
         assets: dict[str, dict[str, dict[str, dict]]],
-        item_descrs_map: dict[str, dict],
+        item_descriptions_map: dict[str, dict],
     ):
         for app_id, app_data in assets.items():
             for context_id, context_data in app_data.items():
                 for asset_id, a_data in context_data.items():
                     key = create_ident_code(a_data["classid"], app_id)
-                    item_descrs_map[key] = cls._create_item_description_kwargs(a_data, [a_data])
+                    item_descriptions_map[key] = cls._create_item_description_kwargs(a_data, [a_data])
 
     @staticmethod
     def _parse_items_for_listings(
         data: dict[str, dict[str, dict[str, dict]]],
-        item_descrs_map: dict[str, dict],
+        item_descriptions_map: dict[str, dict],
         econ_items_map: dict[str, MarketListingItem],
     ):
         for app_id, app_data in data.items():
@@ -495,8 +604,105 @@ class SteamPublicMixin:
                             market_id=0,  # market listing post init
                             unowned_id=int(a_data["unowned_id"]),
                             unowned_context_id=int(a_data["unowned_contextid"]),
-                            **item_descrs_map[create_ident_code(a_data["classid"], app_id)],
+                            **item_descriptions_map[create_ident_code(a_data["classid"], app_id)],
                         )
+
+    # without async for proper type hinting in VsCode and PyCharm at least with `async for`
+    @overload
+    def market_listings(
+        self,
+        obj: EconItem | ItemDescription,
+        *,
+        country: str = ...,
+        currency: Currency = ...,
+        lang: str = ...,
+        query: str = ...,
+        start: int = ...,
+        count: int = ...,
+        if_modified_since: datetime | str = ...,
+        params: T_PARAMS = ...,
+        headers: T_HEADERS = ...,
+    ) -> AsyncIterator[MARKET_ITEM_LISTINGS_DATA]:
+        ...
+
+    @overload
+    def market_listings(
+        self,
+        obj: str,
+        app_id: int,
+        *,
+        country: str = ...,
+        currency: Currency = ...,
+        lang: str = ...,
+        query: str = ...,
+        start: int = ...,
+        count: int = ...,
+        if_modified_since: datetime | str = ...,
+        params: T_PARAMS = ...,
+        headers: T_HEADERS = ...,
+    ) -> AsyncIterator[MARKET_ITEM_LISTINGS_DATA]:
+        ...
+
+    async def market_listings(
+        self: "SteamPublicClient",
+        obj: str | EconItem | ItemDescription,
+        app_id: int = None,
+        *,
+        country: str = None,
+        currency: Currency = None,
+        lang: str = None,
+        query: str = "",
+        start: int = 0,
+        count: int = LISTING_COUNT,
+        if_modified_since: datetime | str = None,
+        params: T_PARAMS = {},
+        headers: T_HEADERS = {},
+    ) -> AsyncIterator[MARKET_ITEM_LISTINGS_DATA]:
+        """
+        Fetch item listings from market. Return async iterator to paginate over listings pages.
+
+        .. warning:: This request is rate limited by Steam. It is strongly recommended to use `if_modified_since`
+
+        :param obj: market hash name or `EconItem` or `ItemDescription`
+        :param app_id:
+        :param country:
+        :param currency:
+        :param lang:
+        :param count: page size
+        :param start: offset position
+        :param query: raw search query
+        :param if_modified_since: `If-Modified-Since` header value
+        :param params: extra params to pass to url
+        :param headers: extra headers to send with request
+        :return: `AsyncIterator` that yields list of `MarketListing`, total listings count, datetime object when resource was last modified
+        :raises EResultError: for ordinary reasons
+        :raises RateLimitExceededError: when you hit rate limit
+        """
+
+        item_descriptions_map = {}
+        econ_items_map = {}
+
+        total_count: int = 10e6  # simplify logic for initial iteration
+        while total_count > start:
+            # browser loads first batch from document request and not json api point, but anyway
+            listings, total_count, last_modified = await self.get_item_listings(
+                obj,
+                app_id,
+                country=country,
+                currency=currency,
+                lang=lang,
+                query=query,
+                count=count,
+                if_modified_since=if_modified_since,
+                params=params,
+                headers=headers,
+                _item_descriptions_map=item_descriptions_map,
+                _econ_items_map=econ_items_map,
+                start=start,
+            )
+            start += count
+
+            yield listings, total_count, last_modified
 
     @overload
     async def get_item_nameid(

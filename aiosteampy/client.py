@@ -1,4 +1,5 @@
 from re import compile, search as re_search
+from typing import AsyncIterator
 from urllib.parse import quote
 from json import loads
 from http.cookies import SimpleCookie
@@ -9,7 +10,7 @@ from yarl import URL
 
 from .models import Notifications, EconItem
 from .typed import WalletInfo, FundWalletInfo
-from .constants import STEAM_URL, Currency, GameType, Language, EResult
+from .constants import STEAM_URL, Currency, GameType, Language, EResult, T_PARAMS, T_HEADERS
 from .exceptions import EResultError, SessionExpired, SteamError
 from .utils import get_cookie_value_from_session, steam_id_to_account_id, account_id_to_steam_id
 
@@ -19,7 +20,7 @@ from .confirmation import ConfirmationMixin
 from .login import LoginMixin
 from .trade import TradeMixin
 from .market import MarketMixin
-from .public import SteamPublicMixin, INV_PAGE_SIZE, PREDICATE
+from .public import SteamPublicMixin, INV_COUNT, PREDICATE, INV_ITEM_DATA
 
 API_KEY_RE = compile(r"<p>Key: (?P<api_key>[0-9A-F]+)</p>")
 STEAM_GUARD_REQ_CHECK_RE = compile(r"Your account requires (<a [^>]+>)?Steam Guard Mobile Authenticator")
@@ -54,7 +55,7 @@ class SteamCommunityMixin(
         password: str,
         # It is possible to get steam id from the cookie and then arg will not be necessary,
         # but typical use case of the library means that the user already knows the steam id
-        steam_id: int,
+        steam_id: int,  # better to place first if I keep it as required arg
         *,
         shared_secret: str,
         identity_secret: str = None,
@@ -227,7 +228,8 @@ class SteamCommunityMixin(
         if "You must have a validated email address to create a Steam Web API key" in rt:
             raise SteamError("Validated email address required to create a Steam Web API key")
         elif STEAM_GUARD_REQ_CHECK_RE.search(rt):
-            raise SteamError("")
+            # for case when `shared_secret` is "" and mobile authenticator disabled
+            raise SteamError("Steam Guard Mobile Authenticator is required")
         elif "<h2>Access Denied</h2>" in rt:
             raise SteamError("Access to Steam Web Api page is denied")
 
@@ -303,25 +305,79 @@ class SteamCommunityMixin(
         self,
         game: GameType,
         *,
-        predicate: PREDICATE = None,
-        page_size=INV_PAGE_SIZE,
-    ) -> list[EconItem]:
+        last_assetid: int = None,
+        count=INV_COUNT,
+        params: T_PARAMS = {},
+        headers: T_HEADERS = {},
+        _item_descriptions_map: dict = None,
+    ) -> INV_ITEM_DATA:
         """
         Fetches self inventory.
 
-        :param game: just Steam Game
-        :param page_size: max items on page. Current Steam limit is 2000
-        :param predicate: callable with single arg `EconItem`, must return bool
-        :return: list of `EconItem`
+        .. note::
+            * You can paginate by yourself passing `last_assetid` arg
+            * `count` arg value that less than 2000 lead to responses with strange amount of assets
+
+        :param game: Steam Game
+        :param last_assetid:
+        :param count: page size
+        :param params: extra params to pass to url
+        :param headers: extra headers to send with request
+        :return: list of `EconItem`, total count of items in inventory, last asset id of the list
         :raises EResultError: for ordinary reasons
         :raises SessionExpired:
         """
 
         try:
-            inv = await self.get_user_inventory(self.steam_id, game, predicate=predicate, page_size=page_size)
+            return await self.get_user_inventory(
+                self.steam_id,
+                game,
+                last_assetid=last_assetid,
+                count=count,
+                params=params,
+                headers=headers,
+                _item_descriptions_map=_item_descriptions_map,
+            )
         except SteamError as e:
-            raise SessionExpired if "private" in e.args[0] else e  # self inventory can't be private
-        return inv
+            if "private" in e.args[0]:  # self inventory can't be private
+                raise SessionExpired from e
+            else:
+                raise e
+
+    def inventory(
+        self,
+        game: GameType,
+        *,
+        last_assetid: int = None,
+        count=INV_COUNT,
+        params: T_PARAMS = {},
+        headers: T_HEADERS = {},
+    ) -> AsyncIterator[INV_ITEM_DATA]:
+        """
+        Fetches self inventory. Return async iterator to paginate over inventory pages.
+
+        .. note:: `count` arg value that less than 2000 lead to responses with strange amount of assets
+
+        :param game: Steam Game
+        :param last_assetid:
+        :param count: page size
+        :param params: extra params to pass to url
+        :param headers: extra headers to send with request
+        :return: `AsyncIterator` that yields list of `EconItem`, total count of items in inventory, last asset id of the list
+        :raises EResultError: for ordinary reasons
+        :raises RateLimitExceededError: when you hit rate limit
+        """
+
+        return self.user_inventory(
+            self.steam_id,
+            game,
+            last_assetid=last_assetid,
+            count=count,
+            params=params,
+            headers=headers,
+        )
+
+    # TODO change nickname method
 
 
 class SteamClient(SteamCommunityMixin):

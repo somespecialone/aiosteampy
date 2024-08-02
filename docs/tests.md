@@ -1,3 +1,7 @@
+!!! warning "Current tests are deprecated"
+    Test cases and test code as a whole are deprecated and will not work until they are updated (a lot of work).
+    I'll leave the code and this heading here as a reminder 🫣
+
 Firstly, almost all test are integration and incremental test. Mocking steam responses and validation
 passed query params with payload data would be much, much more complicated than real requests-responses to `steam`.
 

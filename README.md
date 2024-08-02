@@ -29,6 +29,8 @@ But now it _standalone_ project. Created by myself for steam trading purposes mo
 > The project is unstable and there might be some breaking changes in the future unless stable (**first major**) version 
 > is released.
 > 
+> Take a look at [TODO](#todo-)
+> 
 > See full documentation [here](https://aiosteampy.somespecial.one/) 📖
 
 <!--install-start-->
@@ -81,17 +83,17 @@ with modern async/await syntax.
 
 ## What can I do with this
 
-- Operate with steam trade offers for any manner.
+- Operate with steam trade offers.
 - Sell, buy items on market. Place, cancel orders.
 - Login trough steam to 3rd party sites.
 - Fetch data from market.
 - Manipulate many accounts with proxies for each session.
-- Store and load cookies to stay logged in.
+- Get and load cookies to stay logged in (session persistence).
 - Convert market prices into different currencies.
 
 ## What I can't do
 
-- Chat (at least for now).
+- Chat.
 - Get apps, packages.
 - All, that need connection to CM.
 - Interact with game servers (inspect CS2 (ex. CSGO) items, ...).
@@ -102,9 +104,37 @@ with modern async/await syntax.
 
 ## Tests 🧪
 
-Read [test documentation](https://aiosteampy.somespecial.one/tests/) 📖
+> [!WARNING]
+> Test cases and test code as a whole are deprecated and will not work until they are updated (a lot of work).
+> I'll leave the code and this heading here as a reminder 🫣
+
+[//]: # (Read [test documentation]&#40;https://aiosteampy.somespecial.one/tests/&#41; 📖)
 
 <!--footer-start-->
+
+## TODO 📃
+
+Hard to say **roadmap**. Can be a little changed or updated later, get ready.
+
+### v0.6.0
+
+- [ ] Listings, items, offers pagination/iteration
+- [ ] Change client username method
+- [ ] Remove storage methods. Caching entities must be user responsibility
+- [ ] Rename `fetch_...` methods to `get_...` to remove annoying methods symantic mess
+
+### v0.7.0
+
+- [ ] `Steam user` model with minimal attrs, retrieving/fetching
+- [ ] Web browser mechanism to fetch trade offers from `Steam`, avoiding `Steam Web Api`
+
+### v1.0.0
+
+Path to first **stable release**
+
+- [ ] Tests with `Steam API` mocking. Target coverage ~70%. Key points (listings, inventory items, trade offers) testing
+suits is mandatory
+- [ ] Maturity, battle-testing in **more** different cases by **more** participants/users 
 
 ## Contribution 💛
 

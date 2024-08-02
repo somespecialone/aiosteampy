@@ -68,6 +68,8 @@ markdown_extensions:
   - pymdownx.superfences
   - toc:
       permalink: true
+  - pymdownx.tasklist:
+      custom_checkbox: true
 
 nav:
   - Overview: index.md

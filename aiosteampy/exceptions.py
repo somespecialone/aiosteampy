@@ -22,5 +22,12 @@ class SessionExpired(SteamError):
     """Raised when session is expired, and you need to do login"""
 
 
-class RateLimitExceededError(SteamError):
+class RateLimitExceeded(SteamError):
     """Raised when Steam decided you were in need of a bit of a rest :)"""
+
+
+class ResourceNotModified(SteamError):
+    """
+    Special case when `If-Modified-Since` header included
+    in request headers and Steam response with 304 status code
+    """

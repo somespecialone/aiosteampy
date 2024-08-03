@@ -8,7 +8,7 @@ from aiohttp import ClientSession
 from aiohttp.client import _RequestContextManager
 from yarl import URL
 
-from .models import Notifications, EconItem
+from .models import Notifications
 from .typed import WalletInfo, FundWalletInfo
 from .constants import STEAM_URL, Currency, GameType, Language, EResult, T_PARAMS, T_HEADERS
 from .exceptions import EResultError, SessionExpired, SteamError
@@ -20,7 +20,7 @@ from .confirmation import ConfirmationMixin
 from .login import LoginMixin
 from .trade import TradeMixin
 from .market import MarketMixin
-from .public import SteamPublicMixin, INV_COUNT, PREDICATE, INV_ITEM_DATA
+from .public import SteamPublicMixin, INV_COUNT, INV_ITEM_DATA
 
 API_KEY_RE = compile(r"<p>Key: (?P<api_key>[0-9A-F]+)</p>")
 STEAM_GUARD_REQ_CHECK_RE = compile(r"Your account requires (<a [^>]+>)?Steam Guard Mobile Authenticator")
@@ -365,7 +365,7 @@ class SteamCommunityMixin(
         :param headers: extra headers to send with request
         :return: `AsyncIterator` that yields list of `EconItem`, total count of items in inventory, last asset id of the list
         :raises EResultError: for ordinary reasons
-        :raises RateLimitExceededError: when you hit rate limit
+        :raises RateLimitExceeded: when you hit rate limit
         """
 
         return self.user_inventory(

@@ -449,3 +449,31 @@ class HistoryTradeOffer(BaseTradeOffer):
 
     assets_received: list[HistoryTradeOfferItem]
     assets_given: list[HistoryTradeOfferItem]
+
+
+# super efficient
+SellOrderTableEntry: TypeAlias = tuple[int, int, int]  # price in cents, price_with_fee, quantity
+BuyOrderTableEntry: TypeAlias = tuple[int, int]  # price in cents, quantity
+OrderGraphEntry: TypeAlias = tuple[int, int, str]  # price in cents, quantity, representation string
+
+
+@dataclass(eq=False, slots=True)
+class ItemOrdersHistogram:
+    sell_order_count: int
+    sell_order_price: int
+    sell_order_table: list[SellOrderTableEntry]
+    buy_order_count: int
+    buy_order_price: int
+    buy_order_table: list[BuyOrderTableEntry]
+    highest_buy_order: int
+    lowest_sell_order: int
+
+    # prices in integers (cents)!
+    buy_order_graph: list[OrderGraphEntry]
+    sell_order_graph: list[OrderGraphEntry]
+
+    graph_max_y: int
+    graph_min_x: int  # in cents
+    graph_max_x: int  # in cents
+    # price_prefix: str | None
+    # price_suffix: str | None

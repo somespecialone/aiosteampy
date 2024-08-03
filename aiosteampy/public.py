@@ -1,5 +1,6 @@
-from typing import Callable, TypeAlias, overload, TYPE_CHECKING, AsyncIterator
+from typing import TypeAlias, overload, TYPE_CHECKING, AsyncIterator, Literal
 from datetime import datetime
+from re import compile as re_compile
 
 from aiohttp import ClientResponseError
 from yarl import URL
@@ -13,10 +14,11 @@ from .models import (
     MarketListing,
     MarketListingItem,
     ITEM_DESCR_TUPLE,
+    ItemOrdersHistogram,
 )
 from .constants import STEAM_URL, Game, Currency, GameType, Language, T_PARAMS, T_HEADERS, EResult
-from .typed import ItemOrdersHistogram, ItemOrdersActivity, PriceOverview
-from .exceptions import EResultError, SteamError, RateLimitExceededError
+from .typed import ItemOrdersHistogramData, ItemOrdersActivity, PriceOverview
+from .exceptions import EResultError, SteamError, RateLimitExceeded, ResourceNotModified
 from .utils import create_ident_code, find_item_nameid_in_text, parse_header_time, format_header_time
 
 if TYPE_CHECKING:
@@ -27,11 +29,12 @@ INV_COUNT = 5000
 LISTING_COUNT = 10
 
 INVENTORY_URL = STEAM_URL.COMMUNITY / "inventory"
-PREDICATE: TypeAlias = Callable[[EconItem], bool]
 
 # listings, total count, last modified
 MARKET_ITEM_LISTINGS_DATA: TypeAlias = tuple[list[MarketListing], int, datetime]
 INV_ITEM_DATA: TypeAlias = tuple[list[EconItem], int, int | None]  # items, total count, last asset id for pagination
+
+ITEM_ORDER_HIST_PRICE_RE = re_compile(r"[^\d\s]*([\d,]+(?:\.\d+)?)[^\d\s]*")  # Author: ChatGPT
 
 
 class SteamPublicMixin:
@@ -68,7 +71,7 @@ class SteamPublicMixin:
         :return: list of `EconItem`, total count of items in inventory, last asset id of the list
         :raises SteamError: if inventory is private
         :raises EResultError: for ordinary reasons
-        :raises RateLimitExceededError: when you hit rate limit
+        :raises RateLimitExceeded: when you hit rate limit
         """
 
         inv_url = INVENTORY_URL / f"{steam_id}/"
@@ -83,7 +86,7 @@ class SteamPublicMixin:
             if e.status == 403:
                 raise SteamError("Steam user inventory is private") from e
             elif e.status == 429:  # never faced this, but let it be
-                raise RateLimitExceededError("You have been rate limited, rest for a while!") from e
+                raise RateLimitExceeded("You have been rate limited, rest for a while!") from e
             else:
                 raise e
 
@@ -102,24 +105,6 @@ class SteamPublicMixin:
         items = self._parse_items(rj, steam_id, _item_descriptions_map)
 
         return items, total_count, last_assetid_return
-
-    async def _fetch_inventory(
-        self: "SteamPublicClient",
-        url: URL,
-        params: dict,
-        headers: dict,
-    ) -> dict[str, list[dict]]:
-        try:
-            r = await self.session.get(url, params=params, headers=headers)
-        except ClientResponseError as e:
-            raise SteamError("User inventory is private") if e.status == 403 else e
-
-        rj: dict[str, list[dict]] = await r.json()
-        success = EResult(rj.get("success"))
-        if success is not EResult.OK:
-            raise EResultError(rj.get("message", "Failed to fetch inventory"), success, rj)
-
-        return rj
 
     @staticmethod
     def _find_game_for_asset(description_data: dict[str, int], assets: list[dict[str, int | str]]) -> GameType:
@@ -233,7 +218,7 @@ class SteamPublicMixin:
         :param headers: extra headers to send with request
         :return: `AsyncIterator` that yields list of `EconItem`, total count of items in inventory, last asset id of the list
         :raises EResultError: for ordinary reasons
-        :raises RateLimitExceededError: when you hit rate limit
+        :raises RateLimitExceeded: when you hit rate limit
         """
 
         _item_descriptions_map = {}  # shared descriptions instances across calls
@@ -255,16 +240,47 @@ class SteamPublicMixin:
 
             yield items, total_count, last_assetid
 
-    async def fetch_item_orders_histogram(
+    @overload
+    async def get_item_orders_histogram(
+        self,
+        item_nameid: int,
+        *,
+        lang: Language = ...,
+        country: str = ...,
+        currency: Currency = ...,
+        if_modified_since: datetime | str = ...,
+        params: T_PARAMS = ...,
+        headers: T_HEADERS = ...,
+    ) -> ItemOrdersHistogram:
+        ...
+
+    @overload
+    async def get_item_orders_histogram(
+        self,
+        item_nameid: int,
+        *,
+        lang: Language = ...,
+        country: str = ...,
+        currency: Currency = ...,
+        raw: Literal[True] = ...,
+        if_modified_since: datetime | str = ...,
+        params: T_PARAMS = ...,
+        headers: T_HEADERS = ...,
+    ) -> ItemOrdersHistogramData:
+        ...
+
+    async def get_item_orders_histogram(
         self: "SteamPublicClient",
         item_nameid: int,
         *,
         lang: Language = None,
         country: str = None,
         currency: Currency = None,
+        raw: bool = False,
+        if_modified_since: datetime | str = None,
         params: T_PARAMS = {},
         headers: T_HEADERS = {},
-    ) -> ItemOrdersHistogram:
+    ) -> ItemOrdersHistogramData | ItemOrdersHistogram:  # what about model?
         """
         Do what described in method name.
 
@@ -272,16 +288,20 @@ class SteamPublicMixin:
             * https://github.com/Revadike/InternalSteamWebAPI/wiki/Get-Market-Item-Orders-Histogram
             * https://github.com/somespecialone/steam-item-name-ids
 
-        .. warning:: This request is rate limited by Steam.
+        .. warning:: This request is rate limited by Steam. It is strongly recommended to use `if_modified_since`
 
         :param item_nameid: special id of item class. Can be found only on listings page.
         :param lang:
         :param country:
         :param currency:
+        :param raw: if `True`, return `ItemOrdersHistogramData` dict instead of `ItemOrdersHistogram` model
+        :param if_modified_since: `If-Modified-Since` header value
         :param params: extra params to pass to url
         :param headers: extra headers to send with request
-        :return: `ItemOrdersHistogram` dict
-        :raises EResultError:
+        :return: `ItemOrdersHistogramData` dict if `raw` is `True` or `ItemOrdersHistogram` model
+        :raises EResultError: for ordinary reasons
+        :raises RateLimitExceeded: when you hit rate limit
+        :raises ResourceNotModified: when `if_modified_since` header passed and Steam response with 304 status code
         """
 
         params = {
@@ -292,20 +312,85 @@ class SteamPublicMixin:
             "item_nameid": item_nameid,
             **params,
         }
+        headers = {**headers}
+        if if_modified_since:
+            if isinstance(if_modified_since, datetime):
+                headers["If-Modified-Since"] = format_header_time(if_modified_since)
+            else:  # str
+                headers["If-Modified-Since"] = if_modified_since
+
         try:
             r = await self.session.get(STEAM_URL.MARKET / "itemordershistogram", params=params, headers=headers)
         except ClientResponseError as e:
             if e.status == 429:
-                raise RateLimitExceededError("You have been rate limited, rest for a while!") from e
+                raise RateLimitExceeded("You have been rate limited, rest for a while!") from e
             else:
                 raise e
 
-        rj: ItemOrdersHistogram = await r.json()
+        if r.status == 304:  # not modified if header "If-Modified-Since" is provided
+            raise ResourceNotModified
+
+        rj: ItemOrdersHistogramData = await r.json()
         success = EResult(rj.get("success"))
         if success is not EResult.OK:
             raise EResultError(rj.get("message", "Failed to fetch items order histogram"), success, rj)
 
-        return rj
+        if raw:
+            return rj
+
+        # model parsing
+        return ItemOrdersHistogram(
+            sell_order_count=self._parse_item_order_histogram_count(rj["sell_order_count"]),
+            sell_order_price=self._parse_item_order_histogram_price(rj["sell_order_price"]),
+            sell_order_table=[
+                (
+                    self._parse_item_order_histogram_price(d["price"]),
+                    self._parse_item_order_histogram_price(d["price_with_fee"]),
+                    self._parse_item_order_histogram_count(d["quantity"]),
+                )
+                for d in rj["sell_order_table"]
+            ],
+            buy_order_count=self._parse_item_order_histogram_count(rj["buy_order_count"]),
+            buy_order_price=self._parse_item_order_histogram_price(rj["buy_order_price"]),
+            buy_order_table=[
+                (
+                    self._parse_item_order_histogram_price(d["price"]),
+                    self._parse_item_order_histogram_count(d["quantity"]),
+                )
+                for d in rj["buy_order_table"]
+            ],
+            highest_buy_order=int(rj["highest_buy_order"]),
+            lowest_sell_order=int(rj["lowest_sell_order"]),
+            buy_order_graph=[(int(d[0] * 100), d[1], d[2]) for d in rj["buy_order_graph"]],
+            sell_order_graph=[(int(d[0] * 100), d[1], d[2]) for d in rj["sell_order_graph"]],
+            graph_max_y=rj["graph_max_y"],
+            graph_min_x=int(rj["graph_min_x"] * 100),
+            graph_max_x=int(rj["graph_max_x"] * 100),
+        )
+
+    @staticmethod
+    def _parse_item_order_histogram_count(text: str) -> int:
+        if "." in text:
+            count_raw = text.replace(".", "")
+        elif "," in text:  # to be sure
+            count_raw = text.replace(",", "")
+        else:
+            count_raw = text
+
+        return int(count_raw)
+
+    @staticmethod
+    def _parse_item_order_histogram_price(text: str) -> int:
+        raw_price = ITEM_ORDER_HIST_PRICE_RE.search(text).group(1)
+
+        if "," in raw_price:  # 163,46₴
+            price = raw_price.replace(",", "")
+        elif "." in raw_price:  # £2.69
+            price = raw_price.replace(".", "")
+        else:
+            price = int(raw_price) * 100  # add cents
+
+        return int(price)
 
     async def fetch_item_orders_activity(
         self: "SteamPublicClient",
@@ -418,7 +503,7 @@ class SteamPublicMixin:
             r = await self.session.get(STEAM_URL.MARKET / "priceoverview", params=params, headers=headers)
         except ClientResponseError as e:
             if e.status == 429:
-                raise RateLimitExceededError("You have been rate limited, rest for a while!") from e
+                raise RateLimitExceeded("You have been rate limited, rest for a while!") from e
             else:
                 raise e
 
@@ -500,7 +585,8 @@ class SteamPublicMixin:
         :param headers: extra headers to send with request
         :return: list of `MarketListing`, total listings count, datetime object when resource was last modified
         :raises EResultError: for ordinary reasons
-        :raises RateLimitExceededError: when you hit rate limit
+        :raises RateLimitExceeded: when you hit rate limit
+        :raises ResourceNotModified: when `if_modified_since` header passed and Steam response with 304 status code
         """
 
         if isinstance(obj, ITEM_DESCR_TUPLE):
@@ -530,14 +616,14 @@ class SteamPublicMixin:
             r = await self.session.get(base_url / "render/", params=params, headers=headers)
         except ClientResponseError as e:
             if e.status == 429:
-                raise RateLimitExceededError("You have been rate limited, rest for a while!") from e
+                raise RateLimitExceeded("You have been rate limited, rest for a while!") from e
             else:
                 raise e
 
-        last_modified = parse_header_time(r.headers["Last-Modified"])
-
         if r.status == 304:  # not modified if header "If-Modified-Since" is provided
-            return [], 0, last_modified
+            raise ResourceNotModified
+
+        last_modified = parse_header_time(r.headers["Last-Modified"])
 
         rj: dict[str, int | dict[str, dict]] = await r.json()
         success = EResult(rj.get("success"))
@@ -676,7 +762,7 @@ class SteamPublicMixin:
         :param headers: extra headers to send with request
         :return: `AsyncIterator` that yields list of `MarketListing`, total listings count, datetime object when resource was last modified
         :raises EResultError: for ordinary reasons
-        :raises RateLimitExceededError: when you hit rate limit
+        :raises RateLimitExceeded: when you hit rate limit
         """
 
         item_descriptions_map = {}

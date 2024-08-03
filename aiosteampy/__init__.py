@@ -28,4 +28,5 @@ from .models import (
     TradeOffer,
     HistoryTradeOffer,
     HistoryTradeOfferItem,
+    ItemOrdersHistogram,
 )

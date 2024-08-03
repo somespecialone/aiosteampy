@@ -3,25 +3,25 @@
 from typing import TypedDict, Literal
 
 
-class SellOrderTable(TypedDict):
+class SellOrderTableData(TypedDict):
     price: str
     price_with_fee: str
     quantity: str
 
 
-class BuyOrderTable(TypedDict):
+class BuyOrderTableData(TypedDict):
     price: str
     quantity: str
 
 
-class ItemOrdersHistogram(TypedDict):
+class ItemOrdersHistogramData(TypedDict):
     success: int
     sell_order_count: str
     sell_order_price: str
-    sell_order_table: list[SellOrderTable]
+    sell_order_table: list[SellOrderTableData]
     buy_order_count: str
     buy_order_price: str
-    buy_order_table: list[BuyOrderTable]
+    buy_order_table: list[BuyOrderTableData]
     highest_buy_order: str
     lowest_sell_order: str
 
@@ -29,7 +29,7 @@ class ItemOrdersHistogram(TypedDict):
     buy_order_graph: list[tuple[float, int, str]]
     sell_order_graph: list[tuple[float, int, str]]
 
-    graph_max_y: str
+    graph_max_y: int
     graph_min_x: float
     graph_max_x: float
     price_prefix: str

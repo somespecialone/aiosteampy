@@ -160,11 +160,8 @@ class Language(str, Enum):  # like StrEnum from python 3.11
     UKRAINIAN = "ukrainian"
     VIETNAMESE = "vietnamese"
 
-    def __str__(self):
+    def __str__(self):  # for params serialization
         return self.value
-
-
-# TODO Countries enum
 
 
 class TradeOfferStatus(Enum):

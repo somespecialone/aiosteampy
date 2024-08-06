@@ -5,6 +5,9 @@
 [![Made in Ukraine](https://img.shields.io/badge/made_in-ukraine-ffd700.svg?labelColor=0057b7)](https://stand-with-ukraine.pp.ua)
 [![steam](https://shields.io/badge/steam-1b2838?logo=steam)](https://store.steampowered.com/)
 [![license](https://img.shields.io/github/license/somespecialone/aiosteampy)](https://github.com/somespecialone/aiosteampy/blob/master/LICENSE)
+[![Poetry](https://img.shields.io/endpoint?url=https://python-poetry.org/badge/v0.json)](https://python-poetry.org/)
+[![black](https://img.shields.io/badge/code%20style-black-000000.svg)](https://github.com/psf/black)
+[![Snyk Badge](https://img.shields.io/badge/Snyk-4C4A73?logo=snyk&logoColor=fff&style=flat)](https://security.snyk.io/package/pip/aiosteampy)
 [![pypi](https://img.shields.io/pypi/v/aiosteampy)](https://pypi.org/project/aiosteampy)
 [![versions](https://img.shields.io/pypi/pyversions/aiosteampy)](https://pypi.org/project/aiosteampy)
 [![Tests](https://github.com/somespecialone/aiosteampy/actions/workflows/tests.yml/badge.svg)](https://github.com/somespecialone/aiosteampy/actions/workflows/tests.yml)
@@ -12,12 +15,14 @@
 [![Docs](https://github.com/somespecialone/aiosteampy/actions/workflows/docs.yml/badge.svg)](https://github.com/somespecialone/aiosteampy/actions/workflows/docs.yml)
 [![codecov](https://codecov.io/gh/somespecialone/aiosteampy/branch/master/graph/badge.svg?token=SP7EQKPIQ3)](https://codecov.io/gh/somespecialone/aiosteampy)
 [![CodeFactor](https://www.codefactor.io/repository/github/somespecialone/aiosteampy/badge)](https://www.codefactor.io/repository/github/somespecialone/aiosteampy)
-[![black](https://img.shields.io/badge/code%20style-black-000000.svg)](https://github.com/psf/black)
-[![Poetry](https://img.shields.io/endpoint?url=https://python-poetry.org/badge/v0.json)](https://python-poetry.org/)
+[![health](https://snyk.io//advisor/python/aiosteampy/badge.svg)](https://snyk.io//advisor/python/aiosteampy)
 
-Previously this library was a soft fork of [bukson/steampy](https://github.com/bukson/steampy) and created only to
+Previously this library was a soft fork of [bukson/steampy](https://github.com/bukson/steampy) with intend to
 provide asynchronous methods and proxies support.
-But now it _standalone_ project. Created by myself for steam trading purposes mostly.
+But now it _standalone_ project. 
+
+> Created for steam trading purposes mostly.
+Inspired by [DoctorMcKay/node-steamcommunity](https://github.com/DoctorMcKay/node-steamcommunity)
 
 ---
 
@@ -68,18 +73,14 @@ poetry add aiosteampy[all]
 AIOSTEAMPY use [aiohttp](https://github.com/aio-libs/aiohttp) underneath to do asynchronous requests to steam servers,
 with modern async/await syntax.
 
-> Generally, project inspired most
-> by [DoctorMcKay/node-steamcommunity](https://github.com/DoctorMcKay/node-steamcommunity)
-
 ## Key features
 
-- Stateless: the main idea was a low-middle layer API wrapper of some steam services and methods like market,
-  tradeoffers, confirmations, steamguard, etc. But if you want to cache your entities data (listings, confirmations,
-  ...) [there is some methods to help](https://aiosteampy.somespecial.one/examples/states/).
-- Declarative: there is models almost for every data.
-- Typed: for editor support most things are typed.
-- Short: I really tried to fit most important for steam trading methods.
-- Connection behind web proxy.
+- **Stateless**: low-middle layer API wrapper of some steam services and methods like market,
+  tradeoffers, confirmations, steamguard, etc.
+- **Declarative**: there is models or `TypedDict`s for every data.
+- **Typed**: High-end support with extensive typing, tested on `VSCode` and `PyCharm`.
+- **Simple**: Fit most important related to steam trading process methods.
+- **Web proxy** support.
 
 ## What can I do with this
 
@@ -97,7 +98,7 @@ with modern async/await syntax.
 - Get apps, packages.
 - All, that need connection to CM.
 - Interact with game servers (inspect CS2 (ex. CSGO) items, ...).
-- Edit profile, social interaction(groups, clans).
+- Edit profile, social interaction(groups, clans). **(changes planned!)**
 - Handle entities (listings, items, tradeoffers) lifecycle for easy if you need to store it.
 
 <!--intro-end-->
@@ -127,8 +128,8 @@ but not otherwise.
 
 ### v0.7.0
 
-- [ ] Remove storage methods. Caching entities must be user responsibility
-- [ ] Rename `fetch_...` methods to `get_...` to remove annoying methods symantic mess
+- [x] Remove storage methods. Caching entities must be user responsibility
+- [x] Rename `fetch_...` methods to `get_...` to remove annoying methods symantic mess
 - [ ] Web browser mechanism to fetch trade offers from `Steam`, avoiding `Steam Web Api`
 
 ### v0.8.0

@@ -177,7 +177,7 @@ class EconItem(ItemDescription):
 
 
 ITEM_DESCR_TUPLE = (EconItem, ItemDescription)
-EconItemType: TypeAlias = EconItem | EconItemTuple
+EconItemType: TypeAlias = EconItem | EconItemTuple  # TODO Do I need this?
 
 
 # https://github.com/DoctorMcKay/node-steamcommunity/wiki/CConfirmation
@@ -196,7 +196,8 @@ class Confirmation:
     summary: str
     warn: str | None  # ?
 
-    asset_ident_code: str | None = None  # only to map confirmation to sell listing without id
+    # TODO replace it with typed details
+    _asset_ident_code: str | None = None  # only to map confirmation to sell listing without id
 
 
 @dataclass(eq=False, slots=True)

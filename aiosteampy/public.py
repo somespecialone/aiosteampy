@@ -835,3 +835,5 @@ class SteamPublicMixin:
         text = await res.text()
 
         return find_item_nameid_in_text(text)
+
+    # TODO market search method, pagination, auto-crawler in github runner for item-name-ids

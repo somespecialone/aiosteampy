@@ -48,6 +48,7 @@ __all__ = (
     "patch_session_with_http_proxy",
     "parse_header_time",
     "format_header_time",
+    "attribute_required",
 )
 
 
@@ -444,3 +445,20 @@ def parse_header_time(value: str) -> datetime:
 def format_header_time(d: datetime) -> str:
     """Format timezone naive datetime object to header acceptable string"""
     return d.strftime(_HEADER_TIME_FORMAT) + "GMT"  # simple case
+
+
+# generic, but less performant due to getattr
+# without typing, PyCharm complains about return type while VsCode not
+def attribute_required(attr: str, msg: str = None):
+    """Generate a decorator that check required `attr` on instance before call a wrapped method"""
+
+    def decorator(func):
+        @wraps(func)
+        def wrapper(self, *args, **kwargs):
+            if getattr(self, attr, None) is None:
+                raise AttributeError(msg or f"You must provide a value for '{attr}' before using this method")
+            return func(self, *args, **kwargs)
+
+        return wrapper
+
+    return decorator

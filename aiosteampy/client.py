@@ -274,7 +274,7 @@ class SteamCommunityMixin(
 
         if success is EResult.PENDING and rj.get("requires_confirmation"):
             await self.confirm_api_key_request(rj["request_id"])
-            r = await self.session.post(STEAM_URL.COMMUNITY / "dev/requestkey", data=data)
+            r = await self.session.post(r.url, data=data)  # repeat
             rj: dict[str, str | int] = await r.json()
             success = EResult(rj.get("success"))
 
@@ -325,6 +325,7 @@ class SteamCommunityMixin(
         :param headers: extra headers to send with request
         :return: list of `EconItem`, total count of items in inventory, last asset id of the list
         :raises EResultError: for ordinary reasons
+        :raises RateLimitExceeded: when you hit rate limit
         :raises SessionExpired:
         """
 
@@ -366,6 +367,7 @@ class SteamCommunityMixin(
         :return: `AsyncIterator` that yields list of `EconItem`, total count of items in inventory, last asset id of the list
         :raises EResultError: for ordinary reasons
         :raises RateLimitExceeded: when you hit rate limit
+        :raises SessionExpired:
         """
 
         return self.user_inventory(

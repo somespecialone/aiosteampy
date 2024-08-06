@@ -54,7 +54,7 @@ class MarketMixin:
     @overload
     async def place_sell_listing(
         self,
-        asset: EconItem,
+        obj: EconItem,
         *,
         price: int,
         payload: T_PAYLOAD = ...,
@@ -65,55 +65,7 @@ class MarketMixin:
     @overload
     async def place_sell_listing(
         self,
-        asset: EconItem,
-        *,
-        price: int,
-        confirm: Literal[False] = ...,
-        payload: T_PAYLOAD = ...,
-        headers: T_HEADERS = ...,
-    ) -> None:
-        ...
-
-    @overload
-    async def place_sell_listing(
-        self,
-        asset: EconItem,
-        *,
-        to_receive: int,
-        payload: T_PAYLOAD = ...,
-        headers: T_HEADERS = ...,
-    ) -> int:
-        ...
-
-    @overload
-    async def place_sell_listing(
-        self,
-        asset: EconItem,
-        *,
-        to_receive: int,
-        confirm: Literal[False] = ...,
-        payload: T_PAYLOAD = ...,
-        headers: T_HEADERS = ...,
-    ) -> None:
-        ...
-
-    @overload
-    async def place_sell_listing(
-        self,
-        asset: int,
-        game: GameType,
-        *,
-        price: int,
-        payload: T_PAYLOAD = ...,
-        headers: T_HEADERS = ...,
-    ) -> int:
-        ...
-
-    @overload
-    async def place_sell_listing(
-        self,
-        asset: int,
-        game: GameType,
+        obj: EconItem,
         *,
         price: int,
         confirm: Literal[False] = ...,
@@ -125,7 +77,55 @@ class MarketMixin:
     @overload
     async def place_sell_listing(
         self,
-        asset: int,
+        obj: EconItem,
+        *,
+        to_receive: int,
+        payload: T_PAYLOAD = ...,
+        headers: T_HEADERS = ...,
+    ) -> int:
+        ...
+
+    @overload
+    async def place_sell_listing(
+        self,
+        obj: EconItem,
+        *,
+        to_receive: int,
+        confirm: Literal[False] = ...,
+        payload: T_PAYLOAD = ...,
+        headers: T_HEADERS = ...,
+    ) -> None:
+        ...
+
+    @overload
+    async def place_sell_listing(
+        self,
+        obj: int,
+        game: GameType,
+        *,
+        price: int,
+        payload: T_PAYLOAD = ...,
+        headers: T_HEADERS = ...,
+    ) -> int:
+        ...
+
+    @overload
+    async def place_sell_listing(
+        self,
+        obj: int,
+        game: GameType,
+        *,
+        price: int,
+        confirm: Literal[False] = ...,
+        payload: T_PAYLOAD = ...,
+        headers: T_HEADERS = ...,
+    ) -> None:
+        ...
+
+    @overload
+    async def place_sell_listing(
+        self,
+        obj: int,
         game: GameType,
         *,
         to_receive: int,
@@ -137,7 +137,7 @@ class MarketMixin:
     @overload
     async def place_sell_listing(
         self,
-        asset: int,
+        obj: int,
         game: GameType,
         *,
         to_receive: int,
@@ -147,59 +147,59 @@ class MarketMixin:
     ) -> None:
         ...
 
-    # @overload
-    # async def place_sell_listing(
-    #     self,
-    #     asset: EconItem,
-    #     *,
-    #     price: int,
-    #     fetch: Literal[True] = ...,
-    #     payload: T_PAYLOAD = ...,
-    #     headers: T_HEADERS = ...,
-    # ) -> MyMarketListing:
-    #     ...
-    #
-    # @overload
-    # async def place_sell_listing(
-    #     self,
-    #     asset: EconItem,
-    #     *,
-    #     to_receive: int,
-    #     fetch: Literal[True] = ...,
-    #     payload: T_PAYLOAD = ...,
-    #     headers: T_HEADERS = ...,
-    # ) -> MyMarketListing:
-    #     ...
-    #
-    # @overload
-    # async def place_sell_listing(
-    #     self,
-    #     asset: int,
-    #     game: GameType,
-    #     *,
-    #     price: int,
-    #     fetch: Literal[True] = ...,
-    #     payload: T_PAYLOAD = ...,
-    #     headers: T_HEADERS = ...,
-    # ) -> MyMarketListing:
-    #     ...
-    #
-    # @overload
-    # async def place_sell_listing(
-    #     self,
-    #     asset: int,
-    #     game: GameType,
-    #     *,
-    #     to_receive: int,
-    #     fetch: Literal[True] = ...,
-    #     payload: T_PAYLOAD = ...,
-    #     headers: T_HEADERS = ...,
-    # ) -> MyMarketListing:
-    #     ...
+    @overload
+    async def place_sell_listing(
+        self,
+        obj: EconItem,
+        *,
+        price: int,
+        confirm_and_fetch: Literal[True] = ...,
+        payload: T_PAYLOAD = ...,
+        headers: T_HEADERS = ...,
+    ) -> MyMarketListing:
+        ...
+
+    @overload
+    async def place_sell_listing(
+        self,
+        obj: EconItem,
+        *,
+        to_receive: int,
+        confirm_and_fetch: Literal[True] = ...,
+        payload: T_PAYLOAD = ...,
+        headers: T_HEADERS = ...,
+    ) -> MyMarketListing:
+        ...
+
+    @overload
+    async def place_sell_listing(
+        self,
+        obj: int,
+        game: GameType,
+        *,
+        price: int,
+        confirm_and_fetch: Literal[True] = ...,
+        payload: T_PAYLOAD = ...,
+        headers: T_HEADERS = ...,
+    ) -> MyMarketListing:
+        ...
+
+    @overload
+    async def place_sell_listing(
+        self,
+        obj: int,
+        game: GameType,
+        *,
+        to_receive: int,
+        confirm_and_fetch: Literal[True] = ...,
+        payload: T_PAYLOAD = ...,
+        headers: T_HEADERS = ...,
+    ) -> MyMarketListing:
+        ...
 
     async def place_sell_listing(
         self: "SteamCommunityMixin",
-        asset: EconItem | int,
+        obj: EconItem | int,
         game: GameType = None,
         *,
         price: int = None,
@@ -208,14 +208,17 @@ class MarketMixin:
         confirm=True,
         payload: T_PAYLOAD = {},
         headers: T_HEADERS = {},
-    ) -> int | None | MyMarketListing:
+    ) -> int | MyMarketListing | None:
         """
         Create and place sell listing.
-        If `confirm` is True - return listing id of created and confirmed sell listing,
-        if this requires confirmation. If not - return None.
-        Money should be only and only in account wallet currency.
+        If `confirm` is `True` - return listing id of created and confirmed sell listing,
+        if this requires confirmation. If not - return `None`.
 
-        :param asset: `EconItem` that you want to list on market or asset id
+        .. note::
+            * Money should be only and only in account wallet currency
+            * `price` or `to_receive` is integers equal to cents
+
+        :param obj: `EconItem` that you want to list on market or asset id
         :param game: game of item
         :param price: money that buyer must pay. Include fees
         :param to_receive: money that you want to receive
@@ -223,15 +226,24 @@ class MarketMixin:
         :param confirm: confirm listing or not if steam demands mobile confirmation
         :param payload: extra payload data
         :param headers: extra headers to send with request
-        :return: sell listing id or None
+        :return: sell listing id, `MyMarketListing` or `None`
+        :raises TypeError:
         :raises EResultError:
         """
 
-        if isinstance(asset, EconItem):
-            asset_id = asset.asset_id
-            game = asset.game
+        if isinstance(obj, EconItem):
+            asset_id = obj.asset_id
+            game = obj.game
         else:
-            asset_id = asset
+            asset_id = obj
+
+        # prevent user from mistake and potentially money loss
+        if to_receive and price:
+            raise TypeError("The `price` and `to_receive` arguments are mutually exclusive!")
+        elif type(price) is float or type(to_receive) is float:
+            raise TypeError(
+                "The `price` and `to_receive` arguments should be integers. Did you forget to convert price to cents?"
+            )
 
         to_receive = to_receive or buyer_pays_to_receive(price)[2]
 
@@ -251,11 +263,18 @@ class MarketMixin:
         if success is not EResult.OK:
             raise EResultError(rj.get("message", "Failed to place sell listing"), success, rj)
 
+        to_return = None
+
         if rj.get("needs_mobile_confirmation") and confirm:
             conf = await self.confirm_sell_listing(asset_id, game)
+            to_return = conf.creator_id
 
-            # return await self.get_my_listings() if fetch else conf.creator_id
-            return conf.creator_id
+        # TODO fetch and return listing
+        if fetch:
+            pass
+
+            # to_return =
+        return to_return
 
     def cancel_sell_listing(
         self: "SteamCommunityMixin",
@@ -265,7 +284,7 @@ class MarketMixin:
         headers: T_HEADERS = {},
     ):
         """
-        Just cancel sell listing.
+        Simply cancel sell listing.
 
         :param obj: `MyMarketListing` or listing id
         :param payload: extra payload data
@@ -324,7 +343,7 @@ class MarketMixin:
         :param payload: extra payload data
         :param headers: extra headers to send with request
         :return: buy order id
-        :raises EResultError:
+        :raises EResultError: for ordinary reasons
         """
 
         if isinstance(obj, ItemDescription):
@@ -364,7 +383,7 @@ class MarketMixin:
         :param order: `BuyOrder` or buy order id
         :param payload: extra payload data
         :param headers: extra headers to send with request
-        :raises EResultError:
+        :raises EResultError: for ordinary reasons
         """
 
         if isinstance(order, BuyOrder):
@@ -395,7 +414,7 @@ class MarketMixin:
         :param params: extra params to pass to url
         :param headers: extra headers to send with request
         :return: active listings, listings to confirm, buy orders
-        :raises EResultError:
+        :raises EResultError: for ordinary reasons
         :raises SessionExpired:
         """
 
@@ -509,7 +528,7 @@ class MarketMixin:
     @overload
     async def buy_market_listing(
         self,
-        listing: MarketListing,
+        obj: MarketListing,
         *,
         payload: T_PAYLOAD = ...,
         headers: T_HEADERS = ...,
@@ -519,7 +538,7 @@ class MarketMixin:
     @overload
     async def buy_market_listing(
         self,
-        listing: int,
+        obj: int,
         price: int,
         market_hash_name: str,
         game: GameType,
@@ -533,7 +552,7 @@ class MarketMixin:
     @wallet_currency_required
     async def buy_market_listing(
         self: "SteamCommunityMixin",
-        listing: int | MarketListing,
+        obj: int | MarketListing,
         price: int = None,
         market_hash_name: str = None,
         game: GameType = None,
@@ -549,7 +568,7 @@ class MarketMixin:
 
         .. note:: Make sure that listing converted currency is wallet currency!
 
-        :param listing: id for listing itself (aka market id) or `MarketListing`
+        :param obj: id for listing itself (aka market id) or `MarketListing`
         :param price: Can be found on listing data in Steam under field `converted_price` divided by 100
         :param market_hash_name: as arg name
         :param game: as arg name&type
@@ -563,20 +582,20 @@ class MarketMixin:
         :raises ValueError:
         """
 
-        if isinstance(listing, MarketListing):
-            if listing.converted_currency is not self.currency:
+        if isinstance(obj, MarketListing):
+            if obj.converted_currency is not self.currency:
                 raise ValueError(
-                    f"Currency of listing [{listing.converted_currency}] is "
+                    f"Currency of listing [{obj.converted_currency}] is "
                     f"different from wallet [{self.currency}] one!"
                 )
 
-            listing_id = listing.id
-            price = listing.converted_price
-            fee = listing.converted_fee
-            market_hash_name = listing.item.market_hash_name
-            game = listing.item.game
+            listing_id = obj.id
+            price = obj.converted_price
+            fee = obj.converted_fee
+            market_hash_name = obj.item.market_hash_name
+            game = obj.item.game
         else:
-            listing_id = listing
+            listing_id = obj
 
         fee = fee or ((floor(price * 0.05) or 1) + (floor(price * 0.10) or 1))
         data = {
@@ -608,12 +627,13 @@ class MarketMixin:
         headers: T_HEADERS = {},
     ) -> list[MarketHistoryEvent]:
         """
-        Fetch market history of the user.
+        Fetch market history of self.
 
         :param predicate:
         :param page_size:
         :param params: extra params to pass to url
         :param headers: extra headers to send with request
+        :returns: list of `MarketHistoryEvent`
         """
 
         url = STEAM_URL.MARKET / "myhistory"

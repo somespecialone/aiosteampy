@@ -1,8 +1,9 @@
-from typing import TYPE_CHECKING, overload, Literal, TypeAlias, Type, Callable
+from typing import TYPE_CHECKING, overload, Literal, TypeAlias, Type, AsyncIterator
 from datetime import datetime
 from math import floor
 
 from aiohttp import ClientResponseError
+from aiohttp.client import _RequestContextManager
 from yarl import URL
 
 from .exceptions import EResultError, SessionExpired
@@ -36,8 +37,8 @@ from .utils import create_ident_code, buyer_pays_to_receive
 if TYPE_CHECKING:
     from .client import SteamCommunityMixin
 
-MY_LISTINGS: TypeAlias = tuple[list[MyMarketListing], list[MyMarketListing], list[BuyOrder]]
-PREDICATE: TypeAlias = Callable[[MarketHistoryEvent], bool]
+MY_LISTINGS_DATA: TypeAlias = tuple[list[MyMarketListing], list[MyMarketListing], list[BuyOrder], int]
+MY_MARKET_HISTORY_DATA: TypeAlias = tuple[list[MarketHistoryEvent], int]
 
 
 class MarketMixin:
@@ -153,7 +154,8 @@ class MarketMixin:
         obj: EconItem,
         *,
         price: int,
-        confirm_and_fetch: Literal[True] = ...,
+        fetch: Literal[True] = ...,
+        confirm: bool = ...,
         payload: T_PAYLOAD = ...,
         headers: T_HEADERS = ...,
     ) -> MyMarketListing:
@@ -165,7 +167,8 @@ class MarketMixin:
         obj: EconItem,
         *,
         to_receive: int,
-        confirm_and_fetch: Literal[True] = ...,
+        fetch: Literal[True] = ...,
+        confirm: bool = ...,
         payload: T_PAYLOAD = ...,
         headers: T_HEADERS = ...,
     ) -> MyMarketListing:
@@ -178,7 +181,8 @@ class MarketMixin:
         game: GameType,
         *,
         price: int,
-        confirm_and_fetch: Literal[True] = ...,
+        fetch: Literal[True] = ...,
+        confirm: bool = ...,
         payload: T_PAYLOAD = ...,
         headers: T_HEADERS = ...,
     ) -> MyMarketListing:
@@ -191,7 +195,8 @@ class MarketMixin:
         game: GameType,
         *,
         to_receive: int,
-        confirm_and_fetch: Literal[True] = ...,
+        fetch: Literal[True] = ...,
+        confirm: bool = ...,
         payload: T_PAYLOAD = ...,
         headers: T_HEADERS = ...,
     ) -> MyMarketListing:
@@ -272,8 +277,8 @@ class MarketMixin:
         # TODO fetch and return listing
         if fetch:
             pass
-
             # to_return =
+
         return to_return
 
     def cancel_sell_listing(
@@ -282,7 +287,7 @@ class MarketMixin:
         *,
         payload: T_PAYLOAD = {},
         headers: T_HEADERS = {},
-    ):
+    ) -> _RequestContextManager:
         """
         Simply cancel sell listing.
 
@@ -321,7 +326,33 @@ class MarketMixin:
     ) -> int:
         ...
 
-    # TODO fetch
+    @overload
+    async def place_buy_order(
+        self,
+        obj: ItemDescription,
+        *,
+        price: int,
+        quantity: int = ...,
+        fetch: Literal[True] = ...,
+        payload: T_PAYLOAD = ...,
+        headers: T_HEADERS = ...,
+    ) -> BuyOrder:
+        ...
+
+    @overload
+    async def place_buy_order(
+        self,
+        obj: str,
+        app_id: int,
+        *,
+        price: int,
+        quantity: int = ...,
+        fetch: Literal[True] = ...,
+        payload: T_PAYLOAD = ...,
+        headers: T_HEADERS = ...,
+    ) -> BuyOrder:
+        ...
+
     @wallet_currency_required
     async def place_buy_order(
         self: "SteamCommunityMixin",
@@ -330,9 +361,10 @@ class MarketMixin:
         *,
         price: int,
         quantity=1,
+        fetch=False,
         payload: T_PAYLOAD = {},
         headers: T_HEADERS = {},
-    ) -> int:
+    ) -> int | BuyOrder:
         """
         Place buy order on market.
 
@@ -340,9 +372,10 @@ class MarketMixin:
         :param app_id: app id if `obj` is market hash name
         :param price: price of single item
         :param quantity: just quantity
+        :param fetch: make request and return buy order
         :param payload: extra payload data
         :param headers: extra headers to send with request
-        :return: buy order id
+        :return: buy order id or `BuyOrder`
         :raises EResultError: for ordinary reasons
         """
 
@@ -368,6 +401,7 @@ class MarketMixin:
         if success is not EResult.OK:
             raise EResultError(rj.get("message", "Failed to create buy order"), success, rj)
 
+        # TODO fetch buy order
         return int(rj["buy_orderid"])
 
     async def cancel_buy_order(
@@ -399,49 +433,87 @@ class MarketMixin:
         if success is not EResult.OK:
             raise EResultError(rj.get("message", "Failed to cancel buy order"), success, rj)
 
-    # TODO pagination
     async def get_my_listings(
         self: "SteamCommunityMixin",
         *,
-        page_size=100,
+        start: int = 0,
+        count: int = 100,
         params: T_PARAMS = {},
         headers: T_HEADERS = {},
-    ) -> MY_LISTINGS:
+        _item_descriptions_map: dict = None,
+    ) -> MY_LISTINGS_DATA:
         """
         Fetch users market listings.
 
-        :param page_size: listings per page. Steam do not accept greater than 100
+        .. note:: you can paginate by yourself passing `start` arg
+
+        :param start: start index
+        :param count: listings per page. Steam do not accept value greater than 100
         :param params: extra params to pass to url
         :param headers: extra headers to send with request
-        :return: active listings, listings to confirm, buy orders
+        :return: active listings, listings to confirm, buy orders, total_count of active listings
         :raises EResultError: for ordinary reasons
         :raises SessionExpired:
         """
 
-        url = STEAM_URL.MARKET / "mylistings"
-        params = {"norender": 1, "start": 0, "count": page_size, **params}
-        active = []
-        to_confirm = []
-        buy_orders = []
-        item_descrs_map = {}  # ident code: ... , shared classes within whole listings
+        params = {"norender": 1, "start": start, "count": count, **params}
 
-        # pagination only for active listings. Don't know how to be with others
+        try:
+            r = await self.session.get(STEAM_URL.MARKET / "mylistings", params=params, headers=headers)
+        except ClientResponseError as e:
+            raise SessionExpired if e.status == 400 else e  # Am I sure that there status code 400 and not 403?
+
+        rj: dict = await r.json()
+        success = EResult(rj.get("success"))
+        if success is not EResult.OK:
+            raise EResultError(rj.get("message", "Failed to fetch user listings"), success, rj)
+
+        _item_descriptions_map = _item_descriptions_map if _item_descriptions_map is not None else {}
+        self._parse_item_descriptions_for_listings(rj["assets"], _item_descriptions_map)
+
+        active = self._parse_listings(rj["listings"], _item_descriptions_map)
+        to_confirm = self._parse_listings(rj["listings_to_confirm"], _item_descriptions_map)
+        buy_orders = self._parse_buy_orders(rj["buy_orders"], _item_descriptions_map)
+
+        return active, to_confirm, buy_orders, rj["num_active_listings"]
+
+    # pagination only for active listings. Don't know how to be with others
+    async def my_listings(
+        self,
+        *,
+        start: int = 0,
+        count: int = 100,
+        params: T_PARAMS = {},
+        headers: T_HEADERS = {},
+    ) -> AsyncIterator[MY_LISTINGS_DATA]:
+        """
+        Fetch users market listings. Return async iterator to paginate over listing pages.
+
+        :param start: start index
+        :param count: listings per page. Steam do not accept value greater than 100
+        :param params: extra params to pass to url
+        :param headers: extra headers to send with request
+        :return: active listings, listings to confirm, buy orders, total_count of active listings
+        :raises EResultError: for ordinary reasons
+        :raises SessionExpired:
+        """
+
+        item_descriptions_map = {}
+
         more_listings = True
         while more_listings:
-            data = await self._fetch_listings(url, params, headers)
-            if data["num_active_listings"] > data["pagesize"]:
-                more_listings = True
-                params["start"] += data["pagesize"]
-                params["count"] = data["pagesize"]
-            else:
-                more_listings = False
+            # avoid excess destructuring
+            listings_data = await self.get_my_listings(
+                start=start,
+                count=count,
+                params=params,
+                headers=headers,
+                _item_descriptions_map=item_descriptions_map,
+            )
+            start += count
+            more_listings = listings_data[3] > start
 
-            self._parse_item_descriptions_for_listings(data["assets"], item_descrs_map)
-            active.extend(self._parse_listings(data["listings"], item_descrs_map))
-            to_confirm.extend(self._parse_listings(data["listings_to_confirm"], item_descrs_map))
-            buy_orders.extend(self._parse_buy_orders(data["buy_orders"], item_descrs_map))
-
-        return active, to_confirm, buy_orders
+            yield listings_data
 
     async def _fetch_listings(self: "SteamCommunityMixin", url: URL, params: dict, headers: dict) -> dict:
         try:
@@ -621,44 +693,89 @@ class MarketMixin:
     async def get_my_market_history(
         self: "SteamCommunityMixin",
         *,
-        predicate: PREDICATE = None,
-        page_size=500,
+        start: int = 0,
+        count: int = 100,
         params: T_PARAMS = {},
         headers: T_HEADERS = {},
-    ) -> list[MarketHistoryEvent]:
+        _item_descriptions_map: dict = None,
+        _econ_items_map: dict = None,
+        _listings_map: dict = None,
+    ) -> MY_MARKET_HISTORY_DATA:
         """
         Fetch market history of self.
 
-        :param predicate:
-        :param page_size:
+        .. note:: You can paginate by yourself passing `start` arg
+
+        :param start: start index
+        :param count: listings per page. Steam do not accept value greater than 100
         :param params: extra params to pass to url
         :param headers: extra headers to send with request
-        :returns: list of `MarketHistoryEvent`
+        :return: list of `MarketHistoryEvent`, total_count
+        :raises EResultError: for ordinary reasons
+        :raises SessionExpired:
         """
 
-        url = STEAM_URL.MARKET / "myhistory"
-        params = {"norender": 1, "start": 0, "count": page_size, **params}
-        events = []
-        item_descrs_map = {}  # ident code: ... , shared classes within whole listings
-        econ_item_map = {}  # ident code: ...
-        listings_map = {}  # listings id / listing_purchase id
+        params = {"norender": 1, "start": start, "count": count, **params}
+
+        try:
+            r = await self.session.get(STEAM_URL.MARKET / "myhistory", params=params, headers=headers)
+        except ClientResponseError as e:
+            raise SessionExpired if e.status == 400 else e
+
+        rj: dict = await r.json()
+        success = EResult(rj.get("success"))
+        if success is not EResult.OK:
+            raise EResultError(rj.get("message", "Failed to fetch user listings"), success, rj)
+
+        _item_descriptions_map = _item_descriptions_map if _item_descriptions_map is not None else {}
+        _econ_items_map = _econ_items_map if _econ_items_map is not None else {}
+        _listings_map = _listings_map if _listings_map is not None else {}
+        self._parse_item_descriptions_for_listings(rj["assets"], _item_descriptions_map)
+        self._parse_assets_for_history_listings(rj["assets"], _item_descriptions_map, _econ_items_map)
+        self._parse_history_listings(rj, _econ_items_map, _listings_map)
+
+        return self._parse_history_events(rj, _listings_map), rj["total_count"]
+
+    async def my_market_history(
+        self: "SteamCommunityMixin",
+        *,
+        start: int = 0,
+        count: int = 100,
+        params: T_PARAMS = {},
+        headers: T_HEADERS = {},
+    ) -> AsyncIterator[MY_MARKET_HISTORY_DATA]:
+        """
+        Fetch market history of self. Return async iterator to paginate over history event pages.
+
+        :param start: start index
+        :param count: listings per page. Steam do not accept value greater than 100
+        :param params: extra params to pass to url
+        :param headers: extra headers to send with request
+        :return: `AsyncIterator` that yields list of `MarketHistoryEvent`, total_count
+        :raises EResultError: for ordinary reasons
+        :raises SessionExpired:
+        """
+
+        item_descriptions_map = {}
+        econ_items_map = {}
+        listings_map = {}
 
         more_listings = True
         while more_listings:
-            data = await self._fetch_listings(url, params, headers)
-            if data["total_count"] > data["pagesize"]:
-                more_listings = True
-                params["start"] += data["pagesize"]
-                params["count"] = data["pagesize"]
-            else:
-                more_listings = False
+            # avoid excess destructuring
+            history_data = await self.get_my_market_history(
+                start=start,
+                count=count,
+                params=params,
+                headers=headers,
+                _item_descriptions_map=item_descriptions_map,
+                _econ_items_map=econ_items_map,
+                _listings_map=listings_map,
+            )
+            start += count
+            more_listings = history_data[1] > start
 
-            self._parse_item_descriptions_for_listings(data["assets"], item_descrs_map)
-            self._parse_assets_for_history_listings(data["assets"], item_descrs_map, econ_item_map)
-            self._parse_history_listings(data, econ_item_map, listings_map)
-            events.extend(self._parse_history_events(data, listings_map))
-
-        return list(e for e in events if predicate(e)) if predicate else events
+            yield history_data
 
     @staticmethod
     def _parse_assets_for_history_listings(

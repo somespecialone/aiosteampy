@@ -122,7 +122,7 @@ but not otherwise.
 
 ### v0.6.0
 
-- [ ] Listings, items, offers pagination/iteration
+- [x] Listings, items, offers pagination/iteration
 - [ ] Get single item from inventory as browser does
 - [ ] Change client username method
 

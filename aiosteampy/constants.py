@@ -249,7 +249,27 @@ T_PAYLOAD: TypeAlias = Mapping[str, str | int | float | bool | None | list | Map
 T_HEADERS: TypeAlias = Mapping[str, str]
 
 
-class EResult(Enum):
+class EnumWithMultipleValues(Enum):
+    """Author: ChatGPT"""
+
+    def __new__(cls, *values):
+        # The first value is considered the primary value for the enum member
+        obj = object.__new__(cls)
+        obj._value_ = values[0]
+        # Store all the additional values in a class-level dictionary
+        if not hasattr(cls, "__MAPPING__"):
+            cls.__MAPPING__ = {}
+        for value in values:
+            cls.__MAPPING__[value] = obj
+        return obj
+
+    @classmethod
+    def _missing_(cls, value):
+        # Handle cases where the value doesn't directly map to a member
+        return cls.__MAPPING__.get(value, super()._missing_(value))
+
+
+class EResult(EnumWithMultipleValues):
     """
     `success` field in response data from Steam.
 
@@ -261,7 +281,7 @@ class EResult(Enum):
     UNKNOWN = None  # special case
 
     INVALID = 0
-    OK = 1
+    OK = 1, True  # due to Steam
     FAIL = 2
     NO_CONNECTION = 3
     INVALID_PASSWORD = 5

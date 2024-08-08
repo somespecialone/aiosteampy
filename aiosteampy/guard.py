@@ -27,6 +27,6 @@ class SteamGuardMixin:
 
     @async_throttle(1, arg_name="tag")
     @identity_secret_required
-    async def gen_confirmation_key(self: "SteamCommunityMixin", *, tag: str) -> tuple[str, int]:
+    async def _gen_confirmation_key(self: "SteamCommunityMixin", *, tag: str) -> tuple[str, int]:
         ts = int(time_time())
         return generate_confirmation_key(self._identity_secret, tag, ts), ts

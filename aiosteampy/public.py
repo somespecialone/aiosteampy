@@ -84,6 +84,7 @@ class SteamPublicMixin:
             r = await self.session.get(inv_url / f"{game[0]}/{game[1]}", params=params, headers=headers)
         except ClientResponseError as e:
             if e.status == 403:
+                # https://github.com/DoctorMcKay/node-steamcommunity/blob/master/components/users.js#L603
                 raise SteamError("Steam user inventory is private") from e
             elif e.status == 429:  # never faced this, but let it be
                 raise RateLimitExceeded("You have been rate limited, rest for a while!") from e
@@ -226,7 +227,8 @@ class SteamPublicMixin:
         more_items = True
         while more_items:
             # browser do first request with count=75, receiving data with `last_assetid` only
-            items, total_count, last_assetid = await self.get_user_inventory(
+            # avoid excess destructuring
+            inventory_data = await self.get_user_inventory(
                 steam_id,
                 game,
                 last_assetid=last_assetid,
@@ -235,10 +237,11 @@ class SteamPublicMixin:
                 headers=headers,
                 _item_descriptions_map=_item_descriptions_map,
             )
+            last_assetid = inventory_data[2]
             # let's assume that field "last_assetid" always present with "more_items" so we can depend on it
             more_items = bool(last_assetid)
 
-            yield items, total_count, last_assetid
+            yield inventory_data
 
     @overload
     async def get_item_orders_histogram(
@@ -280,7 +283,7 @@ class SteamPublicMixin:
         if_modified_since: datetime | str = None,
         params: T_PARAMS = {},
         headers: T_HEADERS = {},
-    ) -> ItemOrdersHistogramData | ItemOrdersHistogram:  # what about model?
+    ) -> ItemOrdersHistogramData | ItemOrdersHistogram:
         """
         Do what described in method name.
 
@@ -394,7 +397,7 @@ class SteamPublicMixin:
 
     async def fetch_item_orders_activity(
         self: "SteamPublicClient",
-        item_name_id: int,
+        item_nameid: int,
         *,
         lang: Language = None,
         country: str = None,
@@ -409,7 +412,7 @@ class SteamPublicMixin:
             * https://github.com/Revadike/InternalSteamWebAPI/wiki/Get-Market-Item-Orders-Activity
             * https://github.com/somespecialone/steam-item-name-ids
 
-        :param item_name_id: special id of item class. Can be found only on listings page.
+        :param item_nameid: special id of item class. Can be found only on listings page.
         :param lang:
         :param country:
         :param currency:
@@ -424,7 +427,7 @@ class SteamPublicMixin:
             "language": lang or self.language,
             "country": country or self.country,
             "currency": currency or self.currency,
-            "item_nameid": item_name_id,
+            "item_nameid": item_nameid,
             **params,
         }
         r = await self.session.get(STEAM_URL.MARKET / "itemordersactivity", params=params, headers=headers)
@@ -634,6 +637,7 @@ class SteamPublicMixin:
 
         _item_descriptions_map = _item_descriptions_map if _item_descriptions_map is not None else {}
         _econ_items_map = _econ_items_map if _econ_items_map is not None else {}
+
         self._update_item_descriptions_map_for_public(rj["assets"], _item_descriptions_map)
         self._parse_items_for_listings(rj["assets"], _item_descriptions_map, _econ_items_map)
 
@@ -656,7 +660,8 @@ class SteamPublicMixin:
                     converted_price=int(l_data["converted_price"]),
                 )
                 for l_data in rj["listinginfo"].values()
-                if l_data["asset"]["amount"]
+                # due to "0", ignore items with no amount and prices (supposedly purchased)
+                if int(l_data["asset"]["amount"])
             ],
             rj["total_count"],
             last_modified,
@@ -771,7 +776,8 @@ class SteamPublicMixin:
         total_count: int = 10e6  # simplify logic for initial iteration
         while total_count > start:
             # browser loads first batch from document request and not json api point, but anyway
-            listings, total_count, last_modified = await self.get_item_listings(
+            # avoid excess destructuring
+            listings_data = await self.get_item_listings(
                 obj,
                 app_id,
                 country=country,
@@ -786,9 +792,10 @@ class SteamPublicMixin:
                 _econ_items_map=econ_items_map,
                 start=start,
             )
+            total_count = listings_data[1]
             start += count
 
-            yield listings, total_count, last_modified
+            yield listings_data
 
     @overload
     async def get_item_nameid(
@@ -817,7 +824,7 @@ class SteamPublicMixin:
         headers: T_HEADERS = {},
     ) -> int:
         """
-        Get `item_name_id` from item Steam Community Market page.
+        Get `item_nameid` from item Steam Community Market page.
 
         :param obj: `ItemDescription` , `EconItem` or `market_hash_name` of Steam Market item
         :param app_id:

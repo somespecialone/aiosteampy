@@ -282,7 +282,8 @@ class TradeMixin:
 
         more_offers = True
         while more_offers:
-            sent_offers, received_offers, cursor = await self.get_trade_offers(
+            # avoid excess destructuring
+            offers_data = await self.get_trade_offers(
                 active_only=active_only,
                 time_historical_cutoff=time_historical_cutoff,
                 historical_only=historical_only,
@@ -293,9 +294,10 @@ class TradeMixin:
                 headers=headers,
                 _item_descriptions_map=_item_descriptions_map,
             )
+            cursor = offers_data[2]
             more_offers = bool(cursor)
 
-            yield sent_offers, received_offers, cursor
+            yield offers_data
 
     @api_key_required
     async def get_trade_offers_summary(

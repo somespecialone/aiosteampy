@@ -6,7 +6,7 @@ from contextlib import suppress
 
 from .models import Confirmation, MyMarketListing, EconItem, TradeOffer, EconItemType
 from .constants import STEAM_URL, ConfirmationType, GameType, CORO, EResult
-from .exceptions import EResultError
+from .exceptions import EResultError, SessionExpired
 from .decorators import identity_secret_required
 from .utils import create_ident_code
 
@@ -49,20 +49,20 @@ class ConfirmationMixin:
         :return: `Confirmation`
         """
 
-        _update = False
+        update_listings = False  # avoid unnecessary requests
         if isinstance(obj, MyMarketListing):
             key = obj.id
         elif isinstance(obj, (EconItem, tuple)):
             key = create_ident_code(obj[3], obj[0], obj[1])
-            _update = True
+            update_listings = True
         else:  # int
             if game:  # asset id & game
                 key = create_ident_code(obj, *game)
-                _update = True
+                update_listings = True
             else:  # listing id
                 key = obj
 
-        conf = await self.get_confirmation(key, _update=_update)
+        conf = await self.get_confirmation(key, update_listings=update_listings)
         await self.allow_confirmation(conf)
 
         return conf
@@ -77,39 +77,41 @@ class ConfirmationMixin:
         return conf
 
     @identity_secret_required
-    async def confirm_trade_offer(self, offer: int | TradeOffer) -> Confirmation:
+    async def confirm_trade_offer(self, obj: int | TradeOffer) -> Confirmation:
         """Perform sell trade offer confirmation."""
 
-        conf = await self.get_confirmation(offer.id if isinstance(offer, TradeOffer) else offer)
+        conf = await self.get_confirmation(obj.id if isinstance(obj, TradeOffer) else obj)
         await self.allow_confirmation(conf)
 
         return conf
 
-    async def get_confirmation(self, key: str | int, *, _update=False) -> Confirmation:
+    async def get_confirmation(self, key: str | int, *, update_listings=True) -> Confirmation:
         """
-        Fetch confirmation from `Steam`.
+        Fetch all confirmations from `Steam`, filter and get one.
 
-        :param key:
+        :param key: `MarketListingItem` ident code, `TradeOffer` id or request id
+        :param update_listings: update confirmation details if its type is listing.
+            Needed to map confirmation to listing
         :return: `Confirmation`
         :raises KeyError: when unable to find confirmation by key
         :raises EResultError: for ordinary reasons
         """
 
-        confs = await self.get_confirmations(_update=_update)
+        confs = await self.get_confirmations(update_listings=update_listings)
         conf = None
         with suppress(StopIteration):
-            conf = next(filter(lambda c: c.creator_id == key or c._asset_ident_code == key, confs))
+            # not well performant but anyway
+            conf = next(filter(lambda c: c.creator_id == key or c.listing_item_ident_code == key, confs))
 
-        if not confs or not conf:
-            raise KeyError(f"Unable to find confirmation for {key} ident/trade/listing id.")
+        if conf is None:
+            raise KeyError(f"Unable to find confirmation for {key} ident/trade/listing id")
 
         return conf
 
     async def allow_all_confirmations(self) -> list[Confirmation]:
         """
-        Fetch all confirmations and allow its (which passes `predicate`) with single request to Steam.
+        Fetch all confirmations and allow them with single request to `Steam`.
 
-        :param predicate: callable with single argument `Confirmation`, must return boolean
         :return: list of allowed confirmations
         :raises EResultError: for ordinary reasons
         """
@@ -126,7 +128,7 @@ class ConfirmationMixin:
     @identity_secret_required
     async def send_confirmation(self: "SteamCommunityMixin", conf: Confirmation, tag: CONF_OP_TAGS):
         """
-        Perform confirmation action. Remove passed conf from inner cache.
+        Perform confirmation action.
 
         :param conf: `Confirmation` that you wand to proceed
         :param tag: string literal of confirmation tag. Can be 'allow' or 'cancel'
@@ -169,12 +171,15 @@ class ConfirmationMixin:
             raise EResultError(rj.get("message", "Failed to perform action for multiple confirmations"), success, rj)
 
     @identity_secret_required
-    async def get_confirmations(self: "SteamCommunityMixin", *, _update=False) -> list[Confirmation]:
+    async def get_confirmations(self: "SteamCommunityMixin", *, update_listings=True) -> list[Confirmation]:
         """
         Fetch all confirmations.
 
+        :param update_listings: update confirmation details if its type is listing.
+            Needed to map confirmation to listing.
         :return: list of `Confirmation`
-        :raises EResultError:
+        :raises EResultError: for ordinary reasons
+        :raises SessionExpired:
         """
 
         tag = "getlist"
@@ -183,6 +188,10 @@ class ConfirmationMixin:
         rj: dict = await r.json()
         success = EResult(rj.get("success"))
         if success is not EResult.OK:
+            # https://github.com/DoctorMcKay/node-steamcommunity/blob/1067d4572ee9d467e8f686951901c51028c5c995/components/confirmations.js#L35
+            if rj.get("needauth"):
+                raise SessionExpired
+
             raise EResultError(rj.get("message", "Failed to fetch confirmations"), success, rj)
 
         confs = []
@@ -200,14 +209,15 @@ class ConfirmationMixin:
                     summary=conf_data["summary"][0],
                     warn=conf_data["warn"],
                 )
-                if _update and conf.type is ConfirmationType.LISTING:  # get listing item ident code from details
-                    await self._update_confirmation(conf)
+                if update_listings and conf.type is ConfirmationType.LISTING:
+                    # get details so we can find confirmation for listing
+                    await self.update_confirmation_with_details(conf)
                 confs.append(conf)
 
         return confs
 
     async def _create_confirmation_params(self: "SteamCommunityMixin", tag: str) -> dict:
-        conf_key, ts = await self.gen_confirmation_key(tag=tag)
+        conf_key, ts = await self._gen_confirmation_key(tag=tag)
         return {
             "p": self.device_id,
             "a": self.steam_id,
@@ -222,7 +232,7 @@ class ConfirmationMixin:
         Fetch confirmation details from `Steam`.
 
         :param obj: `Confirmation` or confirmation id
-        :return: dict
+        :return: dict with details
         :raises EResultError: for ordinary reasons
         """
 
@@ -238,11 +248,10 @@ class ConfirmationMixin:
         if success is not EResult.OK:
             raise EResultError(rj.get("message", "Failed to fetch confirmation details"), success, rj)
 
-        # TODO TypedDict
-        data: dict = loads(ITEM_INFO_RE.search(rj["html"])["item_info"])
-        return data
+        return loads(ITEM_INFO_RE.search(rj["html"])["item_info"])  # TODO TypedDict
 
-    async def _update_confirmation(self: "SteamCommunityMixin", conf: Confirmation):
-        """Get confirmation details, map/bind confirmation to newly created sell listing with `ident_code`"""
-        data = await self.get_confirmation_details(conf)
-        conf._asset_ident_code = create_ident_code(data["id"], data["appid"], data["contextid"])
+    async def update_confirmation_with_details(self: "SteamCommunityMixin", conf: Confirmation):
+        """Get confirmation details and update passed `Confirmation` with them."""
+
+        conf.details = await self.get_confirmation_details(conf)
+        # conf._asset_ident_code = create_ident_code(data["id"], data["appid"], data["contextid"])

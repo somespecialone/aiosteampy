@@ -196,8 +196,13 @@ class Confirmation:
     summary: str
     warn: str | None  # ?
 
-    # TODO replace it with typed details
-    _asset_ident_code: str | None = None  # only to map confirmation to sell listing without id
+    details: dict[str, ...] | None = None  # TODO need typing
+
+    @property
+    def listing_item_ident_code(self) -> str | None:
+        """`MarketListingItem` ident code if `details` is present"""
+        if self.details is not None:
+            return create_ident_code(self.details["id"], self.details["appid"], self.details["contextid"])
 
 
 @dataclass(eq=False, slots=True)

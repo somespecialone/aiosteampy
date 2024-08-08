@@ -18,6 +18,8 @@ class LoginError(SteamError):
     """Raised when a problem with login process occurred"""
 
 
+# TODO What about
+#  https://github.com/DoctorMcKay/node-steamcommunity/blob/1067d4572ee9d467e8f686951901c51028c5c995/components/http.js#L94
 class SessionExpired(SteamError):
     """Raised when session is expired, and you need to do login"""
 

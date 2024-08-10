@@ -1,4 +1,5 @@
-from typing import TYPE_CHECKING, overload, Literal, TypeAlias, Type, AsyncIterator
+from contextlib import suppress
+from typing import TYPE_CHECKING, overload, Literal, TypeAlias, Type, AsyncIterator, Callable
 from datetime import datetime
 from math import floor
 
@@ -233,7 +234,7 @@ class MarketMixin:
         :param headers: extra headers to send with request
         :return: sell listing id, `MyMarketListing` or `None`
         :raises TypeError:
-        :raises EResultError:
+        :raises EResultError: for ordinary reasons
         """
 
         if isinstance(obj, EconItem):
@@ -274,12 +275,97 @@ class MarketMixin:
             conf = await self.confirm_sell_listing(asset_id, game)
             to_return = conf.creator_id
 
-        # TODO fetch and return listing
         if fetch:
-            pass
-            # to_return =
+            to_return = await self.get_my_sell_listing(asset_id=asset_id)
 
         return to_return
+
+    @overload
+    async def get_my_sell_listing(
+        self,
+        obj: int = ...,
+        *,
+        price: int = ...,
+        need_confirmation: bool = ...,
+        asset_id: int = ...,
+        market_hash_name: str = ...,
+        ident_code: str = ...,
+        game: GameType = ...,
+        params: T_PARAMS = ...,
+        headers: T_HEADERS = ...,
+        **listing_item_attrs,
+    ) -> MyMarketListing | None:
+        ...
+
+    @overload
+    async def get_my_sell_listing(
+        self,
+        obj: Callable[[MyMarketListing], bool],
+        *,
+        params: T_PARAMS = ...,
+        headers: T_HEADERS = ...,
+    ) -> MyMarketListing | None:
+        ...
+
+    async def get_my_sell_listing(
+        self,
+        obj: int | Callable[[MyMarketListing], bool] = None,
+        *,
+        price: int = None,
+        need_confirmation: bool = False,
+        asset_id: int = None,
+        market_hash_name: str = None,
+        ident_code: str = None,
+        game: GameType = None,
+        params: T_PARAMS = {},
+        headers: T_HEADERS = {},
+        **listing_item_attrs,
+    ) -> MyMarketListing | None:
+        """
+        Fetch and iterate over sell listings pages until find one that satisfies passed arguments.
+
+        :param obj: listing id or predicate function
+        :param price: listing price
+        :param need_confirmation: get listing from `to_confirm` list
+        :param asset_id: asset id of listing item
+        :param market_hash_name: market hash name of listing item
+        :param ident_code: ident code of listing item
+        :param game: game of listing item
+        :param params: extra params to pass to url
+        :param headers: extra headers to send with request
+        :param listing_item_attrs: additional listing item attributes and values
+        :return: `MyMarketListing` or `None`
+        :raises EResultError: for ordinary reasons
+        :raises SessionExpired:
+        """
+
+        if callable(obj):
+            predicate = obj
+        else:
+
+            def predicate(l: MyMarketListing):
+                if obj is not None and l.id != obj:
+                    return False
+                if price is not None and l.price != price:
+                    return False
+                if asset_id is not None and l.item.asset_id != asset_id:
+                    return False
+                if market_hash_name is not None and l.item.market_hash_name != market_hash_name:
+                    return False
+                if ident_code is not None and l.item.id != ident_code:
+                    return False
+                if game is not None and l.item.game != game:
+                    return False
+
+                for attr, value in listing_item_attrs.items():
+                    if getattr(l.item, attr, None) != value:
+                        return False
+
+                return True
+
+        async for listings, to_confirm, _, _ in self.my_listings(params=params, headers=headers):
+            with suppress(StopIteration):
+                return next(filter(predicate, to_confirm if need_confirmation else listings))
 
     def cancel_sell_listing(
         self: "SteamCommunityMixin",
@@ -401,8 +487,96 @@ class MarketMixin:
         if success is not EResult.OK:
             raise EResultError(rj.get("message", "Failed to create buy order"), success, rj)
 
-        # TODO fetch buy order
-        return int(rj["buy_orderid"])
+        to_return = int(rj["buy_orderid"])
+        if fetch:
+            to_return = await self.get_my_buy_order(to_return)
+
+        return to_return
+
+    @overload
+    async def get_my_buy_order(
+        self,
+        obj: int = ...,
+        *,
+        price: int = ...,
+        quantity: int = ...,
+        market_hash_name: str = ...,
+        ident_code: str = ...,
+        game: GameType = ...,
+        params: T_PARAMS = ...,
+        headers: T_HEADERS = ...,
+        **item_description_attrs,
+    ) -> BuyOrder | None:
+        ...
+
+    @overload
+    async def get_my_buy_order(
+        self,
+        obj: Callable[[BuyOrder], bool],
+        *,
+        params: T_PARAMS = ...,
+        headers: T_HEADERS = ...,
+    ) -> BuyOrder | None:
+        ...
+
+    async def get_my_buy_order(
+        self,
+        obj: int | Callable[[BuyOrder], bool] = None,
+        *,
+        price: int = ...,
+        quantity: int = ...,
+        market_hash_name: str = ...,
+        ident_code: str = ...,
+        game: GameType = ...,
+        params: T_PARAMS = {},
+        headers: T_HEADERS = {},
+        **item_description_attrs,
+    ) -> BuyOrder | None:
+        """
+        Fetch and iterate over buy order pages until find one that satisfies passed arguments.
+
+        :param obj: order id or predicate function
+        :param price: order price
+        :param quantity: order quantity
+        :param market_hash_name: name of item description
+        :param ident_code: ident code of item description
+        :param game: game of item description
+        :param params: extra params to pass to url
+        :param headers: extra headers to send with request
+        :param item_description_attrs: additional item description attributes and values
+        :return: `BuyOrder` or `None`
+        :raises EResultError: for ordinary reasons
+        :raises SessionExpired:
+        """
+
+        if callable(obj):
+            predicate = obj
+        else:
+
+            def predicate(o: BuyOrder):
+                if obj is not None and o.id != obj:
+                    return False
+                if price is not None and o.price != price:
+                    return False
+                if quantity is not None and o.quantity != quantity:
+                    return False
+                if market_hash_name is not None and o.item_description.market_hash_name != market_hash_name:
+                    return False
+                if ident_code is not None and o.item_description.id != ident_code:
+                    return False
+                if game is not None and o.item_description.game != game:
+                    return False
+
+                for attr, value in item_description_attrs.items():
+                    if getattr(o.item_description, attr, None) != value:
+                        return False
+
+                return True
+
+        async for _, _, buy_orders, _ in self.my_listings(params=params, headers=headers):
+            with suppress(StopIteration):
+                return next(filter(predicate, buy_orders))
+            break  # TODO supposedly pagination not working with buy orders, need to check this
 
     async def cancel_buy_order(
         self: "SteamCommunityMixin",
@@ -468,6 +642,9 @@ class MarketMixin:
         if success is not EResult.OK:
             raise EResultError(rj.get("message", "Failed to fetch user listings"), success, rj)
 
+        if not rj["total_count"] or not rj["assets"]:  # let's assume that empty assets means zero orders and listings
+            return [], [], [], 0
+
         _item_descriptions_map = _item_descriptions_map if _item_descriptions_map is not None else {}
         self._parse_item_descriptions_for_listings(rj["assets"], _item_descriptions_map)
 
@@ -514,19 +691,6 @@ class MarketMixin:
             more_listings = listings_data[3] > start
 
             yield listings_data
-
-    async def _fetch_listings(self: "SteamCommunityMixin", url: URL, params: dict, headers: dict) -> dict:
-        try:
-            r = await self.session.get(url, params=params, headers=headers)
-        except ClientResponseError as e:
-            raise SessionExpired if e.status == 400 else e
-
-        rj: dict = await r.json()
-        success = EResult(rj.get("success"))
-        if success is not EResult.OK:
-            raise EResultError(rj.get("message", "Failed to fetch user listings"), success, rj)
-
-        return rj
 
     @classmethod
     def _parse_item_descriptions_for_listings(
@@ -726,6 +890,9 @@ class MarketMixin:
         success = EResult(rj.get("success"))
         if success is not EResult.OK:
             raise EResultError(rj.get("message", "Failed to fetch user listings"), success, rj)
+
+        if not rj["total_count"] or not rj["assets"]:
+            return [], 0
 
         _item_descriptions_map = _item_descriptions_map if _item_descriptions_map is not None else {}
         _econ_items_map = _econ_items_map if _econ_items_map is not None else {}

@@ -80,12 +80,10 @@ nav:
   - Trade: trade.md
   - Public: public.md
   - "Proxies 🌐": proxies.md
-  - States&Cache: states.md
   - Extensions:
-      - Converter: ext/converter.md
-      - "User Agents Service": ext/user_agents.md
+      - "Converter 💱": ext/converter.md
+      - "User Agents Service 🕶️": ext/user_agents.md
   - Examples:
-      - "States mixin": examples/states.md
       - "Session persistence": examples/session.md
       - "3rd party sites auth": examples/auth_3rd_party_site.md
   - "Testing 🧪": tests.md

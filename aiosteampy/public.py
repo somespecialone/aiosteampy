@@ -1,9 +1,9 @@
-from typing import TypeAlias, overload, TYPE_CHECKING, AsyncIterator, Literal
+from contextlib import suppress
+from typing import TypeAlias, overload, TYPE_CHECKING, AsyncIterator, Literal, Callable
 from datetime import datetime
 from re import compile as re_compile
 
 from aiohttp import ClientResponseError
-from yarl import URL
 
 from .models import (
     ItemDescriptionEntry,
@@ -212,7 +212,7 @@ class SteamPublicMixin:
         .. note:: `count` arg value that less than 2000 lead to responses with strange amount of assets
 
         :param steam_id: steamid64 of user
-        :param game: Steam Game
+        :param game: `Steam` game
         :param last_assetid:
         :param count: page size
         :param params: extra params to pass to url
@@ -220,6 +220,7 @@ class SteamPublicMixin:
         :return: `AsyncIterator` that yields list of `EconItem`, total count of items in inventory, last asset id of the list
         :raises EResultError: for ordinary reasons
         :raises RateLimitExceeded: when you hit rate limit
+        :raises SteamError: if inventory is private
         """
 
         _item_descriptions_map = {}  # shared descriptions instances across calls
@@ -242,6 +243,74 @@ class SteamPublicMixin:
             more_items = bool(last_assetid)
 
             yield inventory_data
+
+    @overload
+    async def get_user_inventory_item(
+        self,
+        steam_id: int,
+        game: GameType,
+        obj: int = ...,
+        *,
+        params: T_PARAMS = ...,
+        headers: T_HEADERS = ...,
+        **item_attrs,
+    ) -> EconItem | None:
+        ...
+
+    @overload
+    async def get_user_inventory_item(
+        self,
+        steam_id: int,
+        game: GameType,
+        obj: Callable[[EconItem], bool],
+        *,
+        params: T_PARAMS = ...,
+        headers: T_HEADERS = ...,
+    ) -> EconItem | None:
+        ...
+
+    async def get_user_inventory_item(
+        self,
+        steam_id: int,
+        game: GameType,
+        obj: int | Callable[[EconItem], bool] = None,
+        *,
+        params: T_PARAMS = {},
+        headers: T_HEADERS = {},
+        **item_attrs,
+    ) -> EconItem | None:
+        """
+        Fetch and iterate over inventory item pages of user until find one that satisfies passed arguments.
+
+        :param steam_id: steamid64 of user
+        :param game: `Steam` game
+        :param obj: asset id or predicate function
+        :param params: extra params to pass to url
+        :param headers: extra headers to send with request
+        :param item_attrs: additional item attributes and values
+        :return: `EconItem` or `None`
+        :raises EResultError: for ordinary reasons
+        :raises RateLimitExceeded: when you hit rate limit
+        :raises SteamError: if inventory is private
+        """
+
+        if callable(obj):
+            predicate = obj
+        else:
+
+            def predicate(i: EconItem):
+                if obj is not None and i.asset_id != obj:
+                    return False
+
+                for attr, value in item_attrs.items():
+                    if getattr(i, attr, None) != value:
+                        return False
+
+                return True
+
+        async for items, _, _ in self.user_inventory(steam_id, game, params=params, headers=headers):
+            with suppress(StopIteration):
+                return next(filter(predicate, items))
 
     @overload
     async def get_item_orders_histogram(

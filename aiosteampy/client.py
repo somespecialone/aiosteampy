@@ -1,5 +1,5 @@
 from re import compile, search as re_search
-from typing import AsyncIterator
+from typing import AsyncIterator, overload, Callable
 from urllib.parse import quote
 from json import loads
 from http.cookies import SimpleCookie
@@ -8,7 +8,7 @@ from aiohttp import ClientSession
 from aiohttp.client import _RequestContextManager
 from yarl import URL
 
-from .models import Notifications
+from .models import Notifications, EconItem
 from .typed import WalletInfo, FundWalletInfo
 from .constants import STEAM_URL, Currency, GameType, Language, EResult, T_PARAMS, T_HEADERS
 from .exceptions import EResultError, SessionExpired, SteamError
@@ -378,6 +378,67 @@ class SteamCommunityMixin(
             params=params,
             headers=headers,
         )
+
+    @overload
+    async def get_inventory_item(
+        self,
+        game: GameType,
+        obj: int = ...,
+        *,
+        params: T_PARAMS = ...,
+        headers: T_HEADERS = ...,
+        **item_attrs,
+    ) -> EconItem | None:
+        ...
+
+    @overload
+    async def get_inventory_item(
+        self,
+        game: GameType,
+        obj: Callable[[EconItem], bool],
+        *,
+        params: T_PARAMS = ...,
+        headers: T_HEADERS = ...,
+    ) -> EconItem | None:
+        ...
+
+    async def get_inventory_item(
+        self,
+        game: GameType,
+        obj: int | Callable[[EconItem], bool] = None,
+        *,
+        params: T_PARAMS = {},
+        headers: T_HEADERS = {},
+        **item_attrs,
+    ) -> EconItem | None:
+        """
+        Fetch and iterate over inventory item pages of self until find one that satisfies passed arguments.
+
+        :param game: `Steam` game
+        :param obj: asset id or predicate function
+        :param params: extra params to pass to url
+        :param headers: extra headers to send with request
+        :param item_attrs: additional item attributes and values
+        :return: `EconItem` or `None`
+        :raises EResultError: for ordinary reasons
+        :raises RateLimitExceeded: when you hit rate limit
+        :raises SessionExpired:
+        """
+
+        try:
+            return await self.get_user_inventory_item(
+                self.steam_id,
+                game,
+                obj,
+                params=params,
+                headers=headers,
+                **item_attrs,
+            )
+        except SteamError as e:
+            if "private" in e.args[0]:  # self inventory can't be private
+                raise SessionExpired from e
+            else:
+                raise e
 
     # TODO change nickname method
 

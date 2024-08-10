@@ -13,7 +13,7 @@ CORO: TypeAlias = Coroutine[Any, Any, _T]
 # TODO convert to namedtuple or smth
 # https://stackoverflow.com/a/54732120/19419998
 class Game(Enum):
-    CSGO = 730, 2
+    CS2 = 730, 2
     DOTA2 = 570, 2
     H1Z1 = 433850, 2
     RUST = 252490, 2
@@ -21,6 +21,8 @@ class Game(Enum):
     PUBG = 578080, 2
 
     STEAM = 753, 6  # not actually a game :)
+
+    CSGO = CS2  # alias
 
     _steam_id_map: ClassVar[dict[int, "Game"]]
 

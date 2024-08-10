@@ -123,7 +123,7 @@ but not otherwise.
 ### v0.6.0
 
 - [x] Listings, items, offers pagination/iteration
-- [ ] Get single item from inventory as browser does
+- [x] Get single item from inventory as browser does
 - [ ] Change client username method
 
 ### v0.7.0

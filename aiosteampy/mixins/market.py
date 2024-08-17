@@ -1,14 +1,23 @@
 from contextlib import suppress
-from typing import TYPE_CHECKING, overload, Literal, TypeAlias, Type, AsyncIterator, Callable
+from typing import overload, Literal, TypeAlias, AsyncIterator, Callable
 from datetime import datetime
 from math import floor
 
 from aiohttp import ClientResponseError
 from aiohttp.client import _RequestContextManager
-from yarl import URL
 
-from .exceptions import EResultError, SessionExpired
-from .models import (
+from ..typed import WalletInfo
+from ..constants import (
+    STEAM_URL,
+    GameType,
+    MarketListingStatus,
+    MarketHistoryEventType,
+    T_PARAMS,
+    T_PAYLOAD,
+    T_HEADERS,
+    EResult,
+)
+from ..models import (
     EconItem,
     MyMarketListing,
     BuyOrder,
@@ -21,33 +30,21 @@ from .models import (
     MarketListing,
     ITEM_DESCR_TUPLE,
 )
-from .decorators import wallet_currency_required
-from .typed import WalletInfo
-from .constants import (
-    STEAM_URL,
-    GameType,
-    MarketListingStatus,
-    MarketHistoryEventType,
-    T_PARAMS,
-    T_PAYLOAD,
-    T_HEADERS,
-    EResult,
-)
-from .utils import create_ident_code, buyer_pays_to_receive
+from ..helpers import currency_required
+from ..exceptions import EResultError, SessionExpired
+from ..utils import create_ident_code, buyer_pays_to_receive
+from .public import SteamCommunityPublicMixin
+from .confirmation import ConfirmationMixin
 
-if TYPE_CHECKING:
-    from .client import SteamCommunityMixin
 
 MY_LISTINGS_DATA: TypeAlias = tuple[list[MyMarketListing], list[MyMarketListing], list[BuyOrder], int]
 MY_MARKET_HISTORY_DATA: TypeAlias = tuple[list[MarketHistoryEvent], int]
 
 
-class MarketMixin:
+class MarketMixin(ConfirmationMixin, SteamCommunityPublicMixin):
     """
     Mixin with market related methods.
-
-    Depends on :class:`aiosteampy.confirmation.ConfirmationMixin`,
-    :class:`aiosteampy.public.SteamPublicMixin`.
+    Depends on `ConfirmationMixin`, `SteamCommunityPublicMixin`.
     """
 
     __slots__ = ()
@@ -204,7 +201,7 @@ class MarketMixin:
         ...
 
     async def place_sell_listing(
-        self: "SteamCommunityMixin",
+        self,
         obj: EconItem | int,
         game: GameType = None,
         *,
@@ -368,7 +365,7 @@ class MarketMixin:
                 return next(filter(predicate, to_confirm if need_confirmation else listings))
 
     def cancel_sell_listing(
-        self: "SteamCommunityMixin",
+        self,
         obj: MyMarketListing | int,
         *,
         payload: T_PAYLOAD = {},
@@ -439,9 +436,9 @@ class MarketMixin:
     ) -> BuyOrder:
         ...
 
-    @wallet_currency_required
+    @currency_required
     async def place_buy_order(
-        self: "SteamCommunityMixin",
+        self,
         obj: str | ItemDescription,
         app_id: int = None,
         *,
@@ -473,7 +470,7 @@ class MarketMixin:
 
         data = {
             "sessionid": self.session_id,
-            "currency": self._wallet_currency.value,
+            "currency": self.currency.value,
             "appid": app_id,
             "market_hash_name": name,
             "price_total": price * quantity,
@@ -573,18 +570,12 @@ class MarketMixin:
 
                 return True
 
-        async for _, _, buy_orders, _ in self.my_listings(params=params, headers=headers):
-            with suppress(StopIteration):
-                return next(filter(predicate, buy_orders))
-            break  # TODO supposedly pagination not working with buy orders, need to check this
+        # count 1 to reduce unnecessary work, need to check this
+        data = await self.get_my_listings(count=1, params=params, headers=headers)
+        with suppress(StopIteration):
+            return next(filter(predicate, data[2]))
 
-    async def cancel_buy_order(
-        self: "SteamCommunityMixin",
-        order: int | BuyOrder,
-        *,
-        payload: T_PAYLOAD = {},
-        headers: T_HEADERS = {},
-    ):
+    async def cancel_buy_order(self, order: int | BuyOrder, *, payload: T_PAYLOAD = {}, headers: T_HEADERS = {}):
         """
         Just cancel buy order.
 
@@ -608,7 +599,7 @@ class MarketMixin:
             raise EResultError(rj.get("message", "Failed to cancel buy order"), success, rj)
 
     async def get_my_listings(
-        self: "SteamCommunityMixin",
+        self,
         *,
         start: int = 0,
         count: int = 100,
@@ -635,13 +626,14 @@ class MarketMixin:
         try:
             r = await self.session.get(STEAM_URL.MARKET / "mylistings", params=params, headers=headers)
         except ClientResponseError as e:
-            raise SessionExpired if e.status == 400 else e  # Am I sure that there status code 400 and not 403?
+            raise SessionExpired if e.status == 400 else e  # Are we sure that there status code 400 and not 403?
 
         rj: dict = await r.json()
         success = EResult(rj.get("success"))
         if success is not EResult.OK:
             raise EResultError(rj.get("message", "Failed to fetch user listings"), success, rj)
 
+        # TODO fix #66 would be there
         if not rj["total_count"] or not rj["assets"]:  # let's assume that empty assets means zero orders and listings
             return [], [], [], 0
 
@@ -654,7 +646,7 @@ class MarketMixin:
 
         return active, to_confirm, buy_orders, rj["num_active_listings"]
 
-    # pagination only for active listings. Don't know how to be with others
+    # pagination only for active listings
     async def my_listings(
         self,
         *,
@@ -662,7 +654,7 @@ class MarketMixin:
         count: int = 100,
         params: T_PARAMS = {},
         headers: T_HEADERS = {},
-    ) -> AsyncIterator[MY_LISTINGS_DATA]:
+    ) -> AsyncIterator[list[MyMarketListing]]:
         """
         Fetch users market listings. Return async iterator to paginate over listing pages.
 
@@ -690,14 +682,19 @@ class MarketMixin:
             start += count
             more_listings = listings_data[3] > start
 
-            yield listings_data
+            yield listings_data[0]
 
     @classmethod
     def _parse_item_descriptions_for_listings(
-        cls: Type["SteamCommunityMixin"],
+        cls,
         assets: dict[str, dict[str, dict[str, dict]]],
         item_descrs_map: dict[str, dict],
     ):
+        """
+        Parse `assets` from received data and update `item_descrs_map`
+        with created shared `ItemDescription` arguments/attrs dicts.
+        """
+
         for app_id, app_data in assets.items():
             for context_id, context_data in app_data.items():
                 for a_data in context_data.values():
@@ -705,11 +702,7 @@ class MarketMixin:
                     if key not in item_descrs_map:
                         item_descrs_map[key] = cls._create_item_description_kwargs(a_data, [a_data])
 
-    def _parse_listings(
-        self: "SteamCommunityMixin",
-        listings: list[dict],
-        item_descrs_map: dict[str, dict],
-    ) -> list[MyMarketListing]:
+    def _parse_listings(self, listings: list[dict], item_descrs_map: dict[str, dict]) -> list[MyMarketListing]:
         return [
             MyMarketListing(
                 id=int(l_data["listingid"]),
@@ -737,11 +730,7 @@ class MarketMixin:
         ]
 
     @classmethod
-    def _parse_buy_orders(
-        cls: Type["SteamCommunityMixin"],
-        orders: list[dict],
-        item_descrs_map: dict[str, dict],
-    ) -> list[BuyOrder]:
+    def _parse_buy_orders(cls, orders: list[dict], item_descrs_map: dict[str, dict]) -> list[BuyOrder]:
         orders_list = []
         for o_data in orders:
             class_ident_key = create_ident_code(o_data["description"]["classid"], o_data["description"]["appid"])
@@ -785,9 +774,9 @@ class MarketMixin:
     ) -> WalletInfo:
         ...
 
-    @wallet_currency_required
+    @currency_required
     async def buy_market_listing(
-        self: "SteamCommunityMixin",
+        self,
         obj: int | MarketListing,
         price: int = None,
         market_hash_name: str = None,
@@ -836,7 +825,7 @@ class MarketMixin:
         fee = fee or ((floor(price * 0.05) or 1) + (floor(price * 0.10) or 1))
         data = {
             "sessionid": self.session_id,
-            "currency": self._wallet_currency.value,
+            "currency": self.currency.value,
             "subtotal": price,
             "fee": fee,
             "total": price + fee,
@@ -855,7 +844,7 @@ class MarketMixin:
         return wallet_info
 
     async def get_my_market_history(
-        self: "SteamCommunityMixin",
+        self,
         *,
         start: int = 0,
         count: int = 100,
@@ -904,7 +893,7 @@ class MarketMixin:
         return self._parse_history_events(rj, _listings_map), rj["total_count"]
 
     async def my_market_history(
-        self: "SteamCommunityMixin",
+        self,
         *,
         start: int = 0,
         count: int = 100,
@@ -1053,7 +1042,7 @@ class MarketMixin:
         ...
 
     async def fetch_price_history(
-        self: "SteamCommunityMixin",
+        self,
         obj: str,
         app_id: int = None,
         *,
@@ -1066,7 +1055,7 @@ class MarketMixin:
 
         .. seealso:: https://github.com/Revadike/InternalSteamWebAPI/wiki/Get-Market-Price-History
 
-        .. warning:: This request is rate limited by Steam.
+        .. note:: This request is rate limited by Steam.
 
         :param obj: `EconItem` or `ItemDescription` or market hash name
         :param app_id:

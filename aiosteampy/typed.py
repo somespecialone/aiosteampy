@@ -111,7 +111,7 @@ class FundWalletInfo(TypedDict):
 
 
 class JWTToken(TypedDict):
-    iss: Literal["steam"]
+    iss: str
     sub: str  # steam id64
     aud: list[str]
     exp: int

@@ -1,12 +1,13 @@
-from typing import TYPE_CHECKING, overload, Literal, Type, TypeAlias, Sequence, AsyncIterator
+from typing import overload, Literal, TypeAlias, Sequence, AsyncIterator
 from datetime import datetime
 from json import dumps as jdumps
 
 from yarl import URL
 
-from .exceptions import EResultError, SteamError
-from .constants import STEAM_URL, CORO, T_HEADERS, T_PARAMS, T_PAYLOAD, EResult
-from .models import (
+from ..typed import TradeOffersSummary
+from ..constants import STEAM_URL, CORO, T_HEADERS, T_PARAMS, T_PAYLOAD, EResult
+from ..exceptions import EResultError, SteamError
+from ..models import (
     TradeOffer,
     TradeOfferItem,
     TradeOfferStatus,
@@ -14,39 +15,26 @@ from .models import (
     HistoryTradeOfferItem,
     EconItemType,
 )
-from .decorators import api_key_required
-from .utils import create_ident_code, to_int_boolean, steam_id_to_account_id, account_id_to_steam_id
-from .typed import TradeOffersSummary
-
-if TYPE_CHECKING:
-    from .client import SteamCommunityMixin
+from ..utils import create_ident_code, to_int_boolean, steam_id_to_account_id, account_id_to_steam_id
+from .public import SteamCommunityPublicMixin
+from .web_api import SteamWebApiMixin
 
 TRADE_OFFERS_DATA: TypeAlias = tuple[list[TradeOffer], list[TradeOffer], int | None]
 
 
-class TradeMixin:
+class TradeMixin(SteamWebApiMixin, SteamCommunityPublicMixin):
     """
     Mixin with trade offers related methods.
-    Depends on :class:`aiosteampy.confirmation.ConfirmationMixin`,
-    :class:`aiosteampy.public.SteamPublicMixin`.
+    Depends on `ConfirmationMixin`, `SteamCommunityPublicMixin`.
     """
 
     __slots__ = ()
 
-    # TODO get trades without api key, like a browser does
-
-    @api_key_required
-    async def get_trade_offer(
-        self: "SteamCommunityMixin",
-        offer_id: int,
-        *,
-        params: T_PARAMS = {},
-        headers: T_HEADERS = {},
-    ) -> TradeOffer:
+    async def get_trade_offer(self, offer_id: int, *, params: T_PARAMS = {}, headers: T_HEADERS = {}) -> TradeOffer:
         """
         Fetch trade offer from Steam.
 
-        .. warning:: Method requires API key
+        .. note:: Method requires API key
 
         :param offer_id:
         :param params: extra params to pass to url
@@ -74,21 +62,13 @@ class TradeMixin:
         return self._create_trade_offer(data["offer"], item_descrc_map)
 
     @classmethod
-    def _update_item_descrs_map_for_trades(
-        cls: Type["SteamCommunityMixin"],
-        data: list[dict],
-        item_descrs_map: dict[str, dict],
-    ):
+    def _update_item_descrs_map_for_trades(cls, data: list[dict], item_descrs_map: dict[str, dict]):
         for desc in data:
             key = create_ident_code(desc["classid"], desc["appid"])
             if key not in item_descrs_map:
                 item_descrs_map[key] = cls._create_item_description_kwargs(desc, [desc])
 
-    def _create_trade_offer(
-        self: "SteamCommunityMixin",
-        data: dict,
-        item_descrs_map: dict[str, dict],
-    ) -> TradeOffer:
+    def _create_trade_offer(self, data: dict, item_descrs_map: dict[str, dict]) -> TradeOffer:
         return TradeOffer(
             id=int(data["tradeofferid"]),
             owner_id=self.steam_id,
@@ -104,11 +84,7 @@ class TradeMixin:
         )
 
     @classmethod
-    def _parse_items_for_trade(
-        cls,
-        items: list[dict],
-        item_descrs_map: dict[str, dict],
-    ) -> list[TradeOfferItem]:
+    def _parse_items_for_trade(cls, items: list[dict], item_descrs_map: dict[str, dict]) -> list[TradeOfferItem]:
         return [
             TradeOfferItem(
                 asset_id=a_data["assetid"],
@@ -146,9 +122,8 @@ class TradeMixin:
     ) -> TRADE_OFFERS_DATA:
         ...
 
-    @api_key_required
     async def get_trade_offers(
-        self: "SteamCommunityMixin",
+        self,
         *,
         active_only=True,
         time_historical_cutoff: int | datetime = None,
@@ -165,7 +140,7 @@ class TradeMixin:
 
         .. note:: You can paginate by yourself passing `cursor` arg
 
-        .. warning:: Method requires API key
+        .. note:: Method requires API key
 
         :param active_only: fetch active, changed since `time_historical_cutoff` tradeoffs only or not
         :param time_historical_cutoff: timestamp for `active_only`
@@ -247,7 +222,6 @@ class TradeMixin:
     ) -> AsyncIterator[TRADE_OFFERS_DATA]:
         ...
 
-    @api_key_required
     async def trade_offers(
         self,
         *,
@@ -263,7 +237,7 @@ class TradeMixin:
         """
         Fetch trade offers from `Steam Web Api`. Return async iterator to paginate over offers pages.
 
-        .. warning:: Method requires API key
+        .. note:: Method requires API key
 
         :param active_only: fetch active, changed since `time_historical_cutoff` tradeoffs only or not
         :param time_historical_cutoff: timestamp for `active_only`
@@ -299,13 +273,7 @@ class TradeMixin:
 
             yield offers_data
 
-    @api_key_required
-    async def get_trade_offers_summary(
-        self: "SteamCommunityMixin",
-        *,
-        params: T_PARAMS = {},
-        headers: T_HEADERS = {},
-    ) -> TradeOffersSummary:
+    async def get_trade_offers_summary(self, *, params: T_PARAMS = {}, headers: T_HEADERS = {}) -> TradeOffersSummary:
         """
         Get trade offers summary from Steam Web Api.
 
@@ -327,9 +295,8 @@ class TradeMixin:
 
         return rj["response"]
 
-    @api_key_required
     async def get_trade_receipt(
-        self: "SteamCommunityMixin",
+        self,
         offer_id: int,
         *,
         params: T_PARAMS = {},
@@ -341,8 +308,8 @@ class TradeMixin:
         :param offer_id:
         :param params: extra params to pass to url
         :param headers: extra headers to send with request
-        :returns HistoryTradeOffer
-        :raises EResultError:
+        :return: `HistoryTradeOffer`
+        :raises EResultError: for ordinary reasons
         """
 
         params = {
@@ -363,9 +330,8 @@ class TradeMixin:
 
         return self._create_history_trade_offer(rj["response"]["trades"][0], item_descrs_map)
 
-    @api_key_required
     async def get_trade_history(
-        self: "SteamCommunityMixin",
+        self,
         max_trades=100,
         *,
         start_after_time=0,
@@ -379,7 +345,7 @@ class TradeMixin:
         Fetch history trades with changed assets data.
         You can paginate by yourself with this method.
 
-        .. warning:: Method requires API key
+        .. note:: Method requires API key
 
         :param max_trades: page size
         :param start_after_time: timestamp
@@ -419,11 +385,7 @@ class TradeMixin:
             data["total_trades"],
         )
 
-    def _create_history_trade_offer(
-        self: "SteamCommunityMixin",
-        data: dict,
-        item_descrs_map: dict[str, dict],
-    ) -> HistoryTradeOffer:
+    def _create_history_trade_offer(self, data: dict, item_descrs_map: dict[str, dict]) -> HistoryTradeOffer:
         return HistoryTradeOffer(
             id=int(data["tradeid"]),
             owner_id=self.steam_id,
@@ -452,7 +414,7 @@ class TradeMixin:
         ]
 
     async def perform_action_with_offer(
-        self: "SteamCommunityMixin",
+        self,
         offer_id: int,
         action: Literal["cancel", "decline"],
         payload: T_PAYLOAD,
@@ -468,13 +430,7 @@ class TradeMixin:
         # TODO TypedDict
         return await r.json()
 
-    async def cancel_trade_offer(
-        self: "SteamCommunityMixin",
-        obj: int | TradeOffer,
-        *,
-        payload: T_PAYLOAD = {},
-        headers: T_HEADERS = {},
-    ):
+    async def cancel_trade_offer(self, obj: int | TradeOffer, *, payload: T_PAYLOAD = {}, headers: T_HEADERS = {}):
         """
         Cancel outgoing trade offer. Remove offer from cache.
 
@@ -496,13 +452,7 @@ class TradeMixin:
         if not resp_offer_id or resp_offer_id != offer_id:
             raise SteamError(f"Failed to cancel trade offer", offer_data)
 
-    async def decline_trade_offer(
-        self: "SteamCommunityMixin",
-        obj: int | TradeOffer,
-        *,
-        payload: T_PAYLOAD = {},
-        headers: T_HEADERS = {},
-    ):
+    async def decline_trade_offer(self, obj: int | TradeOffer, *, payload: T_PAYLOAD = {}, headers: T_HEADERS = {}):
         """
         Decline incoming trade offer.
 
@@ -548,7 +498,7 @@ class TradeMixin:
         ...
 
     async def accept_trade_offer(
-        self: "SteamCommunityMixin",
+        self,
         obj: int | TradeOffer,
         partner: int = None,
         *,
@@ -666,7 +616,7 @@ class TradeMixin:
         ...
 
     async def make_trade_offer(
-        self: "SteamCommunityMixin",
+        self,
         obj: int | str,
         to_give: Sequence[EconItemType] = (),
         to_receive: Sequence[EconItemType] = (),

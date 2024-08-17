@@ -1,4 +1,4 @@
-"""Useful utils."""
+"""Useful utility functions."""
 
 import asyncio
 from base64 import b64decode, b64encode
@@ -8,7 +8,7 @@ from time import time as time_time
 from hmac import new as hmac_new
 from hashlib import sha1
 from functools import wraps, partial
-from typing import Callable, overload, TypeVar, TYPE_CHECKING, TypeAlias
+from typing import Callable, overload, TypeVar, TypeAlias
 from http.cookies import SimpleCookie, Morsel
 from math import floor
 from secrets import token_hex
@@ -20,8 +20,6 @@ from yarl import URL
 
 from .typed import JWTToken
 
-if TYPE_CHECKING:
-    from .client import SteamCommunityMixin
 
 __all__ = (
     "gen_two_factor_code",
@@ -30,6 +28,7 @@ __all__ = (
     "extract_openid_payload",
     "do_session_steam_auth",
     "get_cookie_value_from_session",
+    "remove_cookie_from_session",
     "async_throttle",
     "create_ident_code",
     "account_id_to_steam_id",
@@ -37,7 +36,6 @@ __all__ = (
     "id64_to_id32",
     "id32_to_id64",
     "to_int_boolean",
-    "restore_from_cookies",
     "get_jsonable_cookies",
     "update_session_cookies",
     "buyer_pays_to_receive",
@@ -46,8 +44,8 @@ __all__ = (
     "decode_jwt",
     "find_item_nameid_in_text",
     "patch_session_with_http_proxy",
-    "parse_header_time",
-    "format_header_time",
+    "parse_time",
+    "format_time",
     "attribute_required",
 )
 
@@ -127,13 +125,21 @@ async def do_session_steam_auth(session: ClientSession, auth_url: str | URL) -> 
 
 
 def get_cookie_value_from_session(session: ClientSession, url: URL | str, field: str) -> str | None:
-    """
-    Get value from session cookies.
-    Passed `url` must include scheme (for ex. `https://url.com`)
-    """
+    """Get value from session cookies. Passed `url` must include scheme (for ex. `https://url.com`)."""
 
     c = session.cookie_jar.filter_cookies(URL(url))
     return c[field].value if field in c else None
+
+
+def remove_cookie_from_session(session: ClientSession, url: URL | str, field: str) -> bool:
+    """Remove cookie from session cookies. Return `True` if cookie was present and removed."""
+
+    raw = str(url)
+    if "//" in raw:
+        host = raw.split("//")[1]
+    else:
+        host = raw
+    return bool(session.cookie_jar._cookies[(host, "/")].pop(field, None))
 
 
 _R = TypeVar("_R")
@@ -244,7 +250,7 @@ def to_int_boolean(s):
 JSONABLE_COOKIE_JAR: TypeAlias = list[dict[str, dict[str, str, None, bool]]]
 
 
-def update_session_cookies(cookies: JSONABLE_COOKIE_JAR, session: ClientSession):
+def update_session_cookies(session: ClientSession, cookies: JSONABLE_COOKIE_JAR):
     """Update the session cookies from jsonable cookie jar."""
 
     for cookie_data in cookies:
@@ -259,40 +265,6 @@ def update_session_cookies(cookies: JSONABLE_COOKIE_JAR, session: ClientSession)
             c[k] = m
 
         session.cookie_jar.update_cookies(c)
-
-
-async def restore_from_cookies(
-    cookies: JSONABLE_COOKIE_JAR,
-    client: "SteamCommunityMixin",
-    *,
-    init_data=True,
-    **init_kwargs,
-) -> bool:
-    """
-    Helper func. Restore client session from cookies.
-    Login if session is not alive.
-    Return `True` if cookies are valid and not expired.
-    """
-
-    update_session_cookies(cookies, client.session)
-
-    # find access token
-    for cookie_data in cookies:
-        for k, v in cookie_data.items():
-            if v["key"] == "steamLoginSecure":
-                try:
-                    client._access_token = v["value"].split("%7C%7C")[1]
-                    break
-                except IndexError:
-                    pass
-
-    if not (await client.is_session_alive()):
-        await client.login(init_data=init_data, **init_kwargs)
-        return False
-    else:
-        client._is_logged = True
-        init_data and await client._init_data()
-        return True
 
 
 def get_jsonable_cookies(session: ClientSession) -> JSONABLE_COOKIE_JAR:
@@ -400,12 +372,9 @@ def buyer_pays_to_receive(
     return s_fee, p_fee, int(v - s_fee - p_fee)
 
 
+# https://github.com/DoctorMcKay/node-steam-session/blob/698469cdbad3e555dda10c81f580f1ee3960156f/src/LoginSession.ts#L801C19-L801C50
 def generate_session_id() -> str:
-    """
-    Generate steam like session id.
-
-    .. seealso:: https://github.com/DoctorMcKay/node-steam-session/blob/698469cdbad3e555dda10c81f580f1ee3960156f/src/LoginSession.ts#L801C19-L801C50
-    """
+    """Generate steam like session id."""
 
     # Hope ChatGPT knows what she is doing
     return token_hex(12)
@@ -437,13 +406,18 @@ def patch_session_with_http_proxy(session: ClientSession, proxy: str | URL) -> C
 _HEADER_TIME_FORMAT = "%a, %d %b %Y %H:%M:%S %Z"
 
 
-def parse_header_time(value: str) -> datetime:
-    """Parse header time (`Last-Modified`, `Expires`, ...) to a timezone naive datetime object"""
+def parse_time(value: str) -> datetime:
+    """
+    Parse header time (`Last-Modified`, `Expires`, ...),
+    cookie `expires` fields to a timezone naive datetime object
+    """
+
     return datetime.strptime(value, _HEADER_TIME_FORMAT)
 
 
-def format_header_time(d: datetime) -> str:
-    """Format timezone naive datetime object to header acceptable string"""
+def format_time(d: datetime) -> str:
+    """Format timezone naive datetime object to header/cookie acceptable string"""
+
     return d.strftime(_HEADER_TIME_FORMAT) + "GMT"  # simple case
 
 

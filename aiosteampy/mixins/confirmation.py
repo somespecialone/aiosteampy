@@ -1,27 +1,26 @@
-from typing import TYPE_CHECKING, overload, Literal
+from typing import overload, Literal
 from json import loads
 from re import compile
 from datetime import datetime
 from contextlib import suppress
 
-from .models import Confirmation, MyMarketListing, EconItem, TradeOffer, EconItemType
-from .constants import STEAM_URL, ConfirmationType, GameType, CORO, EResult
-from .exceptions import EResultError, SessionExpired
-from .decorators import identity_secret_required
-from .utils import create_ident_code
+from ..constants import STEAM_URL, ConfirmationType, GameType, CORO, EResult
+from ..exceptions import EResultError, SessionExpired
+from ..models import Confirmation, MyMarketListing, EconItem, TradeOffer, EconItemType
+from ..helpers import identity_secret_required
+from ..utils import create_ident_code
+from .login import LoginMixin
 
-if TYPE_CHECKING:
-    from .client import SteamCommunityMixin
 
 CONF_URL = STEAM_URL.COMMUNITY / "mobileconf"
 ITEM_INFO_RE = compile(r"'confiteminfo', (?P<item_info>.+), UserYou")
 CONF_OP_TAGS = Literal["allow", "cancel"]
 
 
-class ConfirmationMixin:
+class ConfirmationMixin(LoginMixin):
     """
     Mixin with confirmations related methods.
-    Depends on :class:`aiosteampy.guard.SteamGuardMixin`.
+    Depends on `LoginMixin`.
     """
 
     __slots__ = ()
@@ -126,11 +125,11 @@ class ConfirmationMixin:
         return self.send_confirmation(conf, "allow")
 
     @identity_secret_required
-    async def send_confirmation(self: "SteamCommunityMixin", conf: Confirmation, tag: CONF_OP_TAGS):
+    async def send_confirmation(self, conf: Confirmation, tag: CONF_OP_TAGS):
         """
         Perform confirmation action.
 
-        :param conf: `Confirmation` that you wand to proceed
+        :param conf: `Confirmation` that you want to proceed
         :param tag: string literal of confirmation tag. Can be 'allow' or 'cancel'
         """
 
@@ -149,11 +148,7 @@ class ConfirmationMixin:
         return self.send_multiple_confirmations(confs, "allow")
 
     @identity_secret_required
-    async def send_multiple_confirmations(
-        self: "SteamCommunityMixin",
-        confs: list[Confirmation],
-        tag: CONF_OP_TAGS,
-    ):
+    async def send_multiple_confirmations(self, confs: list[Confirmation], tag: CONF_OP_TAGS):
         """
         Perform confirmation action for multiple confs with single request to Steam.
         Remove passed conf from inner cache.
@@ -171,7 +166,7 @@ class ConfirmationMixin:
             raise EResultError(rj.get("message", "Failed to perform action for multiple confirmations"), success, rj)
 
     @identity_secret_required
-    async def get_confirmations(self: "SteamCommunityMixin", *, update_listings=True) -> list[Confirmation]:
+    async def get_confirmations(self, *, update_listings=True) -> list[Confirmation]:
         """
         Fetch all confirmations.
 
@@ -216,7 +211,7 @@ class ConfirmationMixin:
 
         return confs
 
-    async def _create_confirmation_params(self: "SteamCommunityMixin", tag: str) -> dict:
+    async def _create_confirmation_params(self, tag: str) -> dict:
         conf_key, ts = await self._gen_confirmation_key(tag=tag)
         return {
             "p": self.device_id,
@@ -227,7 +222,7 @@ class ConfirmationMixin:
             "tag": tag,
         }
 
-    async def get_confirmation_details(self: "SteamCommunityMixin", obj: Confirmation | int) -> dict[str, ...]:
+    async def get_confirmation_details(self, obj: Confirmation | int) -> dict[str, ...]:
         """
         Fetch confirmation details from `Steam`.
 
@@ -250,8 +245,7 @@ class ConfirmationMixin:
 
         return loads(ITEM_INFO_RE.search(rj["html"])["item_info"])  # TODO TypedDict
 
-    async def update_confirmation_with_details(self: "SteamCommunityMixin", conf: Confirmation):
+    async def update_confirmation_with_details(self, conf: Confirmation):
         """Get confirmation details and update passed `Confirmation` with them."""
 
         conf.details = await self.get_confirmation_details(conf)
-        # conf._asset_ident_code = create_ident_code(data["id"], data["appid"], data["contextid"])

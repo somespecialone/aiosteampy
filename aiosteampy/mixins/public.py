@@ -1,11 +1,20 @@
 from contextlib import suppress
-from typing import TypeAlias, overload, TYPE_CHECKING, AsyncIterator, Literal, Callable
+from typing import TypeAlias, overload, AsyncIterator, Literal, Callable
 from datetime import datetime
 from re import compile as re_compile
 
 from aiohttp import ClientResponseError
 
-from .models import (
+from ..constants import STEAM_URL, Game, Currency, GameType, Language, T_PARAMS, T_HEADERS, EResult
+from ..typed import ItemOrdersHistogramData, ItemOrdersActivity, PriceOverview
+from ..exceptions import EResultError, SteamError, RateLimitExceeded, ResourceNotModified
+from ..utils import (
+    create_ident_code,
+    find_item_nameid_in_text,
+    parse_time,
+    format_time,
+)
+from ..models import (
     ItemDescriptionEntry,
     ItemTag,
     ItemDescription,
@@ -16,13 +25,8 @@ from .models import (
     ITEM_DESCR_TUPLE,
     ItemOrdersHistogram,
 )
-from .constants import STEAM_URL, Game, Currency, GameType, Language, T_PARAMS, T_HEADERS, EResult
-from .typed import ItemOrdersHistogramData, ItemOrdersActivity, PriceOverview
-from .exceptions import EResultError, SteamError, RateLimitExceeded, ResourceNotModified
-from .utils import create_ident_code, find_item_nameid_in_text, parse_header_time, format_header_time
+from .http import SteamHTTPTransportMixin
 
-if TYPE_CHECKING:
-    from .client import SteamPublicClient
 
 # steam limit rules
 INV_COUNT = 5000
@@ -37,15 +41,20 @@ INV_ITEM_DATA: TypeAlias = tuple[list[EconItem], int, int | None]  # items, tota
 ITEM_ORDER_HIST_PRICE_RE = re_compile(r"[^\d\s]*([\d,]+(?:\.\d+)?)[^\d\s]*")  # Author: ChatGPT
 
 
-class SteamPublicMixin:
-    """Contains methods that do not require authentication."""
+class SteamCommunityPublicMixin(SteamHTTPTransportMixin):
+    """
+    Contains methods that do not require authentication.
+    Depends on `SteamHTTPTransportMixin`.
+    """
 
     __slots__ = ()
 
-    # init method with attr in client
+    # required instance attributes
+    currency: Currency | None
+    country: str
 
     async def get_user_inventory(
-        self: "SteamPublicClient",
+        self,
         steam_id: int,
         game: GameType,
         *,
@@ -197,7 +206,7 @@ class SteamPublicMixin:
         )
 
     async def user_inventory(
-        self: "SteamPublicClient",
+        self,
         steam_id: int,
         game: GameType,
         *,
@@ -342,12 +351,9 @@ class SteamPublicMixin:
         ...
 
     async def get_item_orders_histogram(
-        self: "SteamPublicClient",
+        self,
         item_nameid: int,
         *,
-        lang: Language = None,
-        country: str = None,
-        currency: Currency = None,
         raw: bool = False,
         if_modified_since: datetime | str = None,
         params: T_PARAMS = {},
@@ -360,12 +366,9 @@ class SteamPublicMixin:
             * https://github.com/Revadike/InternalSteamWebAPI/wiki/Get-Market-Item-Orders-Histogram
             * https://github.com/somespecialone/steam-item-name-ids
 
-        .. warning:: This request is rate limited by Steam. It is strongly recommended to use `if_modified_since`
+        .. note:: This request is rate limited by Steam. It is strongly recommended to use `if_modified_since`
 
         :param item_nameid: special id of item class. Can be found only on listings page.
-        :param lang:
-        :param country:
-        :param currency:
         :param raw: if `True`, return `ItemOrdersHistogramData` dict instead of `ItemOrdersHistogram` model
         :param if_modified_since: `If-Modified-Since` header value
         :param params: extra params to pass to url
@@ -378,16 +381,16 @@ class SteamPublicMixin:
 
         params = {
             "norender": 1,
-            "language": lang or self.language,
-            "country": country or self.country,
-            "currency": currency or self.currency,
+            "language": self.language,
+            "country": self.country,
+            "currency": self.currency,
             "item_nameid": item_nameid,
             **params,
         }
         headers = {**headers}
         if if_modified_since:
             if isinstance(if_modified_since, datetime):
-                headers["If-Modified-Since"] = format_header_time(if_modified_since)
+                headers["If-Modified-Since"] = format_time(if_modified_since)
             else:  # str
                 headers["If-Modified-Since"] = if_modified_since
 
@@ -465,12 +468,9 @@ class SteamPublicMixin:
         return int(price)
 
     async def fetch_item_orders_activity(
-        self: "SteamPublicClient",
+        self,
         item_nameid: int,
         *,
-        lang: Language = None,
-        country: str = None,
-        currency: Currency = None,
         params: T_PARAMS = {},
         headers: T_HEADERS = {},
     ) -> ItemOrdersActivity:
@@ -482,9 +482,6 @@ class SteamPublicMixin:
             * https://github.com/somespecialone/steam-item-name-ids
 
         :param item_nameid: special id of item class. Can be found only on listings page.
-        :param lang:
-        :param country:
-        :param currency:
         :param params: extra params to pass to url
         :param headers: extra headers to send with request
         :return: `ItemOrdersActivity` dict
@@ -493,9 +490,9 @@ class SteamPublicMixin:
 
         params = {
             "norender": 1,
-            "language": lang or self.language,
-            "country": country or self.country,
-            "currency": currency or self.currency,
+            "language": self.language,
+            "country": self.country,
+            "currency": self.currency,
             "item_nameid": item_nameid,
             **params,
         }
@@ -534,24 +531,20 @@ class SteamPublicMixin:
         ...
 
     async def fetch_price_overview(
-        self: "SteamPublicClient",
+        self,
         obj: str | EconItem | ItemDescription,
         app_id: int = None,
         *,
-        country: str = None,
-        currency: Currency = None,
         params: T_PARAMS = {},
         headers: T_HEADERS = {},
     ) -> PriceOverview:
         """
         Fetch price data.
 
-        .. warning:: This request is rate limited by Steam.
+        .. note:: This request is rate limited by Steam.
 
         :param obj:
         :param app_id:
-        :param country:
-        :param currency:
         :param params: extra params to pass to url
         :param headers: extra headers to send with request
         :return: `PriceOverview` dict
@@ -565,8 +558,8 @@ class SteamPublicMixin:
             name = obj
 
         params = {
-            "country": country or self.country,
-            "currency": currency or self.currency,
+            "country": self.country,
+            "currency": self.currency,
             "market_hash_name": name,
             "appid": app_id,
             **params,
@@ -620,13 +613,10 @@ class SteamPublicMixin:
         ...
 
     async def get_item_listings(
-        self: "SteamPublicClient",
+        self,
         obj: str | EconItem | ItemDescription,
         app_id: int = None,
         *,
-        country: str = None,
-        currency: Currency = None,
-        lang: str = None,
         query: str = "",
         start: int = 0,
         count: int = LISTING_COUNT,
@@ -640,15 +630,12 @@ class SteamPublicMixin:
         """
         Fetch item listings from market.
 
-        .. note:: You can paginate by yourself passing `start` arg. or use `market_listings` method
-
-        .. warning:: This request is rate limited by Steam. It is strongly recommended to use `if_modified_since`
+        .. note::
+            * You can paginate by yourself passing `start` arg. or use `market_listings` method.
+            * This request is rate limited by Steam. It is strongly recommended to use `if_modified_since`
 
         :param obj: market hash name or `EconItem` or `ItemDescription`
         :param app_id:
-        :param country:
-        :param currency:
-        :param lang:
         :param count: page size
         :param start: offset position
         :param query: raw search query
@@ -670,17 +657,17 @@ class SteamPublicMixin:
         base_url = STEAM_URL.MARKET / f"listings/{app_id}/{name}"
         params = {
             "filter": query,
-            "country": country or self.country,
-            "currency": currency or self.currency,
+            "country": self.country,
+            "currency": self.currency,
             "start": start,
             "count": count,
-            "language": lang or self.language,
+            "language": self.language,
             **params,
         }
         headers = {"Referer": str(base_url), **headers}
         if if_modified_since:
             if isinstance(if_modified_since, datetime):
-                headers["If-Modified-Since"] = format_header_time(if_modified_since)
+                headers["If-Modified-Since"] = format_time(if_modified_since)
             else:  # str
                 headers["If-Modified-Since"] = if_modified_since
 
@@ -695,7 +682,7 @@ class SteamPublicMixin:
         if r.status == 304:  # not modified if header "If-Modified-Since" is provided
             raise ResourceNotModified
 
-        last_modified = parse_header_time(r.headers["Last-Modified"])
+        last_modified = parse_time(r.headers["Last-Modified"])
 
         rj: dict[str, int | dict[str, dict]] = await r.json()
         success = EResult(rj.get("success"))
@@ -804,7 +791,7 @@ class SteamPublicMixin:
         ...
 
     async def market_listings(
-        self: "SteamPublicClient",
+        self,
         obj: str | EconItem | ItemDescription,
         app_id: int = None,
         *,
@@ -821,7 +808,7 @@ class SteamPublicMixin:
         """
         Fetch item listings from market. Return async iterator to paginate over listings pages.
 
-        .. warning:: This request is rate limited by Steam. It is strongly recommended to use `if_modified_since`
+        .. note:: This request is rate limited by Steam. It is strongly recommended to use `if_modified_since`
 
         :param obj: market hash name or `EconItem` or `ItemDescription`
         :param app_id:
@@ -867,37 +854,27 @@ class SteamPublicMixin:
             yield listings_data
 
     @overload
-    async def get_item_nameid(
-        self: "SteamPublicClient",
-        obj: ItemDescription | EconItem,
-        *,
-        headers: T_HEADERS = ...,
-    ) -> int:
+    async def get_item_name_id(self, obj: ItemDescription | EconItem, *, headers: T_HEADERS = ...) -> int:
         ...
 
     @overload
-    async def get_item_nameid(
-        self: "SteamPublicClient",
-        obj: str,
-        app_id: int,
-        *,
-        headers: T_HEADERS = ...,
-    ) -> int:
+    async def get_item_name_id(self, obj: str, app_id: int, *, headers: T_HEADERS = ...) -> int:
         ...
 
-    async def get_item_nameid(
-        self: "SteamPublicClient",
+    async def get_item_name_id(
+        self,
         obj: str | ItemDescription | EconItem,
         app_id: int = None,
         *,
         headers: T_HEADERS = {},
     ) -> int:
         """
-        Get `item_nameid` from item Steam Community Market page.
+        Fetch item from `Steam Community Market` page, find and return `item_nameid`
 
         :param obj: `ItemDescription` , `EconItem` or `market_hash_name` of Steam Market item
         :param app_id:
         :param headers: extra headers to send with request
+        :return: `item_nameid`
 
         .. seealso:: https://github.com/somespecialone/steam-item-name-ids
         """

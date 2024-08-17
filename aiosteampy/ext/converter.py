@@ -19,13 +19,13 @@ except ImportError:
         to make the rates synchronization with backend service work.
         In order You need this functionality, You can use `aiosteampy[converter]` dependency install target.
         """,
-        category=RuntimeWarning,
+        category=ImportWarning,
     )
 
     croniter = None
 
 
-from .constants import Currency
+from ..constants import Currency
 
 __all__ = ("CurrencyConverter", "API_URL", "SERT_CRON")
 
@@ -96,10 +96,7 @@ class CurrencyConverter(UserDict[Currency, tuple[float, datetime]]):
 
         async def sync_coro():
             while self._cron:
-                await asyncio.gather(
-                    asyncio.sleep(self.get_wait_time()),
-                    self.load(),
-                )
+                await asyncio.gather(asyncio.sleep(self.get_wait_time()), self.load())
 
         self._sync_task = asyncio.create_task(sync_coro())
 
@@ -122,7 +119,7 @@ class CurrencyConverter(UserDict[Currency, tuple[float, datetime]]):
 
         :param amount: amount of currency that need to be converted
         :param currency: passed currency of `amount`
-        :param target: target of returned value
+        :param target: target currency of returned value
         :return: converted amount
         :raises KeyError: if provided currency is not present in `Converter`
         """

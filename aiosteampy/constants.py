@@ -125,7 +125,7 @@ class Currency(IntEnum):
 Currency._name_map = {c.name: c for c in Currency.__members__.values()}
 
 
-class Language(str, Enum):  # like StrEnum from python 3.11
+class Language(str, Enum):  # like StrEnum from python 3.11, need for params serialization
     """
     Steam languages.
 
@@ -213,7 +213,7 @@ _v = "v1"
 
 
 class STEAM_URL:
-    COMMUNITY = URL("https://steamcommunity.com")
+    COMMUNITY = URL("https://steamcommunity.com")  # use this domain in methods
     STORE = URL("https://store.steampowered.com")
     LOGIN = URL("https://login.steampowered.com")
     HELP = URL("https://help.steampowered.com")
@@ -259,25 +259,24 @@ class EnumWithMultipleValues(Enum):
         obj = object.__new__(cls)
         obj._value_ = values[0]
         # Store all the additional values in a class-level dictionary
-        if not hasattr(cls, "__MAPPING__"):
-            cls.__MAPPING__ = {}
+        if not hasattr(cls, "_alt_map"):
+            cls._alt_map = {}
         for value in values:
-            cls.__MAPPING__[value] = obj
+            cls._alt_map[value] = obj
         return obj
 
     @classmethod
     def _missing_(cls, value):
         # Handle cases where the value doesn't directly map to a member
-        return cls.__MAPPING__.get(value, super()._missing_(value))
+        return cls._alt_map.get(value, super()._missing_(value))
 
 
+# https://github.com/DoctorMcKay/node-steamcommunity/blob/master/resources/EResult.js
 class EResult(EnumWithMultipleValues):
     """
     `success` field in response data from Steam.
 
-    .. seealso::
-        * https://steamerrors.com
-        * https://github.com/DoctorMcKay/node-steamcommunity/blob/master/resources/EResult.js
+    .. seealso:: https://steamerrors.com
     """
 
     UNKNOWN = None  # special case

@@ -16,6 +16,7 @@ from ..constants import (
     T_PAYLOAD,
     T_HEADERS,
     EResult,
+    Currency,
 )
 from ..models import (
     EconItem,
@@ -570,10 +571,9 @@ class MarketMixin(ConfirmationMixin, SteamCommunityPublicMixin):
 
                 return True
 
-        # count 1 to reduce unnecessary work, need to check this
+        # count 1 to reduce unnecessary work, better check this
         data = await self.get_my_listings(count=1, params=params, headers=headers)
-        with suppress(StopIteration):
-            return next(filter(predicate, data[2]))
+        return next(filter(predicate, data[2]), None)
 
     async def cancel_buy_order(self, order: int | BuyOrder, *, payload: T_PAYLOAD = {}, headers: T_HEADERS = {}):
         """
@@ -610,13 +610,13 @@ class MarketMixin(ConfirmationMixin, SteamCommunityPublicMixin):
         """
         Fetch users market listings.
 
-        .. note:: you can paginate by yourself passing `start` arg
+        .. note:: you can paginate active listings by yourself passing `start` arg
 
         :param start: start index
-        :param count: listings per page. Steam do not accept value greater than 100
+        :param count: listings per page. `Steam` do not accept value greater than 100
         :param params: extra params to pass to url
         :param headers: extra headers to send with request
-        :return: active listings, listings to confirm, buy orders, total_count of active listings
+        :return: active listings, listings to confirm, buy orders, total count of active listings
         :raises EResultError: for ordinary reasons
         :raises SessionExpired:
         """
@@ -633,12 +633,11 @@ class MarketMixin(ConfirmationMixin, SteamCommunityPublicMixin):
         if success is not EResult.OK:
             raise EResultError(rj.get("message", "Failed to fetch user listings"), success, rj)
 
-        # TODO fix #66 would be there
-        if not rj["total_count"] or not rj["assets"]:  # let's assume that empty assets means zero orders and listings
-            return [], [], [], 0
+        # no need to check `assets` or `total_count`
 
         _item_descriptions_map = _item_descriptions_map if _item_descriptions_map is not None else {}
         self._parse_item_descriptions_for_listings(rj["assets"], _item_descriptions_map)
+        self._parse_item_descriptions_for_orders(rj["buy_orders"], _item_descriptions_map)
 
         active = self._parse_listings(rj["listings"], _item_descriptions_map)
         to_confirm = self._parse_listings(rj["listings_to_confirm"], _item_descriptions_map)
@@ -646,7 +645,6 @@ class MarketMixin(ConfirmationMixin, SteamCommunityPublicMixin):
 
         return active, to_confirm, buy_orders, rj["num_active_listings"]
 
-    # pagination only for active listings
     async def my_listings(
         self,
         *,
@@ -658,11 +656,14 @@ class MarketMixin(ConfirmationMixin, SteamCommunityPublicMixin):
         """
         Fetch users market listings. Return async iterator to paginate over listing pages.
 
+        .. note:: paginates only over active listing pages.
+            If you need to get orders or listings to confirm use `get_my_listings` method
+
         :param start: start index
         :param count: listings per page. Steam do not accept value greater than 100
         :param params: extra params to pass to url
         :param headers: extra headers to send with request
-        :return: active listings, listings to confirm, buy orders, total_count of active listings
+        :return: `AsyncIterator` that yields list of active `MyMarketListing`
         :raises EResultError: for ordinary reasons
         :raises SessionExpired:
         """
@@ -702,6 +703,19 @@ class MarketMixin(ConfirmationMixin, SteamCommunityPublicMixin):
                     if key not in item_descrs_map:
                         item_descrs_map[key] = cls._create_item_description_kwargs(a_data, [a_data])
 
+    @classmethod
+    def _parse_item_descriptions_for_orders(cls, orders: list[dict], item_descrs_map: dict[str, dict]):
+        """
+        Parse `buy_orders` from received data and update `item_descrs_map`
+        with created shared `ItemDescription` arguments/attrs dicts.
+        """
+
+        for o_data in orders:
+            class_ident_key = create_ident_code(o_data["description"]["classid"], o_data["description"]["appid"])
+            item_descrs_map[class_ident_key] = cls._create_item_description_kwargs(
+                o_data["description"], [o_data["description"]]
+            )
+
     def _parse_listings(self, listings: list[dict], item_descrs_map: dict[str, dict]) -> list[MyMarketListing]:
         return [
             MyMarketListing(
@@ -731,24 +745,20 @@ class MarketMixin(ConfirmationMixin, SteamCommunityPublicMixin):
 
     @classmethod
     def _parse_buy_orders(cls, orders: list[dict], item_descrs_map: dict[str, dict]) -> list[BuyOrder]:
-        orders_list = []
-        for o_data in orders:
-            class_ident_key = create_ident_code(o_data["description"]["classid"], o_data["description"]["appid"])
-            if class_ident_key not in item_descrs_map:
-                item_descrs_map[class_ident_key] = cls._create_item_description_kwargs(
-                    o_data["description"], [o_data["description"]]
-                )
-            orders_list.append(
-                BuyOrder(
-                    id=int(o_data["buy_orderid"]),
-                    price=int(o_data["price"]),
-                    item_description=ItemDescription(**item_descrs_map[class_ident_key]),
-                    quantity=int(o_data["quantity"]),
-                    quantity_remaining=int(o_data["quantity_remaining"]),
-                )
+        return [
+            BuyOrder(
+                id=int(o_data["buy_orderid"]),
+                price=int(o_data["price"]),
+                item_description=ItemDescription(
+                    **item_descrs_map[
+                        create_ident_code(o_data["description"]["classid"], o_data["description"]["appid"])
+                    ]
+                ),
+                quantity=int(o_data["quantity"]),
+                quantity_remaining=int(o_data["quantity_remaining"]),
             )
-
-        return orders_list
+            for o_data in orders
+        ]
 
     @overload
     async def buy_market_listing(
@@ -880,12 +890,13 @@ class MarketMixin(ConfirmationMixin, SteamCommunityPublicMixin):
         if success is not EResult.OK:
             raise EResultError(rj.get("message", "Failed to fetch user listings"), success, rj)
 
-        if not rj["total_count"] or not rj["assets"]:
+        if not rj["total_count"] or not rj["assets"]:  # safe
             return [], 0
 
         _item_descriptions_map = _item_descriptions_map if _item_descriptions_map is not None else {}
         _econ_items_map = _econ_items_map if _econ_items_map is not None else {}
         _listings_map = _listings_map if _listings_map is not None else {}
+
         self._parse_item_descriptions_for_listings(rj["assets"], _item_descriptions_map)
         self._parse_assets_for_history_listings(rj["assets"], _item_descriptions_map, _econ_items_map)
         self._parse_history_listings(rj, _econ_items_map, _listings_map)
@@ -942,9 +953,11 @@ class MarketMixin(ConfirmationMixin, SteamCommunityPublicMixin):
         for app_id, app_data in data.items():
             for context_id, context_data in app_data.items():
                 for a_data in context_data.values():
-                    key = create_ident_code(a_data["id"], app_id, context_id)
-                    if key not in econ_item_map:
-                        econ_item_map[key] = MarketHistoryListingItem(
+                    # because I don't know why in data `id` and `unowned_id` combinations and how that suppose to work
+                    key_id = create_ident_code(a_data["id"], app_id, context_id)
+                    key_unowned_id = create_ident_code(a_data["unowned_id"], app_id, context_id)
+                    if key_id not in item_descrs_map or key_unowned_id not in item_descrs_map:
+                        econ_item = MarketHistoryListingItem(
                             asset_id=int(a_data["id"]),
                             unowned_id=int(a_data["unowned_id"]),
                             unowned_context_id=int(a_data["unowned_contextid"]),
@@ -956,6 +969,10 @@ class MarketMixin(ConfirmationMixin, SteamCommunityPublicMixin):
                             else None,
                             **item_descrs_map[create_ident_code(a_data["classid"], app_id)],
                         )
+                        if key_id not in econ_item_map:
+                            econ_item_map[key_id] = econ_item
+                        if key_unowned_id not in econ_item_map:
+                            econ_item_map[key_unowned_id] = econ_item
 
     @staticmethod
     def _parse_history_listings(
@@ -963,11 +980,13 @@ class MarketMixin(ConfirmationMixin, SteamCommunityPublicMixin):
         econ_item_map: dict[str, MarketHistoryListingItem],
         listings_map: dict[str, MarketHistoryListing],
     ):
-        for l_id, l_data in data["listings"].items():
+        for l_id, l_data in data["listings"].items():  # sell listings
             if l_id not in listings_map:
                 listings_map[l_id] = MarketHistoryListing(
                     id=int(l_data["listingid"]),
+                    currency=Currency(int(l_data["currencyid"]) - 2000),
                     price=int(l_data["price"]),
+                    fee=int(l_data["fee"]),
                     item=econ_item_map[
                         create_ident_code(
                             l_data["asset"]["id"],
@@ -979,10 +998,16 @@ class MarketMixin(ConfirmationMixin, SteamCommunityPublicMixin):
                     cancel_reason=l_data.get("cancel_reason"),
                 )
 
-        for p_id, p_data in data["purchases"].items():
+        for p_id, p_data in data["purchases"].items():  # purchases :)
             if p_id not in listings_map:
                 listing = MarketHistoryListing(
                     id=int(p_data["listingid"]),
+                    currency=Currency(int(p_data["currencyid"]) - 2000),
+                    received_currency=Currency(int(p_data["received_currencyid"]) - 2000),
+                    paid_fee=int(p_data["paid_fee"]),
+                    steam_fee=int(p_data["steam_fee"]),
+                    publisher_fee=int(p_data["publisher_fee"]),
+                    time_sold=datetime.fromtimestamp(p_data["time_sold"]),
                     item=econ_item_map[
                         create_ident_code(
                             p_data["asset"]["id"],

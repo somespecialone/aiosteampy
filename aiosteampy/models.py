@@ -301,14 +301,30 @@ class MarketHistoryListingItem(MarketListingItem):
 class MarketHistoryListing(BaseOrder):
     item: MarketHistoryListingItem
 
-    price: int | None = None
+    currency: Currency
 
     # purchase fields
     purchase_id: int | None = None
     steamid_purchaser: int | None = None
     received_amount: int | None = None
+    received_currency: Currency | None = None
+    time_sold: datetime | None = None
+    paid_amount: int | None = None
+    paid_fee: int | None = None
+    steam_fee: int | None = None
+    publisher_fee: int | None = None
+
+    # unknown fields
+    # failed
+    # needs_rollback
+    # funds_held
+    # time_funds_held_until
+    # funds_revoked
+    # funds_returned
 
     # listing fields
+    price: int | None = None
+    fee: int | None = None
     original_price: int | None = None
     cancel_reason: str | None = None
 

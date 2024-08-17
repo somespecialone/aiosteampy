@@ -184,7 +184,7 @@ class SteamCommunityPublicMixin(SteamHTTPTransportMixin):
             name=data["name"],
             market_name=data["market_name"],
             market_hash_name=data["market_hash_name"],
-            name_color=data["name_color"] or None,
+            name_color=data.get("name_color") or None,
             background_color=data.get("name_color") or None,
             type=data["type"] or None,
             icon=data["icon_url"],

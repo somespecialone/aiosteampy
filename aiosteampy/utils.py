@@ -205,22 +205,23 @@ def async_throttle(seconds, *, arg_index=None, arg_name=None):
     return decorator
 
 
-def create_ident_code(obj_id: int | str, app_id: int | str, context_id: int | str = None) -> str:
+def create_ident_code(obj_id: int | str, app_id: int | str, context_id: int | str = None, sep: str = ":") -> str:
     """
-    Create unique ident code for :class:`aiosteampy.models.EconItem` asset or item class
-    (description) within whole Steam Economy.
+    Create unique ident code for `EconItem` asset or item class
+    (description) within whole `Steam Economy`.
 
     .. seealso:: https://dev.doctormckay.com/topic/332-identifying-steam-items/
 
-    :param obj_id: asset or class id of Steam Economy Item
-    :param app_id: app id of Steam Game
-    :param context_id: context id of Steam Game. Only for `EconItem`
+    :param obj_id: asset or class id of `Steam Economy` item (`EconItem`)
+    :param app_id: app id of `Steam` game
+    :param context_id: context id of `Steam` game. Only for `EconItem`
+    :param sep: separator
     :return: ident code
     """
 
-    code = f"{obj_id}_{app_id}"
+    code = f"{obj_id}{sep}{app_id}"
     if context_id is not None:
-        code += f"_{context_id}"
+        code += f"{sep}{context_id}"
 
     return code
 

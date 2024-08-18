@@ -73,7 +73,7 @@ poetry add aiosteampy[all]
 AIOSTEAMPY use [aiohttp](https://github.com/aio-libs/aiohttp) underneath to do asynchronous requests to steam servers,
 with modern async/await syntax.
 
-## Key features
+## Key features ✨
 
 - **Stateless**: low-middle layer API wrapper of some steam services and methods like market,
   tradeoffers, confirmations, steamguard, etc.
@@ -98,7 +98,7 @@ with modern async/await syntax.
 - Get apps, packages.
 - All, that need connection to CM.
 - Interact with game servers (inspect CS2 (ex. CSGO) items, ...).
-- Edit profile, social interaction(groups, clans). **(changes planned!)**
+- Social interaction(groups, clans).
 - Handle entities (listings, items, tradeoffers) lifecycle for easy if you need to store it.
 
 <!--intro-end-->
@@ -124,13 +124,14 @@ but not otherwise.
 
 - [x] Listings, items, offers pagination/iteration
 - [x] Get single item from inventory as browser does
-- [ ] Change client username method
+- [x] Change client username method
 
 ### v0.7.0
 
 - [x] Remove storage methods. Caching entities must be user responsibility
 - [x] Rename `fetch_...` methods to `get_...` to remove annoying methods symantic mess
 - [ ] Web browser mechanism to fetch trade offers from `Steam`, avoiding `Steam Web Api`
+- [ ] Edit profile privacy settings
 
 ### v0.8.0
 

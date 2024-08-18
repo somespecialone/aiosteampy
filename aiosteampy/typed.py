@@ -122,3 +122,47 @@ class JWTToken(TypedDict):
     per: int
     ip_subject: str
     ip_confirmer: str
+
+
+class LocationData(TypedDict):
+    locCity: str
+    locCityCode: int
+    locCountry: str
+    locCountryCode: str
+    locState: str
+    locStateCode: str
+
+
+class ProfilePrivacySettings(TypedDict):
+    PrivacyFriendsList: int
+    PrivacyInventory: int
+    PrivacyInventoryGifts: int
+    PrivacyOwnedGames: int
+    PrivacyPlaytime: int
+    PrivacyProfile: int
+
+
+class ProfilePrivacy(TypedDict):
+    PrivacySettings: ProfilePrivacySettings
+    eCommentPermission: int
+
+
+class ProfilePreferences(TypedDict):
+    hide_profile_awards: int
+
+
+class ProfileData(TypedDict):
+    strPersonaName: str
+    strCustomURL: str
+    strRealName: str
+    strSummary: str
+    strAvatarHash: str
+    rtPersonaNameBannedUntil: str
+    rtProfileSummaryBannedUntil: str
+    rtAvatarBannedUntil: str
+    LocationData: LocationData
+    # ActiveTheme
+    ProfilePreferences: ProfilePreferences
+    # rgAvailableThemes
+    # rgGoldenProfileData
+    Privacy: ProfilePrivacy

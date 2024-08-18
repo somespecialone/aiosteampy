@@ -249,6 +249,8 @@ class SteamClientBase(SteamPublicClientBase, ProfileMixin, MarketMixin, TradeMix
             self.country = wallet_info["wallet_country"]
             self.currency = Currency(wallet_info["wallet_currency"])
 
+        # TODO change privacy settings (inventory, profile)
+
     async def get_wallet_info(self) -> WalletInfo:
         """
         Fetch wallet info from inventory page.

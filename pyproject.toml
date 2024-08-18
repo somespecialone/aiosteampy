@@ -1,6 +1,6 @@
 [tool.poetry]
 name = "aiosteampy"
-version = "0.5.4"
+version = "0.6.0"
 description = "Trade and interact with steam market, webapi, guard"
 license = "MIT"
 authors = ["Dmytro Tkachenko <itsme@somespecial.one>"]
@@ -11,10 +11,20 @@ documentation = "https://aiosteampy.somespecial.one"
 keywords = ["steam", "trade", "steamguard", "asyncio", "steam-market"]
 classifiers = [
     "Framework :: AsyncIO",
+    "Development Status :: 3 - Alpha",
     "Intended Audience :: Developers",
+    "Intended Audience :: Information Technology",
+    "Topic :: Software Development",
     "Topic :: Software Development :: Libraries",
     "Topic :: Software Development :: Libraries :: Python Modules",
     "Operating System :: OS Independent",
+    "License :: OSI Approved :: MIT License",
+    "Programming Language :: Python",
+    "Programming Language :: Python :: 3",
+    "Programming Language :: Python :: 3 :: Only",
+    "Programming Language :: Python :: 3.10",
+    "Programming Language :: Python :: 3.11",
+    "Programming Language :: Python :: 3.12",
     "Typing :: Typed",
 ]
 
@@ -26,10 +36,10 @@ packages = [{ include = "aiosteampy" }]
 
 [tool.poetry.dependencies]
 python = "^3.10"
-aiohttp = "^3.9.1"
-rsa = "^4.9"
-croniter = { version = "^2.0.1", optional = true }
-aiohttp-socks = { version = "^0.8.4", optional = true }
+aiohttp = "^3.8"
+rsa = "^4.8"
+croniter = { version = ">=2, <4", optional = true }
+aiohttp-socks = { version = ">=0.8.4, <1", optional = true }
 
 [tool.poetry.extras]
 converter = ["croniter"]

@@ -4,6 +4,7 @@ from typing import AsyncIterator, overload, Callable, final
 
 from aiohttp import ClientSession
 from aiohttp.client import _RequestContextManager
+from yarl import URL
 
 from .constants import STEAM_URL, Currency, GameType, Language, T_PARAMS, T_HEADERS, EResult
 from .typed import WalletInfo, FundWalletInfo
@@ -68,7 +69,15 @@ class SteamPublicClientBase(SteamCommunityPublicMixin):
         proxy: str = None,
         user_agent: str = None,
     ):
-        """TODO"""
+        """
+        :param language: language of `Steam` descriptions, responses, etc... Will be set to a cookie
+        :param currency: currency of market data in `Steam` responses
+        :param country: country of market data in `Steam` responses
+        :param tz_offset: timezone offset. Will be set to a cookie
+        :param session: session instance. Must be created with `raise_for_status=True` for client to work properly
+        :param proxy: proxy url as string. Can be in format `scheme://username:password@host:port` or `scheme://host:port`
+        :param user_agent: user agent header value. Strongly advisable to set this
+        """
 
         self.session = self._session_helper(session, proxy)
 
@@ -79,6 +88,9 @@ class SteamPublicClientBase(SteamCommunityPublicMixin):
         self.tz_offset = tz_offset
         self.currency = currency
         self.country = country
+
+    def __repr__(self) -> str:
+        return f"{type(self).__name__}(language={self.language}, tz_offset={self.tz_offset}, currency={self.currency}, country={self.country})"
 
 
 class SteamClientBase(SteamPublicClientBase, ProfileMixin, MarketMixin, TradeMixin):
@@ -157,7 +169,24 @@ class SteamClientBase(SteamPublicClientBase, ProfileMixin, MarketMixin, TradeMix
         proxy: str = None,
         user_agent: str = None,
     ):
-        """TODO"""
+        """
+        :param steam_id: steam id (id64) or account id (id32)
+        :param username:
+        :param password:
+        :param shared_secret:
+        :param identity_secret: required for confirmations
+        :param access_token: encoded JWT token string
+        :param refresh_token: encoded JWT token string
+        :param api_key: `Steam Web API` key to have access to `Steam Web API`. Can be used instead of `access_token`
+        :param trade_token: trade token of account. Needed to create a trade url
+        :param language: language of `Steam` descriptions, responses, etc... Will be set to a cookie
+        :param wallet_currency: currency of account wallet. Market methods requires this to be set
+        :param wallet_country: country of account wallet. Market methods requires this to be set
+        :param tz_offset: timezone offset. Will be set to a cookie
+        :param session: session instance. Must be created with `raise_for_status=True` for client to work properly
+        :param proxy: proxy url as string. Can be in format `scheme://username:password@host:port` or `scheme://host:port`
+        :param user_agent: user agent header value. Strongly advisable to set this
+        """
 
         super().__init__(
             language=language,
@@ -197,17 +226,25 @@ class SteamClientBase(SteamPublicClientBase, ProfileMixin, MarketMixin, TradeMix
     def wallet_country(self) -> str:
         return self.country
 
-    # TODO remove this or rename to prepare and refactor
-    async def init_data(self):
-        if not self._api_key:
-            self._api_key = await self.fetch_api_key()
-            not self._api_key and await self.register_new_api_key()
+    async def prepare(self, api_key_domain: str = None, *, force=False):
+        """
+        Prepares account to work by loading main attributes (trade token, currency and country, optionally api key)
+        from `Steam`. Register trade token and api key (optionally) if there is none.
 
-        if not self.trade_token:
-            self.trade_token = await self.get_trade_token()
+        :param api_key_domain: domain on which api key will be registered.
+            If not passed, api key will not be fetched and registered if there is none
+        :param force: force to reload all data even if it presented on client
+        """
+
+        if (not self._api_key or force) and api_key_domain:
+            await self.get_api_key()
+            not self._api_key and await self.register_new_api_key(api_key_domain)
+
+        if not self.trade_token or force:
+            await self.get_trade_token()
             not self.trade_token and await self.register_new_trade_url()
 
-        if not self.currency:
+        if not self.currency or force:
             wallet_info = await self.get_wallet_info()
             self.country = wallet_info["wallet_country"]
             self.currency = Currency(wallet_info["wallet_currency"])
@@ -248,7 +285,8 @@ class SteamClientBase(SteamPublicClientBase, ProfileMixin, MarketMixin, TradeMix
         """
         Fetch fund wallet info from `Steam Store` domain.
 
-        .. note:: TODO
+        .. note:: `Steam Store` domain uses own and different one access token from `Steam Community`,
+            so it can be expired easily as it not used much in `aiosteampy`
 
         :return: `FundWalletInfo`
         :raises EResultError: for ordinary reasons
@@ -415,10 +453,13 @@ class SteamClientBase(SteamPublicClientBase, ProfileMixin, MarketMixin, TradeMix
             else:
                 raise e
 
+    def __repr__(self) -> str:
+        return f"{type(self).__name__}(steam_id={self.steam_id}, username={self.username})"
+
 
 @final
 class SteamClient(SteamClientBase):
-    """Ready to use client class with all inherited methods."""
+    """Ready to use client class with inherited methods from all mixins. Must be logged in."""
 
     __slots__ = (
         "_refresh_token",
@@ -438,6 +479,6 @@ class SteamClient(SteamClientBase):
 
 @final
 class SteamPublicClient(SteamPublicClientBase):
-    """Client contain public methods without authentication."""
+    """Client contains public methods that do not require authentication."""
 
     __slots__ = ("session", "currency", "country")

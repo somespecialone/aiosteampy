@@ -5,7 +5,8 @@ from re import compile as re_compile
 
 from aiohttp import ClientResponseError
 
-from ..constants import STEAM_URL, Game, Currency, GameType, Language, T_PARAMS, T_HEADERS, EResult
+from ..constants import STEAM_URL, Game, Currency, GameType, T_PARAMS, T_HEADERS, EResult
+from ..helpers import currency_required
 from ..typed import ItemOrdersHistogramData, ItemOrdersActivity, PriceOverview
 from ..exceptions import EResultError, SteamError, RateLimitExceeded, ResourceNotModified
 from ..utils import (
@@ -326,9 +327,6 @@ class SteamCommunityPublicMixin(SteamHTTPTransportMixin):
         self,
         item_nameid: int,
         *,
-        lang: Language = ...,
-        country: str = ...,
-        currency: Currency = ...,
         if_modified_since: datetime | str = ...,
         params: T_PARAMS = ...,
         headers: T_HEADERS = ...,
@@ -340,9 +338,6 @@ class SteamCommunityPublicMixin(SteamHTTPTransportMixin):
         self,
         item_nameid: int,
         *,
-        lang: Language = ...,
-        country: str = ...,
-        currency: Currency = ...,
         raw: Literal[True] = ...,
         if_modified_since: datetime | str = ...,
         params: T_PARAMS = ...,
@@ -350,6 +345,7 @@ class SteamCommunityPublicMixin(SteamHTTPTransportMixin):
     ) -> ItemOrdersHistogramData:
         ...
 
+    @currency_required
     async def get_item_orders_histogram(
         self,
         item_nameid: int,
@@ -467,6 +463,7 @@ class SteamCommunityPublicMixin(SteamHTTPTransportMixin):
 
         return int(price)
 
+    @currency_required
     async def fetch_item_orders_activity(
         self,
         item_nameid: int,
@@ -510,8 +507,6 @@ class SteamCommunityPublicMixin(SteamHTTPTransportMixin):
         self,
         obj: EconItem | ItemDescription,
         *,
-        country: str = ...,
-        currency: Currency = ...,
         params: T_PARAMS = ...,
         headers: T_HEADERS = ...,
     ) -> PriceOverview:
@@ -523,13 +518,12 @@ class SteamCommunityPublicMixin(SteamHTTPTransportMixin):
         obj: str,
         app_id: int,
         *,
-        country: str = ...,
-        currency: Currency = ...,
         params: T_PARAMS = ...,
         headers: T_HEADERS = ...,
     ) -> PriceOverview:
         ...
 
+    @currency_required
     async def fetch_price_overview(
         self,
         obj: str | EconItem | ItemDescription,
@@ -584,8 +578,6 @@ class SteamCommunityPublicMixin(SteamHTTPTransportMixin):
         self,
         obj: EconItem | ItemDescription,
         *,
-        country: str = ...,
-        currency: Currency = ...,
         query: str = ...,
         start: int = ...,
         count: int = ...,
@@ -601,8 +593,6 @@ class SteamCommunityPublicMixin(SteamHTTPTransportMixin):
         obj: str,
         app_id: int,
         *,
-        country: str = ...,
-        currency: Currency = ...,
         query: str = ...,
         start: int = ...,
         count: int = ...,
@@ -612,6 +602,7 @@ class SteamCommunityPublicMixin(SteamHTTPTransportMixin):
     ) -> MARKET_ITEM_LISTINGS_DATA:
         ...
 
+    @currency_required
     async def get_item_listings(
         self,
         obj: str | EconItem | ItemDescription,
@@ -760,9 +751,6 @@ class SteamCommunityPublicMixin(SteamHTTPTransportMixin):
         self,
         obj: EconItem | ItemDescription,
         *,
-        country: str = ...,
-        currency: Currency = ...,
-        lang: str = ...,
         query: str = ...,
         start: int = ...,
         count: int = ...,
@@ -778,9 +766,6 @@ class SteamCommunityPublicMixin(SteamHTTPTransportMixin):
         obj: str,
         app_id: int,
         *,
-        country: str = ...,
-        currency: Currency = ...,
-        lang: str = ...,
         query: str = ...,
         start: int = ...,
         count: int = ...,
@@ -795,9 +780,6 @@ class SteamCommunityPublicMixin(SteamHTTPTransportMixin):
         obj: str | EconItem | ItemDescription,
         app_id: int = None,
         *,
-        country: str = None,
-        currency: Currency = None,
-        lang: str = None,
         query: str = "",
         start: int = 0,
         count: int = LISTING_COUNT,
@@ -812,9 +794,6 @@ class SteamCommunityPublicMixin(SteamHTTPTransportMixin):
 
         :param obj: market hash name or `EconItem` or `ItemDescription`
         :param app_id:
-        :param country:
-        :param currency:
-        :param lang:
         :param count: page size
         :param start: offset position
         :param query: raw search query
@@ -836,9 +815,6 @@ class SteamCommunityPublicMixin(SteamHTTPTransportMixin):
             listings_data = await self.get_item_listings(
                 obj,
                 app_id,
-                country=country,
-                currency=currency,
-                lang=lang,
                 query=query,
                 count=count,
                 if_modified_since=if_modified_since,

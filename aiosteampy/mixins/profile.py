@@ -40,12 +40,13 @@ class ProfileMixin(LoginMixin):
         return self.trade_url
 
     async def get_trade_token(self) -> str | None:
-        """Fetch trade token from `Steam`."""
+        """Fetch trade token from `Steam`, cache it and return"""
 
         r = await self.session.get(self.profile_url / "tradeoffers/privacy")
         rt = await r.text()
 
         search = re_search(r"\d+&token=(?P<token>.+)\" readonly", rt)
-        return search["token"] if search else None
+        self.trade_token = search["token"] if search else None
+        return self.trade_token
 
     # TODO change nickname method

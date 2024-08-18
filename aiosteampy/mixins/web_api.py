@@ -3,9 +3,8 @@ from typing import overload, Literal
 
 from yarl import URL
 from aiohttp import ClientResponseError
-from aiohttp.client import _RequestContextManager
 
-from ..constants import STEAM_URL, EResult
+from ..constants import STEAM_URL, EResult, T_PARAMS, T_HEADERS
 from ..exceptions import EResultError, SteamError, SessionExpired
 from .confirmation import ConfirmationMixin
 
@@ -33,34 +32,68 @@ class SteamWebApiMixin(ConfirmationMixin):
     #     pass
 
     @overload
-    async def call_web_api(self, url: str | URL, params: dict = ..., use_api_key: bool = ..., headers: dict = ...):
+    async def call_web_api(
+        self,
+        url: str | URL,
+        *,
+        params: T_PARAMS = ...,
+        use_api_key: bool = ...,
+        headers: T_HEADERS = ...,
+    ) -> dict[str, ...]:
         ...
 
     @overload
     async def call_web_api(
         self,
         url: str | URL,
-        data: dict = ...,
-        json: dict = ...,
-        use_api_key: bool = ...,
-        headers: dict = ...,
         *,
+        data=...,
+        use_api_key: bool = ...,
+        headers: T_HEADERS = ...,
         method: Literal["POST"],
-    ):
+    ) -> dict[str, ...]:
         ...
 
+    @overload
     async def call_web_api(
         self,
         url: str | URL,
+        *,
+        json=...,
+        use_api_key: bool = ...,
+        headers: T_HEADERS = ...,
+        method: Literal["POST"],
+    ) -> dict[str, ...]:
+        ...
+
+    # https://github.com/DoctorMcKay/node-steam-tradeoffer-manager/blob/7d27ae16642ad810a44d1aed7837872b92392daf/lib/webapi.js#L7
+    async def call_web_api(
+        self,
+        url: str | URL,
+        *,
         params={},
         data=None,
         json=None,
         use_api_key=False,
-        headers: dict = None,
-        *,
+        headers: T_HEADERS = None,
         method: Literal["GET", "POST"] = "GET",
-    ):
-        params = {**params}
+    ) -> dict[str, ...]:
+        """
+        Make request to a `Steam Web API`
+
+        :param url:
+        :param params: params to pass with url
+        :param data: form data to send with request
+        :param json: json data to send with request
+        :param use_api_key: force to use `Steam Web API` key instead of access token
+        :param headers:
+        :param method: http request method
+        :return: json-loaded data
+        :raises SessionExpired:
+        :raises SteamError:
+        """
+
+        params = params.copy()
         if use_api_key:
             if not self._api_key:
                 raise AttributeError("You must set an `_api_key` before use this method with `use_api_key=True`")
@@ -69,18 +102,29 @@ class SteamWebApiMixin(ConfirmationMixin):
             params["access_token"] = self.access_token
 
         try:
-            await self.session.request(method, url, params={**params}, data=data, json=json, headers=headers)
+            r = await self.session.request(method, url, params=params, data=data, json=json, headers=headers)
         except ClientResponseError as e:
-            # TODO this
             if e.status == 403:
                 if not use_api_key and self.is_access_token_expired:
                     raise SessionExpired from e
-
-                raise SteamError(f"{'Steam API key' if use_api_key else 'Access token'} is invalid")
+                else:
+                    raise SteamError(f"{'Steam Web API key' if use_api_key else 'Access token'} is invalid") from e
             else:
                 raise e
 
-    async def fetch_api_key(self) -> str:
+        # https://github.com/DoctorMcKay/node-steam-tradeoffer-manager/blob/7d27ae16642ad810a44d1aed7837872b92392daf/lib/webapi.js#L56
+        result = EResult(int(r.headers["X-Eresult"]))
+        if r.content.total_bytes > 0:
+            rj: dict = await r.json()
+            if len(rj) > 1 or len(rj.get("response", ())) > 0:
+                return rj
+
+        elif result is not EResult.OK:
+            raise EResultError(f"Failed to make {method} request to '{url}'", result)
+        else:
+            raise SteamError("Invalid response")
+
+    async def get_api_key(self) -> str:
         """
         Fetch `Steam Web API` key, cache it and return.
 
@@ -107,14 +151,15 @@ class SteamWebApiMixin(ConfirmationMixin):
         self._api_key = search["api_key"]
         return self._api_key
 
-    def revoke_api_key(self) -> _RequestContextManager:
+    async def revoke_api_key(self):
         """Revoke old `Steam Web API` key"""
 
         data = {
             "sessionid": self.session_id,
             "Revoke": "Revoke My Steam Web API Key",  # whatever
         }
-        return self.session.post(STEAM_URL.COMMUNITY / "dev/revokekey", data=data, allow_redirects=False)
+        await self.session.post(STEAM_URL.COMMUNITY / "dev/revokekey", data=data, allow_redirects=False)
+        self._api_key = None
 
     async def register_new_api_key(self, domain: str) -> str:
         """

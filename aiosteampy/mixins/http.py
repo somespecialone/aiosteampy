@@ -149,7 +149,7 @@ class SteamHTTPTransportMixin:
 
     @property
     def proxy(self) -> str | None:
-        """Proxy url in format `scheme://username:password@host:port`"""
+        """Proxy url in format `scheme://username:password@host:port` or `scheme://host:port`"""
 
         if isinstance(self.session.connector, ProxyConnector):  # socks
             c: ProxyConnector = self.session.connector
@@ -172,4 +172,7 @@ class SteamHTTPTransportMixin:
             host = def_arg.host
             port = def_arg.port
 
-        return f"{scheme}://{username}:{password}@{host}:{port}"
+        if username and password:  # with auth
+            return f"{scheme}://{username}:{password}@{host}:{port}"
+        else:
+            return f"{scheme}://{host}:{port}"

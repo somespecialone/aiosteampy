@@ -2,12 +2,10 @@ from typing import overload, Literal
 from json import loads
 from re import compile
 from datetime import datetime
-from contextlib import suppress
 
 from ..constants import STEAM_URL, ConfirmationType, GameType, CORO, EResult
 from ..exceptions import EResultError, SessionExpired
 from ..models import Confirmation, MyMarketListing, EconItem, TradeOffer, EconItemType
-from ..helpers import identity_secret_required
 from ..utils import create_ident_code
 from .login import LoginMixin
 
@@ -19,7 +17,7 @@ CONF_OP_TAGS = Literal["allow", "cancel"]
 
 class ConfirmationMixin(LoginMixin):
     """
-    Mixin with confirmations related methods.
+    Mixin with confirmations related methods. Requires `_identity_secret` to be set.
     Depends on `LoginMixin`.
     """
 
@@ -33,7 +31,6 @@ class ConfirmationMixin(LoginMixin):
     async def confirm_sell_listing(self, obj: MyMarketListing | EconItemType | int) -> Confirmation:
         ...
 
-    @identity_secret_required
     async def confirm_sell_listing(
         self,
         obj: MyMarketListing | EconItemType | int,
@@ -66,7 +63,6 @@ class ConfirmationMixin(LoginMixin):
 
         return conf
 
-    @identity_secret_required
     async def confirm_api_key_request(self, request_id: str) -> Confirmation:
         """Perform api key request confirmation."""
 
@@ -75,7 +71,6 @@ class ConfirmationMixin(LoginMixin):
 
         return conf
 
-    @identity_secret_required
     async def confirm_trade_offer(self, obj: int | TradeOffer) -> Confirmation:
         """Perform sell trade offer confirmation."""
 
@@ -97,11 +92,8 @@ class ConfirmationMixin(LoginMixin):
         """
 
         confs = await self.get_confirmations(update_listings=update_listings)
-        conf = None
-        with suppress(StopIteration):
-            # not well performant but anyway
-            conf = next(filter(lambda c: c.creator_id == key or c.listing_item_ident_code == key, confs))
-
+        # not well performant but anyway
+        conf = next(filter(lambda c: c.creator_id == key or c.listing_item_ident_code == key, confs), None)
         if conf is None:
             raise KeyError(f"Unable to find confirmation for {key} ident/trade/listing id")
 
@@ -124,7 +116,6 @@ class ConfirmationMixin(LoginMixin):
 
         return self.send_confirmation(conf, "allow")
 
-    @identity_secret_required
     async def send_confirmation(self, conf: Confirmation, tag: CONF_OP_TAGS):
         """
         Perform confirmation action.
@@ -147,7 +138,6 @@ class ConfirmationMixin(LoginMixin):
 
         return self.send_multiple_confirmations(confs, "allow")
 
-    @identity_secret_required
     async def send_multiple_confirmations(self, confs: list[Confirmation], tag: CONF_OP_TAGS):
         """
         Perform confirmation action for multiple confs with single request to Steam.
@@ -165,7 +155,6 @@ class ConfirmationMixin(LoginMixin):
         if success is not EResult.OK:
             raise EResultError(rj.get("message", "Failed to perform action for multiple confirmations"), success, rj)
 
-    @identity_secret_required
     async def get_confirmations(self, *, update_listings=True) -> list[Confirmation]:
         """
         Fetch all confirmations.

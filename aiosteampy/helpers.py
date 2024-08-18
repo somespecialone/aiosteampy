@@ -24,8 +24,7 @@ __all__ = (
 
 async def restore_from_cookies(cookies: JSONABLE_COOKIE_JAR, client: "SteamClientBase") -> bool:
     """
-    Helper func. Restore client session from cookies.
-    Login if session is not alive.
+    Helper func. Restore client session from cookies. Login if session is not alive.
     Return `True` if cookies are valid and not expired.
     """
 
@@ -41,7 +40,6 @@ async def restore_from_cookies(cookies: JSONABLE_COOKIE_JAR, client: "SteamClien
 # TODO restore from object/dict, dump to object/dict
 
 
-# TODO add to public methods to check whether non-public client has attribute
 currency_required = attribute_required(
     "currency",
     "You must provide a currency to client or init data before use this method",

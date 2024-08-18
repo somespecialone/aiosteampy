@@ -19,7 +19,7 @@ from ..utils import create_ident_code, to_int_boolean, steam_id_to_account_id, a
 from .public import SteamCommunityPublicMixin
 from .web_api import SteamWebApiMixin
 
-TRADE_OFFERS_DATA: TypeAlias = tuple[list[TradeOffer], list[TradeOffer], int | None]
+TRADE_OFFERS_DATA: TypeAlias = tuple[list[TradeOffer], list[TradeOffer], int]
 
 
 class TradeMixin(SteamWebApiMixin, SteamCommunityPublicMixin):
@@ -34,26 +34,23 @@ class TradeMixin(SteamWebApiMixin, SteamCommunityPublicMixin):
         """
         Fetch trade offer from Steam.
 
-        .. note:: Method requires API key
-
         :param offer_id:
         :param params: extra params to pass to url
         :param headers: extra headers to send with request
-        :raises EResultError:
+        :raises EResultError: for ordinary reasons
         """
 
         params = {
-            "key": self._api_key,
             "tradeofferid": offer_id,
             "language": self.language,
             "get_descriptions": 1,
             **params,
         }
-        r = await self.session.get(STEAM_URL.API.IEconService.GetTradeOffer, params=params, headers=headers)
-        rj: dict = await r.json()
-        success = EResult(rj.get("success"))
-        if success is not EResult.OK:
-            raise EResultError(rj.get("message", "Failed to fetch trade offer"), success, rj)
+
+        try:
+            rj = await self.call_web_api(STEAM_URL.API.IEconService.GetTradeOffer, params=params, headers=headers)
+        except EResultError as e:
+            raise EResultError("Failed to fetch trade offer", e.result, e.data) from e
 
         data: dict[str, dict | list[dict]] = rj["response"]
         item_descrc_map = {}
@@ -138,9 +135,8 @@ class TradeMixin(SteamWebApiMixin, SteamCommunityPublicMixin):
         """
         Fetch trade offers from `Steam Web Api`.
 
-        .. note:: You can paginate by yourself passing `cursor` arg
-
-        .. note:: Method requires API key
+        .. note:: You can paginate by yourself passing `cursor` arg.
+            Returned cursor with 0 value means that there is no more pages
 
         :param active_only: fetch active, changed since `time_historical_cutoff` tradeoffs only or not
         :param time_historical_cutoff: timestamp for `active_only`
@@ -162,7 +158,6 @@ class TradeMixin(SteamWebApiMixin, SteamCommunityPublicMixin):
             active_only = False
 
         params = {
-            "key": self._api_key,
             "active_only": to_int_boolean(active_only),
             "get_sent_offers": to_int_boolean(sent),
             "get_received_offers": to_int_boolean(received),
@@ -180,11 +175,10 @@ class TradeMixin(SteamWebApiMixin, SteamCommunityPublicMixin):
 
         _item_descriptions_map = _item_descriptions_map if _item_descriptions_map is not None else {}
 
-        r = await self.session.get(STEAM_URL.API.IEconService.GetTradeOffers, params=params, headers=headers)
-        rj = await r.json()
-        success = EResult(rj.get("success"))
-        if success is not EResult.OK:
-            raise EResultError(rj.get("message", "Failed to fetch trade offers"), success, rj)
+        try:
+            rj = await self.call_web_api(STEAM_URL.API.IEconService.GetTradeOffers, params=params, headers=headers)
+        except EResultError as e:
+            raise EResultError("Failed to fetch trade offers", e.result, e.data) from e
 
         data: dict[str, dict | list[dict]] = rj["response"]
         self._update_item_descrs_map_for_trades(data["descriptions"], _item_descriptions_map)
@@ -194,7 +188,7 @@ class TradeMixin(SteamWebApiMixin, SteamCommunityPublicMixin):
             self._create_trade_offer(d, _item_descriptions_map) for d in data.get("trade_offers_received", ())
         ]
 
-        return sent_offers, received_offers, data.get("next_cursor")
+        return sent_offers, received_offers, data.get("next_cursor", 0)
 
     @overload
     async def trade_offers(
@@ -244,7 +238,7 @@ class TradeMixin(SteamWebApiMixin, SteamCommunityPublicMixin):
         :param historical_only: opposite for `active_only`
         :param sent: include sent offers or not
         :param received: include received offers or not
-        :param cursor: cursor integer, need to paginate over
+        :param cursor: cursor integer, need to paginate over offer pages
         :param params: extra params to pass to url
         :param headers: extra headers to send with request
         :return: `AsyncIterator` that yields sent trades, received trades lists, next cursor
@@ -283,15 +277,14 @@ class TradeMixin(SteamWebApiMixin, SteamCommunityPublicMixin):
         :raises EResultError:
         """
 
-        r = await self.session.get(
-            STEAM_URL.API.IEconService.GetTradeOffersSummary,
-            params={"key": self._api_key, **params},
-            headers=headers,
-        )
-        rj: dict[str, TradeOffersSummary] = await r.json()
-        success = EResult(rj.get("success"))
-        if success is not EResult.OK:
-            raise EResultError(rj.get("message", "Failed to fetch trade offers summary"), success, rj)
+        try:
+            rj: dict[str, TradeOffersSummary] = await self.call_web_api(
+                STEAM_URL.API.IEconService.GetTradeOffersSummary,
+                params=params,
+                headers=headers,
+            )
+        except EResultError as e:
+            raise EResultError("Failed to fetch trade offers summary", e.result, e.data) from e
 
         return rj["response"]
 
@@ -313,17 +306,15 @@ class TradeMixin(SteamWebApiMixin, SteamCommunityPublicMixin):
         """
 
         params = {
-            "key": self._api_key,
             "tradeid": offer_id,
             "get_descriptions": 1,
             "language": self.language,
             **params,
         }
-        r = await self.session.get(STEAM_URL.API.IEconService.GetTradeStatus, params=params, headers=headers)
-        rj: dict[str, dict[str, ...]] = await r.json()
-        success = EResult(rj.get("success"))
-        if success is not EResult.OK:
-            raise EResultError(rj.get("message", "Failed to fetch trade receipt"), success, rj)
+        try:
+            rj = await self.call_web_api(STEAM_URL.API.IEconService.GetTradeStatus, params=params, headers=headers)
+        except EResultError as e:
+            raise EResultError("Failed to fetch trade receipt", e.result, e.data) from e
 
         item_descrs_map = {}
         self._update_item_descrs_map_for_trades(rj["response"]["descriptions"], item_descrs_map)
@@ -332,8 +323,8 @@ class TradeMixin(SteamWebApiMixin, SteamCommunityPublicMixin):
 
     async def get_trade_history(
         self,
-        max_trades=100,
         *,
+        max_trades=100,
         start_after_time=0,
         start_after_trade_id=0,
         navigating_back=False,
@@ -355,11 +346,10 @@ class TradeMixin(SteamWebApiMixin, SteamCommunityPublicMixin):
         :param params: extra params to pass to url
         :param headers: extra headers to send with request
         :return: list of `HistoryTradeOffer`, total trades count
-        :raises EResultError:
+        :raises EResultError: for ordinary reasons
         """
 
         params = {
-            "key": self._api_key,
             "max_trades": max_trades,
             "get_descriptions": 1,
             "include_total": 1,
@@ -370,11 +360,10 @@ class TradeMixin(SteamWebApiMixin, SteamCommunityPublicMixin):
             "language": self.language,
             **params,
         }
-        r = await self.session.get(STEAM_URL.API.IEconService.GetTradeHistory, params=params, headers=headers)
-        rj = await r.json()
-        success = EResult(rj.get("success"))
-        if success is not EResult.OK:
-            raise EResultError(rj.get("message", "Failed to fetch trades history"), success, rj)
+        try:
+            rj = await self.call_web_api(STEAM_URL.API.IEconService.GetTradeHistory, params=params, headers=headers)
+        except EResultError as e:
+            raise EResultError("Failed to fetch trades history", e.result, e.data) from e
 
         item_descrs_map = {}
         data: dict[str, int | bool | dict | list[dict]] = rj["response"]

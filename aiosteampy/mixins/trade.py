@@ -5,7 +5,7 @@ from json import dumps as jdumps
 from yarl import URL
 
 from ..typed import TradeOffersSummary
-from ..constants import STEAM_URL, CORO, T_HEADERS, T_PARAMS, T_PAYLOAD, EResult
+from ..constants import STEAM_URL, CORO, T_HEADERS, T_PARAMS, T_PAYLOAD
 from ..exceptions import EResultError, SteamError
 from ..models import (
     TradeOffer,
@@ -54,16 +54,30 @@ class TradeMixin(SteamWebApiMixin, SteamCommunityPublicMixin):
 
         data: dict[str, dict | list[dict]] = rj["response"]
         item_descrc_map = {}
-        self._update_item_descrs_map_for_trades(data["descriptions"], item_descrc_map)
+        self._update_item_descrs_map_for_trades(data, item_descrc_map)
 
         return self._create_trade_offer(data["offer"], item_descrc_map)
 
+    # temporary fix/workaround
+    @staticmethod
+    def _combine_assets(data: dict[str, dict[str, list[dict]]]) -> list[dict]:
+        res = []
+        for offer in [
+            *data.get("trade_offers_received", ()),
+            *data.get("trade_offers_sent", ()),
+            data.get("offer", {}),
+        ]:
+            offer: dict
+            for asset in [*offer.get("items_to_give", ()), *offer.get("items_to_receive", ())]:
+                res.append(asset)
+        return res
+
     @classmethod
-    def _update_item_descrs_map_for_trades(cls, data: list[dict], item_descrs_map: dict[str, dict]):
-        for desc in data:
+    def _update_item_descrs_map_for_trades(cls, data: dict, item_descrs_map: dict[str, dict]):
+        for desc in data["descriptions"]:
             key = create_ident_code(desc["classid"], desc["appid"])
             if key not in item_descrs_map:
-                item_descrs_map[key] = cls._create_item_description_kwargs(desc, [desc])
+                item_descrs_map[key] = cls._create_item_description_kwargs(desc, cls._combine_assets(data))
 
     def _create_trade_offer(self, data: dict, item_descrs_map: dict[str, dict]) -> TradeOffer:
         return TradeOffer(
@@ -87,7 +101,7 @@ class TradeMixin(SteamWebApiMixin, SteamCommunityPublicMixin):
                 asset_id=a_data["assetid"],
                 amount=int(a_data["amount"]),
                 missing=a_data["missing"],
-                est_usd=int(a_data["est_usd"]),
+                est_usd=int(a_data.get("est_usd", 0)),
                 **item_descrs_map[create_ident_code(a_data["classid"], a_data["appid"])],
             )
             for a_data in items
@@ -138,6 +152,8 @@ class TradeMixin(SteamWebApiMixin, SteamCommunityPublicMixin):
         .. note:: You can paginate by yourself passing `cursor` arg.
             Returned cursor with 0 value means that there is no more pages
 
+        .. seealso:: https://steamapi.xpaw.me/#IEconService/GetTradeOffers
+
         :param active_only: fetch active, changed since `time_historical_cutoff` tradeoffs only or not
         :param time_historical_cutoff: timestamp for `active_only`
         :param historical_only: opposite for `active_only`
@@ -181,8 +197,11 @@ class TradeMixin(SteamWebApiMixin, SteamCommunityPublicMixin):
             raise EResultError("Failed to fetch trade offers", e.result, e.data) from e
 
         data: dict[str, dict | list[dict]] = rj["response"]
-        self._update_item_descrs_map_for_trades(data["descriptions"], _item_descriptions_map)
+        self._update_item_descrs_map_for_trades(data, _item_descriptions_map)
 
+        # TODO rethink way of sharing descriptions instead of descr args
+        # TODO sometimes there is no descriptions for items in trades, because of course
+        # TODO check node-steam-tradaoffer-manager for this moment
         sent_offers = [self._create_trade_offer(d, _item_descriptions_map) for d in data.get("trade_offers_sent", ())]
         received_offers = [
             self._create_trade_offer(d, _item_descriptions_map) for d in data.get("trade_offers_received", ())

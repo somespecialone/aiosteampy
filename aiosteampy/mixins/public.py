@@ -122,9 +122,8 @@ class SteamCommunityPublicMixin(SteamHTTPTransportMixin):
         try:
             return Game(description_data["appid"])
         except ValueError:
-            for asset in assets:
-                if asset["classid"] == description_data["classid"]:
-                    return asset["appid"], int(asset["contextid"])
+            res: dict = next(filter(lambda a: a["classid"] == description_data["classid"], assets))
+            return res["appid"], int(res["contextid"])
 
     @classmethod
     def _parse_items(

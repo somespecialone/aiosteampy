@@ -134,3 +134,5 @@ class ProfileMixin(LoginMixin):
 
     # async def set_privacy_settings(self):
     #     pass
+
+    # TODO upload avatar

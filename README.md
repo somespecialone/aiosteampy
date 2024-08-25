@@ -130,7 +130,7 @@ but not otherwise.
 
 - [x] Remove storage methods. Caching entities must be user responsibility
 - [x] Rename `fetch_...` methods to `get_...` to remove annoying methods symantic mess
-- [ ] Web browser mechanism to fetch trade offers from `Steam`, avoiding `Steam Web Api`
+- [x] ~~Web browser mechanism to fetch trade offers from `Steam`, avoiding `Steam Web Api`~~
 - [ ] Edit profile privacy settings
 
 ### v0.8.0

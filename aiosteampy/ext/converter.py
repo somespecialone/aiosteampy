@@ -75,7 +75,7 @@ class CurrencyConverter(UserDict[Currency, tuple[float, datetime]]):
             rj: dict[str, list[float, int]] = await r.json()
 
         for curr_key, v in rj.items():
-            self[Currency.by_name(curr_key)] = (v[0], datetime.utcfromtimestamp(v[1]))
+            self[getattr(Currency, curr_key)] = (v[0], datetime.utcfromtimestamp(v[1]))
 
     def close(self):
         """

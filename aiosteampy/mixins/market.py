@@ -9,7 +9,8 @@ from aiohttp.client import _RequestContextManager
 from ..typed import WalletInfo
 from ..constants import (
     STEAM_URL,
-    GameType,
+    App,
+    AppContext,
     MarketListingStatus,
     MarketHistoryEventType,
     T_PARAMS,
@@ -29,12 +30,11 @@ from ..models import (
     MarketHistoryListingItem,
     PriceHistoryEntry,
     MarketListing,
-    ITEM_DESCR_TUPLE,
 )
 from ..helpers import currency_required
 from ..exceptions import EResultError, SessionExpired
 from ..utils import create_ident_code, buyer_pays_to_receive
-from .public import SteamCommunityPublicMixin
+from .public import SteamCommunityPublicMixin, T_SHARED_DESCRIPTIONS
 from .confirmation import ConfirmationMixin
 
 
@@ -101,7 +101,7 @@ class MarketMixin(ConfirmationMixin, SteamCommunityPublicMixin):
     async def place_sell_listing(
         self,
         obj: int,
-        game: GameType,
+        app_context: AppContext,
         *,
         price: int,
         payload: T_PAYLOAD = ...,
@@ -113,7 +113,7 @@ class MarketMixin(ConfirmationMixin, SteamCommunityPublicMixin):
     async def place_sell_listing(
         self,
         obj: int,
-        game: GameType,
+        app_context: AppContext,
         *,
         price: int,
         confirm: Literal[False] = ...,
@@ -126,7 +126,7 @@ class MarketMixin(ConfirmationMixin, SteamCommunityPublicMixin):
     async def place_sell_listing(
         self,
         obj: int,
-        game: GameType,
+        app_context: AppContext,
         *,
         to_receive: int,
         payload: T_PAYLOAD = ...,
@@ -138,7 +138,7 @@ class MarketMixin(ConfirmationMixin, SteamCommunityPublicMixin):
     async def place_sell_listing(
         self,
         obj: int,
-        game: GameType,
+        app_context: AppContext,
         *,
         to_receive: int,
         confirm: Literal[False] = ...,
@@ -177,7 +177,7 @@ class MarketMixin(ConfirmationMixin, SteamCommunityPublicMixin):
     async def place_sell_listing(
         self,
         obj: int,
-        game: GameType,
+        app_context: AppContext,
         *,
         price: int,
         fetch: Literal[True] = ...,
@@ -191,7 +191,7 @@ class MarketMixin(ConfirmationMixin, SteamCommunityPublicMixin):
     async def place_sell_listing(
         self,
         obj: int,
-        game: GameType,
+        app_context: AppContext,
         *,
         to_receive: int,
         fetch: Literal[True] = ...,
@@ -204,7 +204,7 @@ class MarketMixin(ConfirmationMixin, SteamCommunityPublicMixin):
     async def place_sell_listing(
         self,
         obj: EconItem | int,
-        game: GameType = None,
+        app_context: AppContext = None,
         *,
         price: int = None,
         to_receive: int = None,
@@ -212,6 +212,7 @@ class MarketMixin(ConfirmationMixin, SteamCommunityPublicMixin):
         confirm=True,
         payload: T_PAYLOAD = {},
         headers: T_HEADERS = {},
+        _item_descriptions_map: T_SHARED_DESCRIPTIONS = None,
     ) -> int | MyMarketListing | None:
         """
         Create and place sell listing.
@@ -223,7 +224,7 @@ class MarketMixin(ConfirmationMixin, SteamCommunityPublicMixin):
             * `price` or `to_receive` is integers equal to cents
 
         :param obj: `EconItem` that you want to list on market or asset id
-        :param game: game of item
+        :param app_context: `Steam` app+context
         :param price: money that buyer must pay. Include fees
         :param to_receive: money that you want to receive
         :param fetch: make request and return a listing
@@ -237,7 +238,7 @@ class MarketMixin(ConfirmationMixin, SteamCommunityPublicMixin):
 
         if isinstance(obj, EconItem):
             asset_id = obj.asset_id
-            game = obj.game
+            app_context = obj.app_context
         else:
             asset_id = obj
 
@@ -254,8 +255,8 @@ class MarketMixin(ConfirmationMixin, SteamCommunityPublicMixin):
         data = {
             "assetid": asset_id,
             "sessionid": self.session_id,
-            "contextid": game[1],
-            "appid": game[0],
+            "contextid": app_context.context,
+            "appid": app_context.app.value,
             "amount": 1,
             "price": to_receive,
             **payload,
@@ -270,11 +271,11 @@ class MarketMixin(ConfirmationMixin, SteamCommunityPublicMixin):
         to_return = None
 
         if rj.get("needs_mobile_confirmation") and confirm:
-            conf = await self.confirm_sell_listing(asset_id, game)
+            conf = await self.confirm_sell_listing(asset_id, app_context)
             to_return = conf.creator_id
 
         if fetch:
-            to_return = await self.get_my_sell_listing(asset_id=asset_id)
+            to_return = await self.get_my_sell_listing(asset_id=asset_id, _item_descriptions_map=_item_descriptions_map)
 
         return to_return
 
@@ -288,7 +289,7 @@ class MarketMixin(ConfirmationMixin, SteamCommunityPublicMixin):
         asset_id: int = ...,
         market_hash_name: str = ...,
         ident_code: str = ...,
-        game: GameType = ...,
+        app_context: AppContext = ...,
         params: T_PARAMS = ...,
         headers: T_HEADERS = ...,
         **listing_item_attrs,
@@ -314,9 +315,10 @@ class MarketMixin(ConfirmationMixin, SteamCommunityPublicMixin):
         asset_id: int = None,
         market_hash_name: str = None,
         ident_code: str = None,
-        game: GameType = None,
+        app_context: AppContext = None,
         params: T_PARAMS = {},
         headers: T_HEADERS = {},
+        _item_descriptions_map: T_SHARED_DESCRIPTIONS = None,
         **listing_item_attrs,
     ) -> MyMarketListing | None:
         """
@@ -328,7 +330,7 @@ class MarketMixin(ConfirmationMixin, SteamCommunityPublicMixin):
         :param asset_id: asset id of listing item
         :param market_hash_name: market hash name of listing item
         :param ident_code: ident code of listing item
-        :param game: game of listing item
+        :param app_context: `Steam` app+context
         :param params: extra params to pass to url
         :param headers: extra headers to send with request
         :param listing_item_attrs: additional listing item attributes and values
@@ -348,11 +350,11 @@ class MarketMixin(ConfirmationMixin, SteamCommunityPublicMixin):
                     return False
                 if asset_id is not None and l.item.asset_id != asset_id:
                     return False
-                if market_hash_name is not None and l.item.market_hash_name != market_hash_name:
+                if market_hash_name is not None and l.item.description.market_hash_name != market_hash_name:
                     return False
                 if ident_code is not None and l.item.id != ident_code:
                     return False
-                if game is not None and l.item.game != game:
+                if app_context is not None and l.item.app_context is not app_context:
                     return False
 
                 for attr, value in listing_item_attrs.items():
@@ -361,7 +363,11 @@ class MarketMixin(ConfirmationMixin, SteamCommunityPublicMixin):
 
                 return True
 
-        async for listings, to_confirm, _, _ in self.my_listings(params=params, headers=headers):
+        async for listings, to_confirm, _, _ in self.my_listings(
+            params=params,
+            headers=headers,
+            _item_descriptions_map=_item_descriptions_map,
+        ):
             with suppress(StopIteration):
                 return next(filter(predicate, to_confirm if need_confirmation else listings))
 
@@ -401,7 +407,7 @@ class MarketMixin(ConfirmationMixin, SteamCommunityPublicMixin):
     async def place_buy_order(
         self,
         obj: str,
-        app_id: int,
+        app: App,
         *,
         price: int,
         quantity: int = ...,
@@ -427,7 +433,7 @@ class MarketMixin(ConfirmationMixin, SteamCommunityPublicMixin):
     async def place_buy_order(
         self,
         obj: str,
-        app_id: int,
+        app: App,
         *,
         price: int,
         quantity: int = ...,
@@ -441,19 +447,20 @@ class MarketMixin(ConfirmationMixin, SteamCommunityPublicMixin):
     async def place_buy_order(
         self,
         obj: str | ItemDescription,
-        app_id: int = None,
+        app: App = None,
         *,
         price: int,
         quantity=1,
         fetch=False,
         payload: T_PAYLOAD = {},
         headers: T_HEADERS = {},
+        _item_descriptions_map: T_SHARED_DESCRIPTIONS = None,
     ) -> int | BuyOrder:
         """
         Place buy order on market.
 
         :param obj: `ItemDescription` or market hash name
-        :param app_id: app id if `obj` is market hash name
+        :param app: `Steam` app if `obj` is market hash name
         :param price: price of single item
         :param quantity: just quantity
         :param fetch: make request and return buy order
@@ -465,20 +472,20 @@ class MarketMixin(ConfirmationMixin, SteamCommunityPublicMixin):
 
         if isinstance(obj, ItemDescription):
             name = obj.market_hash_name
-            app_id = obj.game[0]
+            app = obj.app
         else:
             name = obj
 
         data = {
             "sessionid": self.session_id,
             "currency": self.currency.value,
-            "appid": app_id,
+            "appid": app.value,
             "market_hash_name": name,
             "price_total": price * quantity,
             "quantity": quantity,
             **payload,
         }
-        headers = {"Referer": str(STEAM_URL.MARKET / f"listings/{app_id}/{name}"), **headers}
+        headers = {"Referer": str(STEAM_URL.MARKET / f"listings/{app.value}/{name}"), **headers}
         r = await self.session.post(STEAM_URL.MARKET / "createbuyorder/", data=data, headers=headers)
         rj: dict = await r.json()
         success = EResult(rj.get("success"))
@@ -487,7 +494,7 @@ class MarketMixin(ConfirmationMixin, SteamCommunityPublicMixin):
 
         to_return = int(rj["buy_orderid"])
         if fetch:
-            to_return = await self.get_my_buy_order(to_return)
+            to_return = await self.get_my_buy_order(to_return, _item_descriptions_map=_item_descriptions_map)
 
         return to_return
 
@@ -500,7 +507,7 @@ class MarketMixin(ConfirmationMixin, SteamCommunityPublicMixin):
         quantity: int = ...,
         market_hash_name: str = ...,
         ident_code: str = ...,
-        game: GameType = ...,
+        app: App = ...,
         params: T_PARAMS = ...,
         headers: T_HEADERS = ...,
         **item_description_attrs,
@@ -521,13 +528,14 @@ class MarketMixin(ConfirmationMixin, SteamCommunityPublicMixin):
         self,
         obj: int | Callable[[BuyOrder], bool] = None,
         *,
-        price: int = ...,
-        quantity: int = ...,
-        market_hash_name: str = ...,
-        ident_code: str = ...,
-        game: GameType = ...,
+        price: int = None,
+        quantity: int = None,
+        market_hash_name: str = None,
+        ident_code: str = None,
+        app: App = None,
         params: T_PARAMS = {},
         headers: T_HEADERS = {},
+        _item_descriptions_map: T_SHARED_DESCRIPTIONS = None,
         **item_description_attrs,
     ) -> BuyOrder | None:
         """
@@ -538,7 +546,7 @@ class MarketMixin(ConfirmationMixin, SteamCommunityPublicMixin):
         :param quantity: order quantity
         :param market_hash_name: name of item description
         :param ident_code: ident code of item description
-        :param game: game of item description
+        :param app: `Steam` app
         :param params: extra params to pass to url
         :param headers: extra headers to send with request
         :param item_description_attrs: additional item description attributes and values
@@ -562,7 +570,7 @@ class MarketMixin(ConfirmationMixin, SteamCommunityPublicMixin):
                     return False
                 if ident_code is not None and o.item_description.id != ident_code:
                     return False
-                if game is not None and o.item_description.game != game:
+                if app is not None and o.item_description.app is not app:
                     return False
 
                 for attr, value in item_description_attrs.items():
@@ -572,7 +580,12 @@ class MarketMixin(ConfirmationMixin, SteamCommunityPublicMixin):
                 return True
 
         # count 1 to reduce unnecessary work, better check this
-        data = await self.get_my_listings(count=1, params=params, headers=headers)
+        data = await self.get_my_listings(
+            count=1,
+            params=params,
+            headers=headers,
+            _item_descriptions_map=_item_descriptions_map,
+        )
         return next(filter(predicate, data[2]), None)
 
     async def cancel_buy_order(self, order: int | BuyOrder, *, payload: T_PAYLOAD = {}, headers: T_HEADERS = {}):
@@ -605,7 +618,7 @@ class MarketMixin(ConfirmationMixin, SteamCommunityPublicMixin):
         count: int = 100,
         params: T_PARAMS = {},
         headers: T_HEADERS = {},
-        _item_descriptions_map: dict = None,
+        _item_descriptions_map: T_SHARED_DESCRIPTIONS = None,
     ) -> MY_LISTINGS_DATA:
         """
         Fetch users market listings.
@@ -635,12 +648,13 @@ class MarketMixin(ConfirmationMixin, SteamCommunityPublicMixin):
 
         # no need to check `assets` or `total_count`
 
-        _item_descriptions_map = _item_descriptions_map if _item_descriptions_map is not None else {}
-        self._parse_item_descriptions_for_listings(rj["assets"], _item_descriptions_map)
-        self._parse_item_descriptions_for_orders(rj["buy_orders"], _item_descriptions_map)
+        if _item_descriptions_map is None:
+            _item_descriptions_map = {}
 
-        active = self._parse_listings(rj["listings"], _item_descriptions_map)
-        to_confirm = self._parse_listings(rj["listings_to_confirm"], _item_descriptions_map)
+        self._parse_item_descrs_from_my_listings(rj, _item_descriptions_map)
+
+        active = self._parse_my_listings(rj["listings"], _item_descriptions_map)
+        to_confirm = self._parse_my_listings(rj["listings_to_confirm"], _item_descriptions_map)
         buy_orders = self._parse_buy_orders(rj["buy_orders"], _item_descriptions_map)
 
         return active, to_confirm, buy_orders, rj["num_active_listings"]
@@ -652,6 +666,7 @@ class MarketMixin(ConfirmationMixin, SteamCommunityPublicMixin):
         count: int = 100,
         params: T_PARAMS = {},
         headers: T_HEADERS = {},
+        _item_descriptions_map: T_SHARED_DESCRIPTIONS = None,
     ) -> AsyncIterator[list[MyMarketListing]]:
         """
         Fetch users market listings. Return async iterator to paginate over listing pages.
@@ -668,7 +683,8 @@ class MarketMixin(ConfirmationMixin, SteamCommunityPublicMixin):
         :raises SessionExpired:
         """
 
-        item_descriptions_map = {}
+        if _item_descriptions_map is None:
+            _item_descriptions_map = {}
 
         more_listings = True
         while more_listings:
@@ -678,7 +694,7 @@ class MarketMixin(ConfirmationMixin, SteamCommunityPublicMixin):
                 count=count,
                 params=params,
                 headers=headers,
-                _item_descriptions_map=item_descriptions_map,
+                _item_descriptions_map=_item_descriptions_map,
             )
             start += count
             more_listings = listings_data[3] > start
@@ -686,37 +702,32 @@ class MarketMixin(ConfirmationMixin, SteamCommunityPublicMixin):
             yield listings_data[0]
 
     @classmethod
-    def _parse_item_descriptions_for_listings(
+    def _parse_item_descrs_from_my_listings(
         cls,
-        assets: dict[str, dict[str, dict[str, dict]]],
-        item_descrs_map: dict[str, dict],
+        data: dict[str, dict | list[dict]],
+        item_descrs_map: T_SHARED_DESCRIPTIONS,
     ):
-        """
-        Parse `assets` from received data and update `item_descrs_map`
-        with created shared `ItemDescription` arguments/attrs dicts.
-        """
-
-        for app_id, app_data in assets.items():
+        # assets field, has descriptions for listings, so we can not parse descrs from listings
+        for app_id, app_data in data["assets"].items():
             for context_id, context_data in app_data.items():
-                for a_data in context_data.values():
-                    key = create_ident_code(a_data["classid"], app_id)
+                for asset_id, mixed_data in context_data.items():
+                    key = create_ident_code(mixed_data["instanceid"], mixed_data["classid"], app_id)
                     if key not in item_descrs_map:
-                        item_descrs_map[key] = cls._create_item_description_kwargs(a_data, [a_data])
+                        item_descrs_map[key] = cls._create_item_descr(mixed_data)
 
-    @classmethod
-    def _parse_item_descriptions_for_orders(cls, orders: list[dict], item_descrs_map: dict[str, dict]):
-        """
-        Parse `buy_orders` from received data and update `item_descrs_map`
-        with created shared `ItemDescription` arguments/attrs dicts.
-        """
+        for listing_data in data["listings_to_confirm"]:
+            mixed_data = listing_data["asset"]
+            key = create_ident_code(mixed_data["instanceid"], mixed_data["classid"], mixed_data["appid"])
+            if key not in item_descrs_map:
+                item_descrs_map[key] = cls._create_item_descr(mixed_data)
 
-        for o_data in orders:
-            class_ident_key = create_ident_code(o_data["description"]["classid"], o_data["description"]["appid"])
-            item_descrs_map[class_ident_key] = cls._create_item_description_kwargs(
-                o_data["description"], [o_data["description"]]
-            )
+        for order_data in data["buy_orders"]:
+            descr_data = order_data["description"]
+            key = create_ident_code(descr_data["instanceid"], descr_data["classid"], descr_data["appid"])
+            if key not in item_descrs_map:
+                item_descrs_map[key] = cls._create_item_descr(descr_data)
 
-    def _parse_listings(self, listings: list[dict], item_descrs_map: dict[str, dict]) -> list[MyMarketListing]:
+    def _parse_my_listings(self, listings: list[dict], item_descrs_map: T_SHARED_DESCRIPTIONS) -> list[MyMarketListing]:
         return [
             MyMarketListing(
                 id=int(l_data["listingid"]),
@@ -732,7 +743,14 @@ class MarketMixin(ConfirmationMixin, SteamCommunityPublicMixin):
                     if "unowned_contextid" in l_data["asset"]
                     else None,
                     amount=int(l_data["asset"]["amount"]),
-                    **item_descrs_map[create_ident_code(l_data["asset"]["classid"], l_data["asset"]["appid"])],
+                    app_context=AppContext((App(int(l_data["asset"]["appid"])), int(l_data["asset"]["contextid"]))),
+                    description=item_descrs_map[
+                        create_ident_code(
+                            l_data["asset"]["instanceid"],
+                            l_data["asset"]["classid"],
+                            l_data["asset"]["appid"],
+                        )
+                    ],
                 ),
                 status=MarketListingStatus(l_data["status"]),
                 active=bool(l_data["active"]),
@@ -744,16 +762,18 @@ class MarketMixin(ConfirmationMixin, SteamCommunityPublicMixin):
         ]
 
     @classmethod
-    def _parse_buy_orders(cls, orders: list[dict], item_descrs_map: dict[str, dict]) -> list[BuyOrder]:
+    def _parse_buy_orders(cls, orders: list[dict], item_descrs_map: T_SHARED_DESCRIPTIONS) -> list[BuyOrder]:
         return [
             BuyOrder(
                 id=int(o_data["buy_orderid"]),
                 price=int(o_data["price"]),
-                item_description=ItemDescription(
-                    **item_descrs_map[
-                        create_ident_code(o_data["description"]["classid"], o_data["description"]["appid"])
-                    ]
-                ),
+                item_description=item_descrs_map[
+                    create_ident_code(
+                        o_data["description"]["instanceid"],
+                        o_data["description"]["classid"],
+                        o_data["description"]["appid"],
+                    )
+                ],
                 quantity=int(o_data["quantity"]),
                 quantity_remaining=int(o_data["quantity_remaining"]),
             )
@@ -776,7 +796,7 @@ class MarketMixin(ConfirmationMixin, SteamCommunityPublicMixin):
         obj: int,
         price: int,
         market_hash_name: str,
-        game: GameType,
+        app: App,
         *,
         fee: int = ...,
         payload: T_PAYLOAD = ...,
@@ -790,7 +810,7 @@ class MarketMixin(ConfirmationMixin, SteamCommunityPublicMixin):
         obj: int | MarketListing,
         price: int = None,
         market_hash_name: str = None,
-        game: GameType = None,
+        app: App = None,
         *,
         fee: int = None,
         payload: T_PAYLOAD = {},
@@ -806,7 +826,7 @@ class MarketMixin(ConfirmationMixin, SteamCommunityPublicMixin):
         :param obj: id for listing itself (aka market id) or `MarketListing`
         :param price: Can be found on listing data in Steam under field `converted_price` divided by 100
         :param market_hash_name: as arg name
-        :param game: as arg name&type
+        :param app: `Steam` app
         :param fee: if fee of listing is different from default one,
             can be found on listing data in Steam under field `converted_fee` divided by 100.
             If you don't know what is this - then you definitely do not need it
@@ -827,8 +847,8 @@ class MarketMixin(ConfirmationMixin, SteamCommunityPublicMixin):
             listing_id = obj.id
             price = obj.converted_price
             fee = obj.converted_fee
-            market_hash_name = obj.item.market_hash_name
-            game = obj.item.game
+            market_hash_name = obj.item.description.market_hash_name
+            app = obj.item.app_context.app
         else:
             listing_id = obj
 
@@ -842,7 +862,7 @@ class MarketMixin(ConfirmationMixin, SteamCommunityPublicMixin):
             "quantity": 1,
             **payload,
         }
-        headers = {"Referer": str(STEAM_URL.MARKET / f"listings/{game[0]}/{market_hash_name}"), **headers}
+        headers = {"Referer": str(STEAM_URL.MARKET / f"listings/{app.value}/{market_hash_name}"), **headers}
         r = await self.session.post(STEAM_URL.MARKET / f"buylisting/{listing_id}", data=data, headers=headers)
         rj: dict[str, dict[str, str]] = await r.json()
         wallet_info: WalletInfo = rj.get("wallet_info", {})
@@ -860,9 +880,9 @@ class MarketMixin(ConfirmationMixin, SteamCommunityPublicMixin):
         count: int = 100,
         params: T_PARAMS = {},
         headers: T_HEADERS = {},
-        _item_descriptions_map: dict = None,
-        _econ_items_map: dict = None,
-        _listings_map: dict = None,
+        _item_descriptions_map: T_SHARED_DESCRIPTIONS = None,
+        _market_history_econ_items_map: dict[str, MarketHistoryListingItem] = None,
+        _market_history_listings_map: dict[int, MarketHistoryListing] = None,
     ) -> MY_MARKET_HISTORY_DATA:
         """
         Fetch market history of self.
@@ -893,15 +913,18 @@ class MarketMixin(ConfirmationMixin, SteamCommunityPublicMixin):
         if not rj["total_count"] or not rj["assets"]:  # safe
             return [], 0
 
-        _item_descriptions_map = _item_descriptions_map if _item_descriptions_map is not None else {}
-        _econ_items_map = _econ_items_map if _econ_items_map is not None else {}
-        _listings_map = _listings_map if _listings_map is not None else {}
+        if _item_descriptions_map is None:
+            _item_descriptions_map = {}
+        if _market_history_econ_items_map is None:
+            _market_history_econ_items_map = {}
+        if _market_history_listings_map is None:
+            _market_history_listings_map = {}
 
-        self._parse_item_descriptions_for_listings(rj["assets"], _item_descriptions_map)
-        self._parse_assets_for_history_listings(rj["assets"], _item_descriptions_map, _econ_items_map)
-        self._parse_history_listings(rj, _econ_items_map, _listings_map)
+        self._parse_item_descrs_from_my_listings(rj["assets"], _item_descriptions_map)
+        self._parse_assets_for_history_listings(rj["assets"], _item_descriptions_map, _market_history_econ_items_map)
+        self._parse_history_listings(rj, _market_history_econ_items_map, _market_history_listings_map)
 
-        return self._parse_history_events(rj, _listings_map), rj["total_count"]
+        return self._parse_history_events(rj, _market_history_listings_map), rj["total_count"]
 
     async def my_market_history(
         self,
@@ -910,6 +933,9 @@ class MarketMixin(ConfirmationMixin, SteamCommunityPublicMixin):
         count: int = 100,
         params: T_PARAMS = {},
         headers: T_HEADERS = {},
+        _item_descriptions_map: T_SHARED_DESCRIPTIONS = None,
+        _market_history_econ_items_map: dict[str, MarketHistoryListingItem] = None,
+        _market_history_listings_map: dict[int, MarketHistoryListing] = None,
     ) -> AsyncIterator[MY_MARKET_HISTORY_DATA]:
         """
         Fetch market history of self. Return async iterator to paginate over history event pages.
@@ -923,9 +949,12 @@ class MarketMixin(ConfirmationMixin, SteamCommunityPublicMixin):
         :raises SessionExpired:
         """
 
-        item_descriptions_map = {}
-        econ_items_map = {}
-        listings_map = {}
+        if _item_descriptions_map is not None:
+            _item_descriptions_map = {}
+        if _market_history_econ_items_map is not None:
+            _market_history_econ_items_map = {}
+        if _market_history_listings_map is not None:
+            _market_history_listings_map = {}
 
         more_listings = True
         while more_listings:
@@ -935,9 +964,9 @@ class MarketMixin(ConfirmationMixin, SteamCommunityPublicMixin):
                 count=count,
                 params=params,
                 headers=headers,
-                _item_descriptions_map=item_descriptions_map,
-                _econ_items_map=econ_items_map,
-                _listings_map=listings_map,
+                _item_descriptions_map=_item_descriptions_map,
+                _market_history_econ_items_map=_market_history_econ_items_map,
+                _market_history_listings_map=_market_history_listings_map,
             )
             start += count
             more_listings = history_data[1] > start
@@ -947,15 +976,15 @@ class MarketMixin(ConfirmationMixin, SteamCommunityPublicMixin):
     @staticmethod
     def _parse_assets_for_history_listings(
         data: dict[str, dict[str, dict[str, dict]]],
-        item_descrs_map: dict[str, dict],
+        item_descrs_map: T_SHARED_DESCRIPTIONS,
         econ_item_map: dict[str, MarketHistoryListingItem],
     ):
         for app_id, app_data in data.items():
             for context_id, context_data in app_data.items():
                 for a_data in context_data.values():
                     # because I don't know why in data `id` and `unowned_id` combinations and how that suppose to work
-                    key_id = create_ident_code(a_data["id"], app_id, context_id)
-                    key_unowned_id = create_ident_code(a_data["unowned_id"], app_id, context_id)
+                    key_id = create_ident_code(a_data["id"], context_id, app_id)
+                    key_unowned_id = create_ident_code(a_data["unowned_id"], context_id, app_id)
                     if key_id not in item_descrs_map or key_unowned_id not in item_descrs_map:
                         econ_item = MarketHistoryListingItem(
                             asset_id=int(a_data["id"]),
@@ -967,7 +996,14 @@ class MarketMixin(ConfirmationMixin, SteamCommunityPublicMixin):
                             rollback_new_context_id=int(a_data["rollback_new_contextid"])
                             if "rollback_new_contextid" in a_data
                             else None,
-                            **item_descrs_map[create_ident_code(a_data["classid"], app_id)],
+                            app_context=AppContext((App(int(a_data["appid"])), int(a_data["contextid"]))),
+                            description=item_descrs_map[
+                                create_ident_code(
+                                    a_data["instanceid"],
+                                    a_data["classid"],
+                                    app_id,
+                                )
+                            ],
                         )
                         if key_id not in econ_item_map:
                             econ_item_map[key_id] = econ_item
@@ -990,8 +1026,8 @@ class MarketMixin(ConfirmationMixin, SteamCommunityPublicMixin):
                     item=econ_item_map[
                         create_ident_code(
                             l_data["asset"]["id"],
-                            l_data["asset"]["appid"],
                             l_data["asset"]["contextid"],
+                            l_data["asset"]["appid"],
                         )
                     ],
                     original_price=int(l_data["original_price"]),
@@ -1011,8 +1047,8 @@ class MarketMixin(ConfirmationMixin, SteamCommunityPublicMixin):
                     item=econ_item_map[
                         create_ident_code(
                             p_data["asset"]["id"],
-                            p_data["asset"]["appid"],
                             p_data["asset"]["contextid"],
+                            p_data["asset"]["appid"],
                         )
                     ],
                     purchase_id=int(p_data["purchaseid"]),
@@ -1048,7 +1084,7 @@ class MarketMixin(ConfirmationMixin, SteamCommunityPublicMixin):
     @overload
     async def fetch_price_history(
         self,
-        obj: ItemDescription | EconItem,
+        obj: ItemDescription,
         *,
         params: T_PARAMS = ...,
         headers: T_HEADERS = ...,
@@ -1059,7 +1095,7 @@ class MarketMixin(ConfirmationMixin, SteamCommunityPublicMixin):
     async def fetch_price_history(
         self,
         obj: str,
-        app_id: int,
+        app: App,
         *,
         params: T_PARAMS = ...,
         headers: T_HEADERS = ...,
@@ -1069,7 +1105,7 @@ class MarketMixin(ConfirmationMixin, SteamCommunityPublicMixin):
     async def fetch_price_history(
         self,
         obj: str,
-        app_id: int = None,
+        app: App = None,
         *,
         params: T_PARAMS = {},
         headers: T_HEADERS = {},
@@ -1082,21 +1118,21 @@ class MarketMixin(ConfirmationMixin, SteamCommunityPublicMixin):
 
         .. note:: This request is rate limited by Steam.
 
-        :param obj: `EconItem` or `ItemDescription` or market hash name
-        :param app_id:
+        :param obj: `ItemDescription` or market hash name
+        :param app: `Steam` app
         :param params: extra params to pass to url
         :param headers: extra headers to send with request
         :return: list of `PriceHistoryEntry`
         :raises EResultError:
         """
 
-        if isinstance(obj, ITEM_DESCR_TUPLE):
+        if isinstance(obj, ItemDescription):
             name = obj.market_hash_name
-            app_id = obj.game[0]
+            app = obj.app
         else:  # str
             name = obj
 
-        params = {"appid": app_id, "market_hash_name": name, **params}
+        params = {"appid": app.value, "market_hash_name": name, **params}
         r = await self.session.get(STEAM_URL.MARKET / "pricehistory", params=params, headers=headers)
         rj: dict[str, list[list]] = await r.json()
         success = EResult(rj.get("success"))

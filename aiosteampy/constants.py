@@ -1,65 +1,89 @@
 """Constants and enums, some types"""
 
-from typing import TypeAlias, ClassVar, Any, TypeVar, Coroutine, Mapping
+from typing import TypeAlias, Any, TypeVar, Coroutine, Mapping
 from enum import Enum, IntEnum
 
 from yarl import URL
+from aenum import extend_enum
 
 _T = TypeVar("_T")
 
 CORO: TypeAlias = Coroutine[Any, Any, _T]
 
 
-# TODO convert to namedtuple or smth
-# https://stackoverflow.com/a/54732120/19419998
-class Game(Enum):
-    CS2 = 730, 2
-    DOTA2 = 570, 2
-    H1Z1 = 433850, 2
-    RUST = 252490, 2
-    TF2 = 440, 2
-    PUBG = 578080, 2
+class App(IntEnum):
+    """App enum. Add new member, when missing"""
 
-    STEAM = 753, 6  # not actually a game :)
-
+    # predefined
+    CS2 = 730
     CSGO = CS2  # alias
 
-    _steam_id_map: ClassVar[dict[int, "Game"]]
+    DOTA2 = 570
+    H1Z1 = 433850
+    RUST = 252490
+    TF2 = 440
+    PUBG = 578080
 
-    def __new__(cls, *args, **kwargs):
-        obj = object.__new__(cls)
-        obj._value_ = args[0]
-        return obj
+    STEAM = 753
 
-    def __init__(self, _, context_id):
-        self._context_id_ = context_id
-        self._args_tuple_ = (self._value_, self._context_id_)
+    @classmethod
+    def _missing_(cls, value: int):
+        return extend_enum(cls, cls._generate_name(value), value)  # add new member when missing
 
-    @property
-    def context_id(self) -> int:
-        return self._context_id_
+    @classmethod
+    def _generate_name(cls, value) -> str:
+        return f"{cls.__name__}_{value}"
 
     @property
     def app_id(self) -> int:
-        return self._value_
+        return self.value
+
+
+class AppContext(Enum):
+    """
+    Combination of `App` and `Context` (sub-inventory of the app)
+
+    .. seealso:: https://dev.doctormckay.com/topic/332-identifying-steam-items/
+    """
+
+    # predefined
+    CS2 = App.CS2, 2
+    CSGO = CS2  # alias
+
+    DOTA2 = App.DOTA2, 2
+    H1Z1 = App.H1Z1, 2
+    RUST = App.RUST, 2
+    TF2 = App.TF2, 2
+    PUBG = App.PUBG, 2
+
+    STEAM_GIFTS = App.STEAM, 1
+    STEAM_COMMUNITY = App.STEAM, 6
+    STEAM_REWARDS = App.STEAM, 7  # item rewards
 
     @classmethod
-    def by_steam_id(cls, steam_id: int) -> "Game | None":
-        return cls._steam_id_map.get(steam_id)
+    def _generate_name(cls, value: tuple[App, int]) -> str:
+        return f"{cls.__name__}_{value[0]}_{value[1]}"
 
-    def __getitem__(self, index: int) -> int:
-        return self._args_tuple_[index]
+    # for case when AppContext((730, 2))
+    @classmethod
+    def _missing_(cls, value: tuple[App | int, int]):
+        with_enum = (App(value[0]), value[1])
+        return extend_enum(cls, cls._generate_name(with_enum), with_enum)
 
-    def __iter__(self):  # for unpacking
-        return iter(self._args_tuple_)
+    @property
+    def app(self) -> App:
+        return self.value[0]
+
+    @property
+    def app_id(self) -> int:
+        return self.value[0].value
+
+    @property
+    def context(self) -> int:
+        return self.value[1]
 
 
-Game._steam_id_map = {g.value: g for g in Game.__members__.values()}
-
-GameType: TypeAlias = Game | tuple[int, int]
-
-
-class Currency(IntEnum):
+class Currency(IntEnum):  # already params serializable
     """
     Steam currency enum.
 
@@ -115,17 +139,8 @@ class Currency(IntEnum):
     # HUF = 46  # Hungarian Forint
     # RON = 47  # Romanian Leu
 
-    _name_map: ClassVar[dict[str, "Currency"]]
 
-    @classmethod
-    def by_name(cls, name: str) -> "Currency":
-        return cls._name_map[name]
-
-
-Currency._name_map = {c.name: c for c in Currency.__members__.values()}
-
-
-class Language(str, Enum):  # like StrEnum from python 3.11, need for params serialization
+class Language(str, Enum):  # need for params serialization
     """
     Steam languages.
 
@@ -162,7 +177,8 @@ class Language(str, Enum):  # like StrEnum from python 3.11, need for params ser
     UKRAINIAN = "ukrainian"
     VIETNAMESE = "vietnamese"
 
-    def __str__(self):  # for params serialization
+    # also for params serialization, make `print` to show only value which complicates debugging a little
+    def __str__(self):
         return self.value
 
 

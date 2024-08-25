@@ -1,12 +1,13 @@
 from dataclasses import dataclass, field
-from typing import Literal, TypeAlias
+from typing import NamedTuple
 from datetime import datetime
 
 from yarl import URL
 
 from .constants import (
     STEAM_URL,
-    GameType,
+    App,
+    AppContext,
     Currency,
     ConfirmationType,
     MarketHistoryEventType,
@@ -18,29 +19,25 @@ from .utils import create_ident_code, account_id_to_steam_id
 TRADABLE_AFTER_DATE_FORMAT = "Tradable After %b %d, %Y (%H:%M:%S) %Z"
 
 
-@dataclass(eq=False, slots=True)
-class ItemAction:
+class ItemAction(NamedTuple):
     link: str
     name: str
 
 
-@dataclass(eq=False, slots=True)
-class ItemDescriptionEntry:
+class ItemDescriptionEntry(NamedTuple):
     value: str
-    type: Literal["html"] = "html"  # just because
-    color: str | None = None  # hexadecimal
+    color: str | None  # hexadecimal
 
 
-@dataclass(eq=False, slots=True)
-class ItemTag:
+class ItemTag(NamedTuple):
     category: str
     internal_name: str
     localized_category_name: str
     localized_tag_name: str
-    color: str | None = None  # hexadecimal
+    color: str | None  # hexadecimal
 
 
-@dataclass(eq=False, slots=True, kw_only=True)
+@dataclass(eq=False, slots=True, frozen=True, kw_only=True)
 class ItemDescription:
     """
     `EconItem` description representation.
@@ -48,13 +45,14 @@ class ItemDescription:
     """
 
     id: str = field(init=False, default="")  # optimization 🚀
+    """Unique identifier of the `ItemDescription` within `Steam Economy`"""
 
     class_id: int
     instance_id: int
 
     d_id: int | None = field(init=False, default=None)  # optional CSGO inspect id
 
-    game: GameType
+    app: App
 
     name: str
     market_name: str
@@ -91,13 +89,12 @@ class ItemDescription:
         self._set_d_id()
 
     def _set_ident_code(self):
-        self.id = create_ident_code(self.class_id, self.game[0])
+        object.__setattr__(self, "id", create_ident_code(self.instance_id, self.class_id, self.app.value))
 
     def _set_d_id(self):
-        if self.game[0] == 730:
-            i_action = next(filter(lambda a: "Inspect" in a.name, self.actions), None)
-            if i_action is not None:
-                self.d_id = int(i_action.link.split("%D")[1])
+        if self.app is App.CS2:
+            if (i_action := next(filter(lambda a: "Inspect" in a.name, self.actions), None)) is not None:
+                object.__setattr__(self, "d_id", int(i_action.link.split("%D")[1]))
 
     @property
     def ident_code(self) -> str:
@@ -110,74 +107,67 @@ class ItemDescription:
 
     @property
     def icon_large_url(self) -> URL | None:
-        return STEAM_URL.STATIC / f"economy/image/{self.icon_large}/330x192" if self.icon_large else None
+        return (STEAM_URL.STATIC / f"economy/image/{self.icon_large}/330x192") if self.icon_large else None
 
     @property
     def market_url(self) -> URL:
-        return STEAM_URL.MARKET / f"listings/{self.game[0]}/{self.market_hash_name}"
+        return STEAM_URL.MARKET / f"listings/{self.app.value}/{self.market_hash_name}"
 
-    def __eq__(self, other: "ItemDescription"):
-        return self.id == other.id
+    def __eq__(self, other):
+        if isinstance(other, ItemDescription):
+            return self.id == other.id
+        return False
 
     def __hash__(self):
-        return hash(self.ident_code)
-
-
-EconItemTuple: TypeAlias = tuple[int, int, int, int]
+        return hash(self.id)
 
 
 @dataclass(eq=False, slots=True, kw_only=True)
-class EconItem(ItemDescription):
+class EconItem:
     """
-    Represents Steam economy item (inventories).
+    Represents unique copy of a `Steam Economy` item, ala `Asset`.
     `id` or `ident_code` field is guaranteed unique within whole Steam Economy.
     """
+
+    id: str = field(init=False, default="")  # optimization 🚀
+    """Unique identifier of the `EconItem` within `Steam Economy`"""
 
     asset_id: int  # The item's unique ID within its app+context
     owner_id: int
 
-    amount: int
+    app_context: AppContext
 
+    amount: int  # if stackable
+
+    description: ItemDescription
     tradable_after: datetime | None = field(init=False, default=None)
-
-    _args_tuple_: EconItemTuple = field(init=False, default=(), repr=False)
 
     def __post_init__(self):
         self._set_ident_code()
-        self._set_d_id()
-        self._set_args_tuple()
+        self._set_tradable_after()
 
     def _set_ident_code(self):
-        self.id = create_ident_code(self.asset_id, *self.game)
-
-    def _set_args_tuple(self):
-        self._args_tuple_ = (self.game[0], self.game[1], self.amount, self.asset_id)
+        self.id = create_ident_code(self.asset_id, self.app_context.context, self.app_context.app.value)
 
     def _set_tradable_after(self):
-        if self.market_tradable_restriction:
+        if self.description.market_tradable_restriction:
             sep = "Tradable After "
-            t_a_descr = next(filter(lambda d: sep in d.value, self.owner_descriptions or ()), None)
+            t_a_descr = next(filter(lambda d: sep in d.value, self.description.owner_descriptions or ()), None)
             if t_a_descr is not None:
                 self.tradable_after = datetime.strptime(t_a_descr.value, TRADABLE_AFTER_DATE_FORMAT)
 
     @property
-    def inspect_link(self) -> str | None:
-        """Optional CSGO attr."""
-        if self.d_id:
-            return f"steam://rungame/730/76561202255233023/+csgo_econ_action_preview%20S{self.owner_id}A{self.asset_id}{self.d_id}"
+    def inspect_url(self) -> str | None:
+        if self.description.d_id:
+            return f"steam://rungame/730/76561202255233023/+csgo_econ_action_preview%20S{self.owner_id}A{self.asset_id}D{self.description.d_id}"
 
-    def __getitem__(self, index: int) -> int:  # some magic
-        return self._args_tuple_[index]
+    def __eq__(self, other):
+        if isinstance(other, EconItem):
+            return self.id == other.id
+        return False
 
-    def __iter__(self):
-        return iter(self._args_tuple_)
-
-    def __eq__(self, other: "EconItem"):
-        return self.asset_id == other.asset_id and super().__eq__(other)
-
-
-ITEM_DESCR_TUPLE = (EconItem, ItemDescription)
-EconItemType: TypeAlias = EconItem | EconItemTuple  # TODO Do I need this?
+    def __hash__(self):
+        return hash(self.id)
 
 
 # https://github.com/DoctorMcKay/node-steamcommunity/wiki/CConfirmation
@@ -202,22 +192,21 @@ class Confirmation:
     def listing_item_ident_code(self) -> str | None:
         """`MarketListingItem` ident code if `details` is present"""
         if self.details is not None:
-            return create_ident_code(self.details["id"], self.details["appid"], self.details["contextid"])
+            return create_ident_code(self.details["id"], self.details["contextid"], self.details["appid"])
 
 
-@dataclass(eq=False, slots=True)
-class Notifications:
-    trades: int = 0  # 1
-    game_turns: int = 0  # 2
-    moderator_messages: int = 0  # 3
-    comments: int = 0  # 4
-    items: int = 0  # 5
-    invites: int = 0  # 6
+class Notifications(NamedTuple):
+    trades: int  # 1
+    game_turns: int  # 2
+    moderator_messages: int  # 3
+    comments: int  # 4
+    items: int  # 5
+    invites: int  # 6
     # 7 missing
-    gifts: int = 0  # 8
-    chats: int = 0  # 9
-    help_request_replies: int = 0  # 10
-    account_alerts: int = 0  # 11
+    gifts: int  # 8
+    chats: int  # 9
+    help_request_replies: int  # 10
+    account_alerts: int  # 11
 
 
 @dataclass(eq=False, slots=True, kw_only=True)
@@ -233,10 +222,9 @@ class MarketListingItem(EconItem):
     owner_id: int = 0
 
     @property
-    def inspect_link(self) -> str | None:
-        """Optional CSGO attr."""
-        if self.d_id:
-            return f"steam://rungame/730/76561202255233023/+csgo_econ_action_preview%20M{self.market_id}A{self.asset_id}{self.d_id}"
+    def inspect_url(self) -> str | None:
+        if self.description.d_id:
+            return f"steam://rungame/730/76561202255233023/+csgo_econ_action_preview%20M{self.market_id}A{self.asset_id}{self.description.d_id}"
 
 
 @dataclass(eq=False, slots=True)
@@ -383,9 +371,20 @@ class MarketListing(BaseOrder):
 
 @dataclass(eq=False, slots=True, kw_only=True)
 class BaseTradeOfferItem(EconItem):
+    description: ItemDescription | None  # sometimes data has no description, because of course
+
+    def _set_tradable_after(self):
+        if self.description is not None and self.description.market_tradable_restriction:
+            # cannot do super()._set_tradable_after() due to super exception
+            sep = "Tradable After "
+            t_a_descr = next(filter(lambda d: sep in d.value, self.description.owner_descriptions or ()), None)
+            if t_a_descr is not None:
+                self.tradable_after = datetime.strptime(t_a_descr.value, TRADABLE_AFTER_DATE_FORMAT)
+
     @property
-    def inspect_link(self) -> None:
-        return None
+    def inspect_url(self) -> str | None:
+        if self.description is not None and self.description.d_id:
+            return f"steam://rungame/730/76561202255233023/+csgo_econ_action_preview%20S{self.owner_id}A{self.asset_id}D{self.description.d_id}"
 
 
 @dataclass(eq=False, slots=True, kw_only=True)
@@ -416,9 +415,6 @@ class BaseTradeOffer:
     @property
     def is_active(self) -> bool:
         return self.status is TradeOfferStatus.ACTIVE
-
-    def __eq__(self, other: "BaseTradeOffer"):
-        return self.id == other.id
 
     def __hash__(self):
         return self.id
@@ -473,10 +469,21 @@ class HistoryTradeOffer(BaseTradeOffer):
     assets_given: list[HistoryTradeOfferItem]
 
 
-# super efficient
-SellOrderTableEntry: TypeAlias = tuple[int, int, int]  # price in cents, price_with_fee, quantity
-BuyOrderTableEntry: TypeAlias = tuple[int, int]  # price in cents, quantity
-OrderGraphEntry: TypeAlias = tuple[int, int, str]  # price in cents, quantity, representation string
+class SellOrderTableEntry(NamedTuple):
+    price: int
+    price_with_fee: int
+    quantity: int
+
+
+class BuyOrderTableEntry(NamedTuple):
+    price: int
+    quantity: int
+
+
+class OrderGraphEntry(NamedTuple):
+    price: int
+    quantity: int
+    repr: int
 
 
 @dataclass(eq=False, slots=True)

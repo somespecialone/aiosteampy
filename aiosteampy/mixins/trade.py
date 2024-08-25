@@ -5,7 +5,7 @@ from json import dumps as jdumps
 from yarl import URL
 
 from ..typed import TradeOffersSummary
-from ..constants import STEAM_URL, CORO, T_HEADERS, T_PARAMS, T_PAYLOAD
+from ..constants import STEAM_URL, CORO, T_HEADERS, T_PARAMS, T_PAYLOAD, AppContext, App
 from ..exceptions import EResultError, SteamError
 from ..models import (
     TradeOffer,
@@ -13,13 +13,13 @@ from ..models import (
     TradeOfferStatus,
     HistoryTradeOffer,
     HistoryTradeOfferItem,
-    EconItemType,
+    EconItem,
 )
 from ..utils import create_ident_code, to_int_boolean, steam_id_to_account_id, account_id_to_steam_id
-from .public import SteamCommunityPublicMixin
+from .public import SteamCommunityPublicMixin, T_SHARED_DESCRIPTIONS
 from .web_api import SteamWebApiMixin
 
-TRADE_OFFERS_DATA: TypeAlias = tuple[list[TradeOffer], list[TradeOffer], int]
+T_TRADE_OFFERS_DATA: TypeAlias = tuple[list[TradeOffer], list[TradeOffer], int]
 
 
 class TradeMixin(SteamWebApiMixin, SteamCommunityPublicMixin):
@@ -30,7 +30,14 @@ class TradeMixin(SteamWebApiMixin, SteamCommunityPublicMixin):
 
     __slots__ = ()
 
-    async def get_trade_offer(self, offer_id: int, *, params: T_PARAMS = {}, headers: T_HEADERS = {}) -> TradeOffer:
+    async def get_trade_offer(
+        self,
+        offer_id: int,
+        *,
+        params: T_PARAMS = {},
+        headers: T_HEADERS = {},
+        _item_descriptions_map: T_SHARED_DESCRIPTIONS = None,
+    ) -> TradeOffer:
         """
         Fetch trade offer from Steam.
 
@@ -53,33 +60,22 @@ class TradeMixin(SteamWebApiMixin, SteamCommunityPublicMixin):
             raise EResultError("Failed to fetch trade offer", e.result, e.data) from e
 
         data: dict[str, dict | list[dict]] = rj["response"]
-        item_descrc_map = {}
-        self._update_item_descrs_map_for_trades(data, item_descrc_map)
 
-        return self._create_trade_offer(data["offer"], item_descrc_map)
+        if _item_descriptions_map is None:
+            _item_descriptions_map = {}
 
-    # temporary fix/workaround
-    @staticmethod
-    def _combine_assets(data: dict[str, dict[str, list[dict]]]) -> list[dict]:
-        res = []
-        for offer in [
-            *data.get("trade_offers_received", ()),
-            *data.get("trade_offers_sent", ()),
-            data.get("offer", {}),
-        ]:
-            offer: dict
-            for asset in [*offer.get("items_to_give", ()), *offer.get("items_to_receive", ())]:
-                res.append(asset)
-        return res
+        self._update_item_descrs_map_from_trades(data["descriptions"], _item_descriptions_map)
+
+        return self._create_trade_offer(data["offer"], _item_descriptions_map)
 
     @classmethod
-    def _update_item_descrs_map_for_trades(cls, data: dict, item_descrs_map: dict[str, dict]):
-        for desc in data["descriptions"]:
-            key = create_ident_code(desc["classid"], desc["appid"])
+    def _update_item_descrs_map_from_trades(cls, descrs: list[dict], item_descrs_map: T_SHARED_DESCRIPTIONS):
+        for d_data in descrs:
+            key = create_ident_code(d_data["instanceid"], d_data["classid"], d_data["appid"])
             if key not in item_descrs_map:
-                item_descrs_map[key] = cls._create_item_description_kwargs(desc, cls._combine_assets(data))
+                item_descrs_map[key] = cls._create_item_descr(d_data)
 
-    def _create_trade_offer(self, data: dict, item_descrs_map: dict[str, dict]) -> TradeOffer:
+    def _create_trade_offer(self, data: dict, item_descrs_map: T_SHARED_DESCRIPTIONS) -> TradeOffer:
         return TradeOffer(
             id=int(data["tradeofferid"]),
             owner_id=self.steam_id,
@@ -95,14 +91,21 @@ class TradeMixin(SteamWebApiMixin, SteamCommunityPublicMixin):
         )
 
     @classmethod
-    def _parse_items_for_trade(cls, items: list[dict], item_descrs_map: dict[str, dict]) -> list[TradeOfferItem]:
+    def _parse_items_for_trade(cls, items: list[dict], item_descrs_map: T_SHARED_DESCRIPTIONS) -> list[TradeOfferItem]:
         return [
             TradeOfferItem(
                 asset_id=a_data["assetid"],
                 amount=int(a_data["amount"]),
                 missing=a_data["missing"],
                 est_usd=int(a_data.get("est_usd", 0)),
-                **item_descrs_map[create_ident_code(a_data["classid"], a_data["appid"])],
+                app_context=AppContext((App(int(a_data["appid"])), int(a_data["contextid"]))),
+                description=item_descrs_map.get(
+                    create_ident_code(
+                        a_data["instanceid"],
+                        a_data["classid"],
+                        a_data["appid"],
+                    )
+                ),
             )
             for a_data in items
         ]
@@ -117,7 +120,7 @@ class TradeMixin(SteamWebApiMixin, SteamCommunityPublicMixin):
         cursor: int = ...,
         params: T_PARAMS = ...,
         headers: T_HEADERS = ...,
-    ) -> TRADE_OFFERS_DATA:
+    ) -> T_TRADE_OFFERS_DATA:
         ...
 
     @overload
@@ -130,7 +133,7 @@ class TradeMixin(SteamWebApiMixin, SteamCommunityPublicMixin):
         cursor: int = ...,
         params: T_PARAMS = ...,
         headers: T_HEADERS = ...,
-    ) -> TRADE_OFFERS_DATA:
+    ) -> T_TRADE_OFFERS_DATA:
         ...
 
     async def get_trade_offers(
@@ -144,8 +147,8 @@ class TradeMixin(SteamWebApiMixin, SteamCommunityPublicMixin):
         cursor=0,
         params: T_PARAMS = {},
         headers: T_HEADERS = {},
-        _item_descriptions_map: dict = None,
-    ) -> TRADE_OFFERS_DATA:
+        _item_descriptions_map: T_SHARED_DESCRIPTIONS = None,
+    ) -> T_TRADE_OFFERS_DATA:
         """
         Fetch trade offers from `Steam Web Api`.
 
@@ -189,7 +192,8 @@ class TradeMixin(SteamWebApiMixin, SteamCommunityPublicMixin):
             else:  # int ts
                 params["time_historical_cutoff"] = time_historical_cutoff
 
-        _item_descriptions_map = _item_descriptions_map if _item_descriptions_map is not None else {}
+        if _item_descriptions_map is None:
+            _item_descriptions_map = {}
 
         try:
             rj = await self.call_web_api(STEAM_URL.API.IEconService.GetTradeOffers, params=params, headers=headers)
@@ -197,17 +201,14 @@ class TradeMixin(SteamWebApiMixin, SteamCommunityPublicMixin):
             raise EResultError("Failed to fetch trade offers", e.result, e.data) from e
 
         data: dict[str, dict | list[dict]] = rj["response"]
-        self._update_item_descrs_map_for_trades(data, _item_descriptions_map)
 
-        # TODO rethink way of sharing descriptions instead of descr args
-        # TODO sometimes there is no descriptions for items in trades, because of course
-        # TODO check node-steam-tradaoffer-manager for this moment
-        sent_offers = [self._create_trade_offer(d, _item_descriptions_map) for d in data.get("trade_offers_sent", ())]
-        received_offers = [
-            self._create_trade_offer(d, _item_descriptions_map) for d in data.get("trade_offers_received", ())
-        ]
+        self._update_item_descrs_map_from_trades(data["descriptions"], _item_descriptions_map)
 
-        return sent_offers, received_offers, data.get("next_cursor", 0)
+        return (
+            [self._create_trade_offer(d, _item_descriptions_map) for d in data.get("trade_offers_sent", ())],
+            [self._create_trade_offer(d, _item_descriptions_map) for d in data.get("trade_offers_received", ())],
+            data.get("next_cursor", 0),
+        )
 
     @overload
     async def trade_offers(
@@ -219,7 +220,7 @@ class TradeMixin(SteamWebApiMixin, SteamCommunityPublicMixin):
         cursor: int = ...,
         params: T_PARAMS = ...,
         headers: T_HEADERS = ...,
-    ) -> AsyncIterator[TRADE_OFFERS_DATA]:
+    ) -> AsyncIterator[T_TRADE_OFFERS_DATA]:
         ...
 
     @overload
@@ -232,7 +233,7 @@ class TradeMixin(SteamWebApiMixin, SteamCommunityPublicMixin):
         cursor: int = ...,
         params: T_PARAMS = ...,
         headers: T_HEADERS = ...,
-    ) -> AsyncIterator[TRADE_OFFERS_DATA]:
+    ) -> AsyncIterator[T_TRADE_OFFERS_DATA]:
         ...
 
     async def trade_offers(
@@ -246,7 +247,8 @@ class TradeMixin(SteamWebApiMixin, SteamCommunityPublicMixin):
         cursor=0,
         params: T_PARAMS = {},
         headers: T_HEADERS = {},
-    ) -> AsyncIterator[TRADE_OFFERS_DATA]:
+        _item_descriptions_map: T_SHARED_DESCRIPTIONS = None,
+    ) -> AsyncIterator[T_TRADE_OFFERS_DATA]:
         """
         Fetch trade offers from `Steam Web Api`. Return async iterator to paginate over offers pages.
 
@@ -265,7 +267,8 @@ class TradeMixin(SteamWebApiMixin, SteamCommunityPublicMixin):
         :raises TypeError:
         """
 
-        _item_descriptions_map = {}  # shared descriptions instances across calls
+        if _item_descriptions_map is None:
+            _item_descriptions_map = {}
 
         more_offers = True
         while more_offers:
@@ -313,6 +316,7 @@ class TradeMixin(SteamWebApiMixin, SteamCommunityPublicMixin):
         *,
         params: T_PARAMS = {},
         headers: T_HEADERS = {},
+        _item_descriptions_map: T_SHARED_DESCRIPTIONS = None,
     ) -> HistoryTradeOffer:
         """
         Fetch single trade offer from history.
@@ -335,10 +339,13 @@ class TradeMixin(SteamWebApiMixin, SteamCommunityPublicMixin):
         except EResultError as e:
             raise EResultError("Failed to fetch trade receipt", e.result, e.data) from e
 
-        item_descrs_map = {}
-        self._update_item_descrs_map_for_trades(rj["response"]["descriptions"], item_descrs_map)
+        if _item_descriptions_map is None:
+            _item_descriptions_map = {}
 
-        return self._create_history_trade_offer(rj["response"]["trades"][0], item_descrs_map)
+        data: dict[str, int | bool | dict | list[dict]] = rj["response"]
+        self._update_item_descrs_map_from_trades(data["descriptions"], _item_descriptions_map)
+
+        return self._create_history_trade_offer(data["trades"][0], _item_descriptions_map)
 
     async def get_trade_history(
         self,
@@ -350,6 +357,7 @@ class TradeMixin(SteamWebApiMixin, SteamCommunityPublicMixin):
         include_failed=True,
         params: T_PARAMS = {},
         headers: T_HEADERS = {},
+        _item_descriptions_map: T_SHARED_DESCRIPTIONS = None,
     ) -> tuple[list[HistoryTradeOffer], int]:
         """
         Fetch history trades with changed assets data.
@@ -384,16 +392,18 @@ class TradeMixin(SteamWebApiMixin, SteamCommunityPublicMixin):
         except EResultError as e:
             raise EResultError("Failed to fetch trades history", e.result, e.data) from e
 
-        item_descrs_map = {}
+        if _item_descriptions_map is None:
+            _item_descriptions_map = {}
+
         data: dict[str, int | bool | dict | list[dict]] = rj["response"]
-        self._update_item_descrs_map_for_trades(data["descriptions"], item_descrs_map)
+        self._update_item_descrs_map_from_trades(data["descriptions"], _item_descriptions_map)
 
         return (
-            [self._create_history_trade_offer(d, item_descrs_map) for d in data["trades"]],
+            [self._create_history_trade_offer(d, _item_descriptions_map) for d in data["trades"]],
             data["total_trades"],
         )
 
-    def _create_history_trade_offer(self, data: dict, item_descrs_map: dict[str, dict]) -> HistoryTradeOffer:
+    def _create_history_trade_offer(self, data: dict, item_descrs_map: T_SHARED_DESCRIPTIONS) -> HistoryTradeOffer:
         return HistoryTradeOffer(
             id=int(data["tradeid"]),
             owner_id=self.steam_id,
@@ -408,7 +418,7 @@ class TradeMixin(SteamWebApiMixin, SteamCommunityPublicMixin):
     def _parse_items_for_history_trades(
         cls,
         items: list[dict],
-        item_descrs_map: dict[str, dict],
+        item_descrs_map: T_SHARED_DESCRIPTIONS,
     ) -> list[HistoryTradeOfferItem]:
         return [
             HistoryTradeOfferItem(
@@ -416,7 +426,14 @@ class TradeMixin(SteamWebApiMixin, SteamCommunityPublicMixin):
                 amount=int(a_data["amount"]),
                 new_asset_id=int(a_data["new_assetid"]),
                 new_context_id=int(a_data["new_contextid"]),
-                **item_descrs_map[create_ident_code(a_data["classid"], a_data["appid"])],
+                app_context=AppContext((App(int(a_data["appid"])), int(a_data["contextid"]))),
+                description=item_descrs_map.get(
+                    create_ident_code(
+                        a_data["instanceid"],
+                        a_data["classid"],
+                        a_data["appid"],
+                    )
+                ),
             )
             for a_data in items
         ]
@@ -563,8 +580,8 @@ class TradeMixin(SteamWebApiMixin, SteamCommunityPublicMixin):
     async def make_trade_offer(
         self,
         obj: int,
-        to_give: Sequence[EconItemType] = ...,
-        to_receive: Sequence[EconItemType] = ...,
+        to_give: Sequence[EconItem] = ...,
+        to_receive: Sequence[EconItem] = ...,
         message: str = ...,
         *,
         token: str = ...,
@@ -579,8 +596,8 @@ class TradeMixin(SteamWebApiMixin, SteamCommunityPublicMixin):
     async def make_trade_offer(
         self,
         obj: str,
-        to_give: Sequence[EconItemType] = ...,
-        to_receive: Sequence[EconItemType] = ...,
+        to_give: Sequence[EconItem] = ...,
+        to_receive: Sequence[EconItem] = ...,
         message: str = ...,
         *,
         confirm: bool = ...,
@@ -594,8 +611,8 @@ class TradeMixin(SteamWebApiMixin, SteamCommunityPublicMixin):
     async def make_trade_offer(
         self,
         obj: int,
-        to_give: Sequence[EconItemType] = ...,
-        to_receive: Sequence[EconItemType] = ...,
+        to_give: Sequence[EconItem] = ...,
+        to_receive: Sequence[EconItem] = ...,
         message: str = ...,
         *,
         token: str = ...,
@@ -611,8 +628,8 @@ class TradeMixin(SteamWebApiMixin, SteamCommunityPublicMixin):
     async def make_trade_offer(
         self,
         obj: str,
-        to_give: Sequence[EconItemType] = ...,
-        to_receive: Sequence[EconItemType] = ...,
+        to_give: Sequence[EconItem] = ...,
+        to_receive: Sequence[EconItem] = ...,
         message: str = ...,
         *,
         fetch: Literal[True] = ...,
@@ -626,8 +643,8 @@ class TradeMixin(SteamWebApiMixin, SteamCommunityPublicMixin):
     async def make_trade_offer(
         self,
         obj: int | str,
-        to_give: Sequence[EconItemType] = (),
-        to_receive: Sequence[EconItemType] = (),
+        to_give: Sequence[EconItem] = (),
+        to_receive: Sequence[EconItem] = (),
         message="",
         *,
         token: str = None,
@@ -696,8 +713,13 @@ class TradeMixin(SteamWebApiMixin, SteamCommunityPublicMixin):
         return await self.get_trade_offer(offer_id, headers=headers) if fetch else offer_id
 
     @staticmethod
-    def _to_asset_dict(obj: EconItemType) -> dict[str, int | str]:
-        return {"appid": obj[0], "contextid": str(obj[1]), "amount": obj[2], "assetid": str(obj[3])}
+    def _to_asset_dict(i: EconItem) -> dict[str, int | str]:
+        return {
+            "appid": i.app_context.app.value,
+            "contextid": str(i.app_context.context),
+            "amount": i.amount,
+            "assetid": str(i.asset_id),
+        }
 
     @staticmethod
     def _parse_make_offer_args(obj: str | int, token: str | None) -> tuple[str | None, int, int, str | None]:
@@ -723,8 +745,8 @@ class TradeMixin(SteamWebApiMixin, SteamCommunityPublicMixin):
     async def counter_trade_offer(
         self,
         obj: TradeOffer,
-        to_give: Sequence[EconItemType] = (),
-        to_receive: Sequence[EconItemType] = (),
+        to_give: Sequence[EconItem] = ...,
+        to_receive: Sequence[EconItem] = ...,
         message="",
         *,
         confirm: bool = ...,
@@ -737,8 +759,8 @@ class TradeMixin(SteamWebApiMixin, SteamCommunityPublicMixin):
     async def counter_trade_offer(
         self,
         obj: int,
-        to_give: Sequence[EconItemType] = (),
-        to_receive: Sequence[EconItemType] = (),
+        to_give: Sequence[EconItem] = ...,
+        to_receive: Sequence[EconItem] = ...,
         message="",
         *,
         partner_id: int,
@@ -751,8 +773,8 @@ class TradeMixin(SteamWebApiMixin, SteamCommunityPublicMixin):
     def counter_trade_offer(
         self,
         obj: TradeOffer | int,
-        to_give: Sequence[EconItemType] = (),
-        to_receive: Sequence[EconItemType] = (),
+        to_give: Sequence[EconItem] = (),
+        to_receive: Sequence[EconItem] = (),
         message="",
         *,
         partner_id: int = None,
@@ -764,11 +786,11 @@ class TradeMixin(SteamWebApiMixin, SteamCommunityPublicMixin):
         Counter trade offer with another.
 
         :param obj: `TradeOffer` or trade offer id of which you want to counter
-        :param to_give:
-        :param to_receive:
-        :param message:
+        :param to_give: sequence of items that you want to give
+        :param to_receive: sequence of items that you want to receive
+        :param message: message to the partner
         :param partner_id:
-        :param confirm:
+        :param confirm: auto-confirm offer
         :param payload: extra payload data
         :param headers: extra headers to send with request
         :return: trade offer id

@@ -6,13 +6,13 @@ from aiohttp import ClientSession
 from aiohttp.client import _RequestContextManager
 from yarl import URL
 
-from .constants import STEAM_URL, Currency, GameType, Language, T_PARAMS, T_HEADERS, EResult
+from .constants import STEAM_URL, Currency, App, AppContext, Language, T_PARAMS, T_HEADERS, EResult
 from .typed import WalletInfo, FundWalletInfo
 from .exceptions import EResultError, SessionExpired, SteamError
 from .utils import account_id_to_steam_id, generate_device_id
 from .models import Notifications, EconItem
 
-from .mixins.public import SteamCommunityPublicMixin, INV_COUNT, INV_ITEM_DATA
+from .mixins.public import SteamCommunityPublicMixin, INV_COUNT, INV_ITEM_DATA, T_SHARED_DESCRIPTIONS
 from .mixins.profile import ProfileMixin
 from .mixins.trade import TradeMixin
 from .mixins.market import MarketMixin
@@ -318,13 +318,13 @@ class SteamClientBase(SteamPublicClientBase, ProfileMixin, MarketMixin, TradeMix
 
     async def get_inventory(
         self,
-        game: GameType,
+        app_context: AppContext,
         *,
         last_assetid: int = None,
         count=INV_COUNT,
         params: T_PARAMS = {},
         headers: T_HEADERS = {},
-        _item_descriptions_map: dict = None,
+        _item_descriptions_map: T_SHARED_DESCRIPTIONS = None,
     ) -> INV_ITEM_DATA:
         """
         Fetches self inventory.
@@ -333,7 +333,7 @@ class SteamClientBase(SteamPublicClientBase, ProfileMixin, MarketMixin, TradeMix
             * You can paginate by yourself passing `last_assetid` arg
             * `count` arg value that less than 2000 lead to responses with strange amount of assets
 
-        :param game: Steam Game
+        :param app_context: `Steam` app+context
         :param last_assetid:
         :param count: page size
         :param params: extra params to pass to url
@@ -347,7 +347,7 @@ class SteamClientBase(SteamPublicClientBase, ProfileMixin, MarketMixin, TradeMix
         try:
             return await self.get_user_inventory(
                 self.steam_id,
-                game,
+                app_context,
                 last_assetid=last_assetid,
                 count=count,
                 params=params,
@@ -362,19 +362,20 @@ class SteamClientBase(SteamPublicClientBase, ProfileMixin, MarketMixin, TradeMix
 
     def inventory(
         self,
-        game: GameType,
+        app_context: AppContext,
         *,
         last_assetid: int = None,
         count=INV_COUNT,
         params: T_PARAMS = {},
         headers: T_HEADERS = {},
+        _item_descriptions_map: T_SHARED_DESCRIPTIONS = None,
     ) -> AsyncIterator[INV_ITEM_DATA]:
         """
         Fetches self inventory. Return async iterator to paginate over inventory pages.
 
         .. note:: `count` arg value that less than 2000 lead to responses with strange amount of assets
 
-        :param game: Steam Game
+        :param app_context: `Steam` app+context
         :param last_assetid:
         :param count: page size
         :param params: extra params to pass to url
@@ -387,17 +388,18 @@ class SteamClientBase(SteamPublicClientBase, ProfileMixin, MarketMixin, TradeMix
 
         return self.user_inventory(
             self.steam_id,
-            game,
+            app_context,
             last_assetid=last_assetid,
             count=count,
             params=params,
             headers=headers,
+            _item_descriptions_map=_item_descriptions_map,
         )
 
     @overload
     async def get_inventory_item(
         self,
-        game: GameType,
+        app_context: AppContext,
         obj: int = ...,
         *,
         params: T_PARAMS = ...,
@@ -409,7 +411,7 @@ class SteamClientBase(SteamPublicClientBase, ProfileMixin, MarketMixin, TradeMix
     @overload
     async def get_inventory_item(
         self,
-        game: GameType,
+        app_context: AppContext,
         obj: Callable[[EconItem], bool],
         *,
         params: T_PARAMS = ...,
@@ -419,17 +421,18 @@ class SteamClientBase(SteamPublicClientBase, ProfileMixin, MarketMixin, TradeMix
 
     async def get_inventory_item(
         self,
-        game: GameType,
+        app_context: AppContext,
         obj: int | Callable[[EconItem], bool] = None,
         *,
         params: T_PARAMS = {},
         headers: T_HEADERS = {},
+        _item_descriptions_map: T_SHARED_DESCRIPTIONS = None,
         **item_attrs,
     ) -> EconItem | None:
         """
         Fetch and iterate over inventory item pages of self until find one that satisfies passed arguments.
 
-        :param game: `Steam` game
+        :param app_context: `Steam` app+context
         :param obj: asset id or predicate function
         :param params: extra params to pass to url
         :param headers: extra headers to send with request
@@ -443,10 +446,11 @@ class SteamClientBase(SteamPublicClientBase, ProfileMixin, MarketMixin, TradeMix
         try:
             return await self.get_user_inventory_item(
                 self.steam_id,
-                game,
+                app_context,
                 obj,
                 params=params,
                 headers=headers,
+                _item_descriptions_map=_item_descriptions_map,
                 **item_attrs,
             )
         except SteamError as e:

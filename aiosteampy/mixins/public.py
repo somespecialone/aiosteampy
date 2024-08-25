@@ -5,7 +5,7 @@ from re import compile as re_compile
 
 from aiohttp import ClientResponseError
 
-from ..constants import STEAM_URL, Game, Currency, GameType, T_PARAMS, T_HEADERS, EResult
+from ..constants import STEAM_URL, App, AppContext, Currency, T_PARAMS, T_HEADERS, EResult
 from ..helpers import currency_required
 from ..typed import ItemOrdersHistogramData, ItemOrdersActivity, PriceOverview
 from ..exceptions import EResultError, SteamError, RateLimitExceeded, ResourceNotModified
@@ -23,8 +23,10 @@ from ..models import (
     ItemAction,
     MarketListing,
     MarketListingItem,
-    ITEM_DESCR_TUPLE,
     ItemOrdersHistogram,
+    SellOrderTableEntry,
+    BuyOrderTableEntry,
+    OrderGraphEntry,
 )
 from .http import SteamHTTPTransportMixin
 
@@ -36,10 +38,12 @@ LISTING_COUNT = 10
 INVENTORY_URL = STEAM_URL.COMMUNITY / "inventory"
 
 # listings, total count, last modified
-MARKET_ITEM_LISTINGS_DATA: TypeAlias = tuple[list[MarketListing], int, datetime]
+T_MARKET_ITEM_LISTINGS_DATA: TypeAlias = tuple[list[MarketListing], int, datetime]
 INV_ITEM_DATA: TypeAlias = tuple[list[EconItem], int, int | None]  # items, total count, last asset id for pagination
 
 ITEM_ORDER_HIST_PRICE_RE = re_compile(r"[^\d\s]*([\d,]+(?:\.\d+)?)[^\d\s]*")  # Author: ChatGPT
+
+T_SHARED_DESCRIPTIONS: TypeAlias = dict[str, ItemDescription]  # ident code : descr
 
 
 class SteamCommunityPublicMixin(SteamHTTPTransportMixin):
@@ -57,13 +61,13 @@ class SteamCommunityPublicMixin(SteamHTTPTransportMixin):
     async def get_user_inventory(
         self,
         steam_id: int,
-        game: GameType,
+        app_context: AppContext,
         *,
         last_assetid: int = None,
         count=INV_COUNT,
         params: T_PARAMS = {},
         headers: T_HEADERS = {},
-        _item_descriptions_map: dict = None,
+        _item_descriptions_map: T_SHARED_DESCRIPTIONS = None,
     ) -> INV_ITEM_DATA:
         """
         Fetches inventory of user.
@@ -73,7 +77,7 @@ class SteamCommunityPublicMixin(SteamHTTPTransportMixin):
             * `count` arg value that less than 2000 lead to responses with strange amount of assets
 
         :param steam_id: steamid64 of user
-        :param game: Steam Game
+        :param app_context: `Steam` app+context
         :param last_assetid:
         :param count: page size
         :param params: extra params to pass to url
@@ -91,7 +95,11 @@ class SteamCommunityPublicMixin(SteamHTTPTransportMixin):
         headers = {"Referer": str(inv_url), **headers}
 
         try:
-            r = await self.session.get(inv_url / f"{game[0]}/{game[1]}", params=params, headers=headers)
+            r = await self.session.get(
+                inv_url / f"{app_context.app.value}/{app_context.context}",
+                params=params,
+                headers=headers,
+            )
         except ClientResponseError as e:
             if e.status == 403:
                 # https://github.com/DoctorMcKay/node-steamcommunity/blob/master/components/users.js#L603
@@ -112,39 +120,34 @@ class SteamCommunityPublicMixin(SteamHTTPTransportMixin):
         if "descriptions" not in rj:  # count<=101, last_assetid=None and we got there
             return [], total_count, last_assetid_return
 
-        _item_descriptions_map = _item_descriptions_map if _item_descriptions_map is not None else {}
-        items = self._parse_items(rj, steam_id, _item_descriptions_map)
+        if _item_descriptions_map is None:
+            _item_descriptions_map = {}
+
+        items = self._parse_inventory(rj, steam_id, _item_descriptions_map)
 
         return items, total_count, last_assetid_return
 
-    @staticmethod
-    def _find_game_for_asset(description_data: dict[str, int], assets: list[dict[str, int | str]]) -> GameType:
-        try:
-            return Game(description_data["appid"])
-        except ValueError:
-            res: dict = next(filter(lambda a: a["classid"] == description_data["classid"], assets))
-            return res["appid"], int(res["contextid"])
-
     @classmethod
-    def _parse_items(
+    def _parse_inventory(
         cls,
         data: dict[str, list[dict]],
         steam_id: int,
-        item_descriptions_map: dict[str, dict],
+        descrs_map: dict[str, ItemDescription],
     ) -> list[EconItem]:
         for d_data in data["descriptions"]:
-            key = d_data["classid"]
-            if key not in item_descriptions_map:
-                item_descriptions_map[key] = cls._create_item_description_kwargs(d_data, data["assets"])
+            key = create_ident_code(d_data["instanceid"], d_data["classid"], d_data["appid"])
+            if key not in descrs_map:
+                descrs_map[key] = cls._create_item_descr(d_data)
 
         return [
             EconItem(
-                asset_id=int(asset_data["assetid"]),
+                asset_id=int(a_data["assetid"]),
                 owner_id=steam_id,
-                amount=int(asset_data["amount"]),
-                **item_descriptions_map[asset_data["classid"]],
+                amount=int(a_data["amount"]),
+                description=descrs_map[create_ident_code(a_data["instanceid"], a_data["classid"], a_data["appid"])],
+                app_context=AppContext((App(int(a_data["appid"])), int(a_data["contextid"]))),
             )
-            for asset_data in data["assets"]
+            for a_data in data["assets"]
         ]
 
     @classmethod
@@ -155,32 +158,29 @@ class SteamCommunityPublicMixin(SteamHTTPTransportMixin):
     def _create_item_tags(cls, tags: list[dict]) -> tuple[ItemTag, ...]:
         return tuple(
             ItemTag(
-                category=t_data["category"],
-                internal_name=t_data["internal_name"],
-                localized_category_name=t_data["localized_category_name"],
-                localized_tag_name=t_data["localized_tag_name"],
-                color=t_data.get("color"),
+                t_data["category"],
+                t_data["internal_name"],
+                t_data["localized_category_name"],
+                t_data["localized_tag_name"],
+                t_data.get("color"),
             )
             for t_data in tags
         )
 
     @classmethod
-    def _create_item_description_entries(cls, descriptions: list[dict]) -> tuple[ItemDescriptionEntry, ...]:
+    def _create_item_descr_entries(cls, descriptions: list[dict]) -> tuple[ItemDescriptionEntry, ...]:
         return tuple(
-            ItemDescriptionEntry(
-                value=de_data["value"],
-                color=de_data.get("color"),
-            )
+            ItemDescriptionEntry(de_data["value"], de_data.get("color"))
             for de_data in descriptions
             if de_data["value"] != " "  # ha, surprise!
         )
 
     @classmethod
-    def _create_item_description_kwargs(cls, data: dict, assets: list[dict[str, int | str]]) -> dict:
-        return dict(
+    def _create_item_descr(cls, data: dict) -> ItemDescription:
+        return ItemDescription(
             class_id=int(data["classid"]),
             instance_id=int(data["instanceid"]),
-            game=cls._find_game_for_asset(data, assets),
+            app=App(data["appid"]),
             name=data["name"],
             market_name=data["market_name"],
             market_hash_name=data["market_hash_name"],
@@ -196,24 +196,27 @@ class SteamCommunityPublicMixin(SteamHTTPTransportMixin):
             market_buy_country_restriction=data.get("market_buy_country_restriction"),
             market_fee_app=data.get("market_fee_app"),
             market_marketable_restriction=data.get("market_marketable_restriction"),
-            actions=cls._create_item_actions(data.get("actions", ())),
-            market_actions=cls._create_item_actions(data.get("market_actions", ())),
-            owner_actions=cls._create_item_actions(data.get("owner_actions", ())),
-            tags=cls._create_item_tags(data.get("tags", ())),
-            descriptions=cls._create_item_description_entries(data.get("descriptions", ())),
-            owner_descriptions=cls._create_item_description_entries(data.get("owner_descriptions", ())),
-            fraud_warnings=tuple(*data.get("fraudwarnings", ())),
+            actions=cls._create_item_actions(data["actions"]) if "actions" in data else (),
+            market_actions=cls._create_item_actions(data["market_actions"]) if "market_actions" in data else (),
+            owner_actions=cls._create_item_actions(data["owner_actions"]) if "owner_actions" in data else (),
+            tags=cls._create_item_tags(data["tags"]) if "tags" in data else (),
+            descriptions=cls._create_item_descr_entries(data["descriptions"]) if "descriptions" in data else (),
+            owner_descriptions=cls._create_item_descr_entries(data["owner_descriptions"])
+            if "owner_descriptions" in data
+            else (),
+            fraud_warnings=tuple(data.get("fraudwarnings", ())),
         )
 
     async def user_inventory(
         self,
         steam_id: int,
-        game: GameType,
+        app_context: AppContext,
         *,
         last_assetid: int = None,
         count=INV_COUNT,
         params: T_PARAMS = {},
         headers: T_HEADERS = {},
+        _item_descriptions_map: T_SHARED_DESCRIPTIONS = None,
     ) -> AsyncIterator[INV_ITEM_DATA]:
         """
         Fetches inventory of user. Return async iterator to paginate over inventory pages.
@@ -221,7 +224,7 @@ class SteamCommunityPublicMixin(SteamHTTPTransportMixin):
         .. note:: `count` arg value that less than 2000 lead to responses with strange amount of assets
 
         :param steam_id: steamid64 of user
-        :param game: `Steam` game
+        :param app_context: `Steam` app+context
         :param last_assetid:
         :param count: page size
         :param params: extra params to pass to url
@@ -232,7 +235,8 @@ class SteamCommunityPublicMixin(SteamHTTPTransportMixin):
         :raises SteamError: if inventory is private
         """
 
-        _item_descriptions_map = {}  # shared descriptions instances across calls
+        if _item_descriptions_map is None:  # shared descriptions instances across calls
+            _item_descriptions_map = {}
 
         more_items = True
         while more_items:
@@ -240,7 +244,7 @@ class SteamCommunityPublicMixin(SteamHTTPTransportMixin):
             # avoid excess destructuring
             inventory_data = await self.get_user_inventory(
                 steam_id,
-                game,
+                app_context,
                 last_assetid=last_assetid,
                 count=count,
                 params=params,
@@ -257,7 +261,7 @@ class SteamCommunityPublicMixin(SteamHTTPTransportMixin):
     async def get_user_inventory_item(
         self,
         steam_id: int,
-        game: GameType,
+        app_context: AppContext,
         obj: int = ...,
         *,
         params: T_PARAMS = ...,
@@ -270,7 +274,7 @@ class SteamCommunityPublicMixin(SteamHTTPTransportMixin):
     async def get_user_inventory_item(
         self,
         steam_id: int,
-        game: GameType,
+        app_context: AppContext,
         obj: Callable[[EconItem], bool],
         *,
         params: T_PARAMS = ...,
@@ -281,18 +285,19 @@ class SteamCommunityPublicMixin(SteamHTTPTransportMixin):
     async def get_user_inventory_item(
         self,
         steam_id: int,
-        game: GameType,
+        app_context: AppContext,
         obj: int | Callable[[EconItem], bool] = None,
         *,
         params: T_PARAMS = {},
         headers: T_HEADERS = {},
+        _item_descriptions_map: T_SHARED_DESCRIPTIONS = None,
         **item_attrs,
     ) -> EconItem | None:
         """
         Fetch and iterate over inventory item pages of user until find one that satisfies passed arguments.
 
         :param steam_id: steamid64 of user
-        :param game: `Steam` game
+        :param app_context: `Steam` app+context
         :param obj: asset id or predicate function
         :param params: extra params to pass to url
         :param headers: extra headers to send with request
@@ -317,9 +322,18 @@ class SteamCommunityPublicMixin(SteamHTTPTransportMixin):
 
                 return True
 
-        async for items, _, _ in self.user_inventory(steam_id, game, params=params, headers=headers):
+        if _item_descriptions_map is None:
+            _item_descriptions_map = {}
+
+        async for data in self.user_inventory(
+            steam_id,
+            app_context,
+            params=params,
+            headers=headers,
+            _item_descriptions_map=_item_descriptions_map,
+        ):
             with suppress(StopIteration):
-                return next(filter(predicate, items))
+                return next(filter(predicate, data[0]))
 
     @overload
     async def get_item_orders_histogram(
@@ -413,7 +427,7 @@ class SteamCommunityPublicMixin(SteamHTTPTransportMixin):
             sell_order_count=self._parse_item_order_histogram_count(rj["sell_order_count"]),
             sell_order_price=self._parse_item_order_histogram_price(rj["sell_order_price"]),
             sell_order_table=[
-                (
+                SellOrderTableEntry(
                     self._parse_item_order_histogram_price(d["price"]),
                     self._parse_item_order_histogram_price(d["price_with_fee"]),
                     self._parse_item_order_histogram_count(d["quantity"]),
@@ -423,7 +437,7 @@ class SteamCommunityPublicMixin(SteamHTTPTransportMixin):
             buy_order_count=self._parse_item_order_histogram_count(rj["buy_order_count"]),
             buy_order_price=self._parse_item_order_histogram_price(rj["buy_order_price"]),
             buy_order_table=[
-                (
+                BuyOrderTableEntry(
                     self._parse_item_order_histogram_price(d["price"]),
                     self._parse_item_order_histogram_count(d["quantity"]),
                 )
@@ -431,8 +445,8 @@ class SteamCommunityPublicMixin(SteamHTTPTransportMixin):
             ],
             highest_buy_order=int(rj["highest_buy_order"]),
             lowest_sell_order=int(rj["lowest_sell_order"]),
-            buy_order_graph=[(int(d[0] * 100), d[1], d[2]) for d in rj["buy_order_graph"]],
-            sell_order_graph=[(int(d[0] * 100), d[1], d[2]) for d in rj["sell_order_graph"]],
+            buy_order_graph=[OrderGraphEntry(int(d[0] * 100), d[1], d[2]) for d in rj["buy_order_graph"]],
+            sell_order_graph=[OrderGraphEntry(int(d[0] * 100), d[1], d[2]) for d in rj["sell_order_graph"]],
             graph_max_y=rj["graph_max_y"],
             graph_min_x=int(rj["graph_min_x"] * 100),
             graph_max_x=int(rj["graph_max_x"] * 100),
@@ -504,7 +518,7 @@ class SteamCommunityPublicMixin(SteamHTTPTransportMixin):
     @overload
     async def fetch_price_overview(
         self,
-        obj: EconItem | ItemDescription,
+        obj: ItemDescription,
         *,
         params: T_PARAMS = ...,
         headers: T_HEADERS = ...,
@@ -515,7 +529,7 @@ class SteamCommunityPublicMixin(SteamHTTPTransportMixin):
     async def fetch_price_overview(
         self,
         obj: str,
-        app_id: int,
+        app: App,
         *,
         params: T_PARAMS = ...,
         headers: T_HEADERS = ...,
@@ -525,8 +539,8 @@ class SteamCommunityPublicMixin(SteamHTTPTransportMixin):
     @currency_required
     async def fetch_price_overview(
         self,
-        obj: str | EconItem | ItemDescription,
-        app_id: int = None,
+        obj: str | ItemDescription,
+        app: App = None,
         *,
         params: T_PARAMS = {},
         headers: T_HEADERS = {},
@@ -536,17 +550,17 @@ class SteamCommunityPublicMixin(SteamHTTPTransportMixin):
 
         .. note:: This request is rate limited by Steam.
 
-        :param obj:
-        :param app_id:
+        :param obj: `market hash name` ofr the `Steam` item or `ItemDescription`
+        :param app:
         :param params: extra params to pass to url
         :param headers: extra headers to send with request
         :return: `PriceOverview` dict
         :raises EResultError:
         """
 
-        if isinstance(obj, ITEM_DESCR_TUPLE):
+        if isinstance(obj, ItemDescription):
             name = obj.market_hash_name
-            app_id = obj.game.app_id
+            app = obj.app
         else:  # str
             name = obj
 
@@ -554,7 +568,7 @@ class SteamCommunityPublicMixin(SteamHTTPTransportMixin):
             "country": self.country,
             "currency": self.currency,
             "market_hash_name": name,
-            "appid": app_id,
+            "appid": app.value,
             **params,
         }
         try:
@@ -575,7 +589,7 @@ class SteamCommunityPublicMixin(SteamHTTPTransportMixin):
     @overload
     async def get_item_listings(
         self,
-        obj: EconItem | ItemDescription,
+        obj: ItemDescription,
         *,
         query: str = ...,
         start: int = ...,
@@ -583,14 +597,14 @@ class SteamCommunityPublicMixin(SteamHTTPTransportMixin):
         if_modified_since: datetime | str = ...,
         params: T_PARAMS = ...,
         headers: T_HEADERS = ...,
-    ) -> MARKET_ITEM_LISTINGS_DATA:
+    ) -> T_MARKET_ITEM_LISTINGS_DATA:
         ...
 
     @overload
     async def get_item_listings(
         self,
         obj: str,
-        app_id: int,
+        app: App,
         *,
         query: str = ...,
         start: int = ...,
@@ -598,14 +612,14 @@ class SteamCommunityPublicMixin(SteamHTTPTransportMixin):
         if_modified_since: datetime | str = ...,
         params: T_PARAMS = ...,
         headers: T_HEADERS = ...,
-    ) -> MARKET_ITEM_LISTINGS_DATA:
+    ) -> T_MARKET_ITEM_LISTINGS_DATA:
         ...
 
     @currency_required
     async def get_item_listings(
         self,
-        obj: str | EconItem | ItemDescription,
-        app_id: int = None,
+        obj: str | ItemDescription,
+        app: App = None,
         *,
         query: str = "",
         start: int = 0,
@@ -613,10 +627,9 @@ class SteamCommunityPublicMixin(SteamHTTPTransportMixin):
         if_modified_since: datetime | str = None,
         params: T_PARAMS = {},
         headers: T_HEADERS = {},
-        # for inner use, maps of shared instances
-        _item_descriptions_map: dict = None,
-        _econ_items_map: dict = None,
-    ) -> MARKET_ITEM_LISTINGS_DATA:
+        _item_descriptions_map: T_SHARED_DESCRIPTIONS = None,
+        _market_econ_items_map: dict[str, MarketListingItem] = None,
+    ) -> T_MARKET_ITEM_LISTINGS_DATA:
         """
         Fetch item listings from market.
 
@@ -624,8 +637,8 @@ class SteamCommunityPublicMixin(SteamHTTPTransportMixin):
             * You can paginate by yourself passing `start` arg. or use `market_listings` method.
             * This request is rate limited by Steam. It is strongly recommended to use `if_modified_since`
 
-        :param obj: market hash name or `EconItem` or `ItemDescription`
-        :param app_id:
+        :param obj: `market hash name` ofr the `Steam` item or `ItemDescription`
+        :param app:
         :param count: page size
         :param start: offset position
         :param query: raw search query
@@ -638,13 +651,13 @@ class SteamCommunityPublicMixin(SteamHTTPTransportMixin):
         :raises ResourceNotModified: when `if_modified_since` header passed and Steam response with 304 status code
         """
 
-        if isinstance(obj, ITEM_DESCR_TUPLE):
+        if isinstance(obj, ItemDescription):
             name = obj.market_hash_name
-            app_id = obj.game[0]
+            app = obj.app
         else:  # str
             name = obj
 
-        base_url = STEAM_URL.MARKET / f"listings/{app_id}/{name}"
+        base_url = STEAM_URL.MARKET / f"listings/{app.value}/{name}"
         params = {
             "filter": query,
             "country": self.country,
@@ -681,21 +694,24 @@ class SteamCommunityPublicMixin(SteamHTTPTransportMixin):
         elif not rj["total_count"] or not rj["assets"]:
             return [], 0, last_modified
 
-        _item_descriptions_map = _item_descriptions_map if _item_descriptions_map is not None else {}
-        _econ_items_map = _econ_items_map if _econ_items_map is not None else {}
+        if _item_descriptions_map is None:
+            _item_descriptions_map = {}
+        if _market_econ_items_map is None:
+            _market_econ_items_map = {}
 
-        self._update_item_descriptions_map_for_public(rj["assets"], _item_descriptions_map)
-        self._parse_items_for_listings(rj["assets"], _item_descriptions_map, _econ_items_map)
+        self._parse_descriptions_from_market_assets(rj["assets"], _item_descriptions_map)
+        # Do we need to share items?
+        self._parse_market_listing_items(rj["assets"], _item_descriptions_map, _market_econ_items_map)
 
         return (
             [
                 MarketListing(
                     id=int(l_data["listingid"]),
-                    item=_econ_items_map[
+                    item=_market_econ_items_map[
                         create_ident_code(
                             l_data["asset"]["id"],
-                            l_data["asset"]["appid"],
                             l_data["asset"]["contextid"],
+                            l_data["asset"]["appid"],
                         )
                     ],
                     currency=Currency(int(l_data["currencyid"]) - 2000),
@@ -714,41 +730,48 @@ class SteamCommunityPublicMixin(SteamHTTPTransportMixin):
         )
 
     @classmethod
-    def _update_item_descriptions_map_for_public(
+    def _parse_descriptions_from_market_assets(
         cls,
         assets: dict[str, dict[str, dict[str, dict]]],
-        item_descriptions_map: dict[str, dict],
+        item_descriptions_map: dict[str, ItemDescription],
     ):
         for app_id, app_data in assets.items():
             for context_id, context_data in app_data.items():
-                for asset_id, a_data in context_data.items():
-                    key = create_ident_code(a_data["classid"], app_id)
-                    item_descriptions_map[key] = cls._create_item_description_kwargs(a_data, [a_data])
+                for asset_id, mixed_data in context_data.items():  # asset+descr data
+                    key = create_ident_code(mixed_data["instanceid"], mixed_data["classid"], app_id)
+                    item_descriptions_map[key] = cls._create_item_descr(mixed_data)
 
     @staticmethod
-    def _parse_items_for_listings(
+    def _parse_market_listing_items(
         data: dict[str, dict[str, dict[str, dict]]],
-        item_descriptions_map: dict[str, dict],
-        econ_items_map: dict[str, MarketListingItem],
+        item_descriptions_map: dict[str, ItemDescription],
+        items_map: dict[str, MarketListingItem],
     ):
         for app_id, app_data in data.items():
             for context_id, context_data in app_data.items():
                 for a_data in context_data.values():
-                    key = create_ident_code(a_data["id"], app_id, context_id)
-                    if key not in econ_items_map:
-                        econ_items_map[key] = MarketListingItem(
+                    key = create_ident_code(a_data["id"], context_id, app_id)
+                    if key not in items_map:
+                        items_map[key] = MarketListingItem(
                             asset_id=int(a_data["id"]),
-                            market_id=0,  # market listing post init
+                            market_id=0,  # set in market listing post init
                             unowned_id=int(a_data["unowned_id"]),
                             unowned_context_id=int(a_data["unowned_contextid"]),
-                            **item_descriptions_map[create_ident_code(a_data["classid"], app_id)],
+                            app_context=AppContext((App(int(a_data["appid"])), int(a_data["contextid"]))),
+                            description=item_descriptions_map[
+                                create_ident_code(
+                                    a_data["instanceid"],
+                                    a_data["classid"],
+                                    app_id,
+                                )
+                            ],
                         )
 
     # without async for proper type hinting in VsCode and PyCharm at least with `async for`
     @overload
     def market_listings(
         self,
-        obj: EconItem | ItemDescription,
+        obj: ItemDescription,
         *,
         query: str = ...,
         start: int = ...,
@@ -756,14 +779,14 @@ class SteamCommunityPublicMixin(SteamHTTPTransportMixin):
         if_modified_since: datetime | str = ...,
         params: T_PARAMS = ...,
         headers: T_HEADERS = ...,
-    ) -> AsyncIterator[MARKET_ITEM_LISTINGS_DATA]:
+    ) -> AsyncIterator[T_MARKET_ITEM_LISTINGS_DATA]:
         ...
 
     @overload
     def market_listings(
         self,
         obj: str,
-        app_id: int,
+        app: App,
         *,
         query: str = ...,
         start: int = ...,
@@ -771,13 +794,13 @@ class SteamCommunityPublicMixin(SteamHTTPTransportMixin):
         if_modified_since: datetime | str = ...,
         params: T_PARAMS = ...,
         headers: T_HEADERS = ...,
-    ) -> AsyncIterator[MARKET_ITEM_LISTINGS_DATA]:
+    ) -> AsyncIterator[T_MARKET_ITEM_LISTINGS_DATA]:
         ...
 
     async def market_listings(
         self,
-        obj: str | EconItem | ItemDescription,
-        app_id: int = None,
+        obj: str | ItemDescription,
+        app: App = None,
         *,
         query: str = "",
         start: int = 0,
@@ -785,14 +808,16 @@ class SteamCommunityPublicMixin(SteamHTTPTransportMixin):
         if_modified_since: datetime | str = None,
         params: T_PARAMS = {},
         headers: T_HEADERS = {},
-    ) -> AsyncIterator[MARKET_ITEM_LISTINGS_DATA]:
+        _item_descriptions_map: T_SHARED_DESCRIPTIONS = None,
+        _market_econ_items_map: dict[str, MarketListingItem] = None,
+    ) -> AsyncIterator[T_MARKET_ITEM_LISTINGS_DATA]:
         """
         Fetch item listings from market. Return async iterator to paginate over listings pages.
 
         .. note:: This request is rate limited by Steam. It is strongly recommended to use `if_modified_since`
 
-        :param obj: market hash name or `EconItem` or `ItemDescription`
-        :param app_id:
+        :param obj: `market hash name` ofr the `Steam` item or `ItemDescription`
+        :param app:
         :param count: page size
         :param start: offset position
         :param query: raw search query
@@ -804,8 +829,10 @@ class SteamCommunityPublicMixin(SteamHTTPTransportMixin):
         :raises RateLimitExceeded: when you hit rate limit
         """
 
-        item_descriptions_map = {}
-        econ_items_map = {}
+        if _item_descriptions_map is None:
+            _item_descriptions_map = {}
+        if _market_econ_items_map is None:
+            _market_econ_items_map = {}
 
         total_count: int = 10e6  # simplify logic for initial iteration
         while total_count > start:
@@ -813,14 +840,14 @@ class SteamCommunityPublicMixin(SteamHTTPTransportMixin):
             # avoid excess destructuring
             listings_data = await self.get_item_listings(
                 obj,
-                app_id,
+                app,
                 query=query,
                 count=count,
                 if_modified_since=if_modified_since,
                 params=params,
                 headers=headers,
-                _item_descriptions_map=item_descriptions_map,
-                _econ_items_map=econ_items_map,
+                _item_descriptions_map=_item_descriptions_map,
+                _market_econ_items_map=_market_econ_items_map,
                 start=start,
             )
             total_count = listings_data[1]
@@ -829,35 +856,29 @@ class SteamCommunityPublicMixin(SteamHTTPTransportMixin):
             yield listings_data
 
     @overload
-    async def get_item_name_id(self, obj: ItemDescription | EconItem, *, headers: T_HEADERS = ...) -> int:
+    async def get_item_name_id(self, obj: ItemDescription, *, headers: T_HEADERS = ...) -> int:
         ...
 
     @overload
-    async def get_item_name_id(self, obj: str, app_id: int, *, headers: T_HEADERS = ...) -> int:
+    async def get_item_name_id(self, obj: str, app: App, *, headers: T_HEADERS = ...) -> int:
         ...
 
-    async def get_item_name_id(
-        self,
-        obj: str | ItemDescription | EconItem,
-        app_id: int = None,
-        *,
-        headers: T_HEADERS = {},
-    ) -> int:
+    async def get_item_name_id(self, obj: str | ItemDescription, app: App = None, *, headers: T_HEADERS = {}) -> int:
         """
         Fetch item from `Steam Community Market` page, find and return `item_nameid`
 
-        :param obj: `ItemDescription` , `EconItem` or `market_hash_name` of Steam Market item
-        :param app_id:
+        :param obj: `market hash name` ofr the `Steam` item or `ItemDescription`
+        :param app:
         :param headers: extra headers to send with request
         :return: `item_nameid`
 
         .. seealso:: https://github.com/somespecialone/steam-item-name-ids
         """
 
-        if isinstance(obj, ITEM_DESCR_TUPLE):
+        if isinstance(obj, ItemDescription):
             url = obj.market_url
         else:  # str
-            url = STEAM_URL.MARKET / f"listings/{app_id}/{obj}"
+            url = STEAM_URL.MARKET / f"listings/{app.value}/{obj}"
 
         res = await self.session.get(url, headers=headers)
         text = await res.text()

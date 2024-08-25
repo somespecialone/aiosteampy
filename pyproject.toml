@@ -38,6 +38,7 @@ packages = [{ include = "aiosteampy" }]
 python = "^3.10"
 aiohttp = "^3.8"
 rsa = "^4.8"
+aenum = ">=3.1.2, <4"
 croniter = { version = ">=2, <4", optional = true }
 aiohttp-socks = { version = ">=0.8.4, <1", optional = true }
 

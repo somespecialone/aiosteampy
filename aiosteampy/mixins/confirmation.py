@@ -3,9 +3,9 @@ from json import loads
 from re import compile
 from datetime import datetime
 
-from ..constants import STEAM_URL, ConfirmationType, GameType, CORO, EResult
+from ..constants import STEAM_URL, ConfirmationType, AppContext, CORO, EResult
 from ..exceptions import EResultError, SessionExpired
-from ..models import Confirmation, MyMarketListing, EconItem, TradeOffer, EconItemType
+from ..models import Confirmation, MyMarketListing, EconItem, TradeOffer
 from ..utils import create_ident_code
 from .login import LoginMixin
 
@@ -24,36 +24,36 @@ class ConfirmationMixin(LoginMixin):
     __slots__ = ()
 
     @overload
-    async def confirm_sell_listing(self, obj: int, game: GameType) -> Confirmation:
+    async def confirm_sell_listing(self, obj: int, app_context: AppContext) -> Confirmation:
         ...
 
     @overload
-    async def confirm_sell_listing(self, obj: MyMarketListing | EconItemType | int) -> Confirmation:
+    async def confirm_sell_listing(self, obj: MyMarketListing | EconItem | int) -> Confirmation:
         ...
 
     async def confirm_sell_listing(
         self,
-        obj: MyMarketListing | EconItemType | int,
-        game: GameType = None,
+        obj: MyMarketListing | EconItem | int,
+        app_context: AppContext = None,
     ) -> Confirmation:
         """
         Perform sell listing confirmation.
         Pass `game` arg only with asset id.
 
         :param obj: `MyMarketListing` or `EconItem` that you listed or listing id or asset id
-        :param game: `Game` or tuple with app and context id ints. Required when `obj` is asset id
+        :param app_context: `Steam` app+context. Required when `obj` is asset id
         :return: `Confirmation`
         """
 
         update_listings = False  # avoid unnecessary requests
         if isinstance(obj, MyMarketListing):
             key = obj.id
-        elif isinstance(obj, (EconItem, tuple)):
-            key = create_ident_code(obj[3], obj[0], obj[1])
+        elif isinstance(obj, EconItem):
+            key = obj.id
             update_listings = True
         else:  # int
-            if game:  # asset id & game
-                key = create_ident_code(obj, *game)
+            if app_context is not None:  # asset id & app
+                key = create_ident_code(obj, app_context.context, app_context.app.value)
                 update_listings = True
             else:  # listing id
                 key = obj

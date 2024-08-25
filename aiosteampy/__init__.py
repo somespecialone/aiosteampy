@@ -4,7 +4,8 @@ Trade and interact with steam market, webapi, guard.
 
 from .exceptions import EResultError, SessionExpired, SteamError, LoginError
 from .constants import (
-    Game,
+    App,
+    AppContext,
     STEAM_URL,
     Currency,
     Language,
@@ -16,6 +17,7 @@ from .constants import (
 from .client import SteamClient, SteamPublicClient
 from .models import (
     MarketListing,
+    ItemDescription,
     EconItem,
     Confirmation,
     MarketListingItem,

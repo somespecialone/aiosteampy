@@ -123,7 +123,7 @@ class SteamHTTPTransportMixin:
                     raise TypeError(
                         """
                         To use `socks` type proxies you need `aiohttp_socks` package. 
-                        You can do this with `aiosteampy[socks]` dependency install target.
+                        You can do this with `aiosteampy[socks]` or `aiosteampy[all]` dependency install targets.
                         """
                     )
 
@@ -137,24 +137,26 @@ class SteamHTTPTransportMixin:
 
                 session = patch_session_with_http_proxy(ClientSession(raise_for_status=True), proxy)
 
-        elif session and not session._raise_for_status:
-            warn(
-                "A session instance must be created with `raise_for_status=True` for client to work properly",
-                category=UserWarning,
-            )
-        else:
+        elif session:
+            if not session._raise_for_status:
+                warn(
+                    "A session instance must be created with `raise_for_status=True` for client to work properly",
+                    category=UserWarning,
+                )
+        else:  # nothing passed
             session = ClientSession(raise_for_status=True)
 
         return session
 
+    # _proxy attr will be much easier, straight and less error-prone, why I need this?
     @property
     def proxy(self) -> str | None:
         """Proxy url in format `scheme://username:password@host:port` or `scheme://host:port`"""
 
-        if isinstance(self.session.connector, ProxyConnector):  # socks
+        if isinstance(self.session.connector, ProxyConnector or int):  # socks, int to avoid TypeError if None
             c: ProxyConnector = self.session.connector
 
-            scheme = str(c._proxy_type).lower()
+            scheme = str(c._proxy_type.name).lower()
             username = c._proxy_username
             password = c._proxy_password
             host = c._proxy_host

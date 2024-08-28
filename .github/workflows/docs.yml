@@ -21,7 +21,7 @@ jobs:
         with:
           virtualenvs-create: true
           virtualenvs-in-project: true
-      - uses: actions/setup-python@v4
+      - uses: actions/setup-python@v5
         with:
           python-version: '3.10'
           cache: poetry
@@ -30,7 +30,7 @@ jobs:
       - name: Build docs
         run: poetry run mkdocs build
 
-      - uses: actions/upload-pages-artifact@v2
+      - uses: actions/upload-pages-artifact@v3
         with:
           path: site
 
@@ -47,4 +47,4 @@ jobs:
     steps:
       - name: Deploy to GitHub Pages
         id: deployment
-        uses: actions/deploy-pages@v2
+        uses: actions/deploy-pages@v4

@@ -1,5 +1,4 @@
 from warnings import warn
-from http.cookies import SimpleCookie
 from inspect import signature
 
 from yarl import URL
@@ -11,7 +10,12 @@ except ImportError:
     ProxyConnector = None
 
 from ..constants import STEAM_URL, Language
-from ..utils import get_cookie_value_from_session, remove_cookie_from_session, patch_session_with_http_proxy
+from ..utils import (
+    get_cookie_value_from_session,
+    remove_cookie_from_session,
+    patch_session_with_http_proxy,
+    add_cookie_to_session,
+)
 
 SESSION_ID_COOKIE = "sessionid"
 LANG_COOKIE = "Steam_Language"
@@ -51,13 +55,7 @@ class SteamHTTPTransportMixin:
             if value is None:
                 remove_cookie_from_session(self.session, url, LANG_COOKIE)
             else:
-                c = SimpleCookie()
-                c[LANG_COOKIE] = value.value
-                c[LANG_COOKIE]["path"] = "/"
-                c[LANG_COOKIE]["domain"] = url.host
-                c[LANG_COOKIE]["secure"] = True
-
-                self.session.cookie_jar.update_cookies(cookies=c, response_url=url)
+                add_cookie_to_session(self.session, url, LANG_COOKIE, value.value, secure=True)
 
     @property
     def tz_offset(self) -> str:
@@ -69,13 +67,7 @@ class SteamHTTPTransportMixin:
             if value is None:
                 remove_cookie_from_session(self.session, url, TZ_OFFSET_COOKIE)
             else:
-                c = SimpleCookie()
-                c[TZ_OFFSET_COOKIE] = value
-                c[TZ_OFFSET_COOKIE]["path"] = "/"
-                c[TZ_OFFSET_COOKIE]["domain"] = url.host
-                c[TZ_OFFSET_COOKIE]["samesite"] = True
-
-                self.session.cookie_jar.update_cookies(cookies=c, response_url=url)
+                add_cookie_to_session(self.session, url, TZ_OFFSET_COOKIE, value, samesite=True)
 
     # because this cookie set to guests also
     @property
@@ -99,14 +91,7 @@ class SteamHTTPTransportMixin:
         if value is None:
             remove_cookie_from_session(self.session, domain, SESSION_ID_COOKIE)
         else:
-            c = SimpleCookie()
-            c[SESSION_ID_COOKIE] = value
-            c[SESSION_ID_COOKIE]["path"] = "/"
-            c[SESSION_ID_COOKIE]["domain"] = STEAM_URL.COMMUNITY.host
-            c[SESSION_ID_COOKIE]["samesite"] = "None"
-            c[SESSION_ID_COOKIE]["secure"] = True
-
-            self.session.cookie_jar.update_cookies(cookies=c, response_url=STEAM_URL.COMMUNITY)
+            add_cookie_to_session(self.session, domain, SESSION_ID_COOKIE, value, samesite="None", secure=True)
 
     @staticmethod
     def _session_helper(session: ClientSession = None, proxy: str = None) -> ClientSession:

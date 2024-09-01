@@ -6,6 +6,7 @@ from yarl import URL
 
 from .constants import (
     STEAM_URL,
+    TRADABLE_AFTER_DATE_FORMAT,
     App,
     AppContext,
     Currency,
@@ -14,9 +15,7 @@ from .constants import (
     MarketListingStatus,
     TradeOfferStatus,
 )
-from .utils import create_ident_code, account_id_to_steam_id
-
-TRADABLE_AFTER_DATE_FORMAT = "Tradable After %b %d, %Y (%H:%M:%S) %Z"
+from .utils import create_ident_code, account_id_to_steam_id, make_inspect_url
 
 
 class ItemAction(NamedTuple):
@@ -98,7 +97,7 @@ class ItemDescription:
 
     @property
     def ident_code(self) -> str:
-        """Alias for `id`."""
+        """Alias for `id`"""
         return self.id
 
     @property
@@ -107,7 +106,7 @@ class ItemDescription:
 
     @property
     def icon_large_url(self) -> URL | None:
-        return (STEAM_URL.STATIC / f"economy/image/{self.icon_large}/330x192") if self.icon_large else None
+        return (STEAM_URL.STATIC / f"economy/image/{self.icon_large}/330x192") if self.icon_large is not None else None
 
     @property
     def market_url(self) -> URL:
@@ -157,9 +156,14 @@ class EconItem:
                 self.tradable_after = datetime.strptime(t_a_descr.value, TRADABLE_AFTER_DATE_FORMAT)
 
     @property
+    def ident_code(self) -> str:
+        """Alias for `id`"""
+        return self.id
+
+    @property
     def inspect_url(self) -> str | None:
         if self.description.d_id:
-            return f"steam://rungame/730/76561202255233023/+csgo_econ_action_preview%20S{self.owner_id}A{self.asset_id}D{self.description.d_id}"
+            return make_inspect_url(owner_id=self.owner_id, asset_id=self.asset_id, d_id=self.description.d_id)
 
     def __eq__(self, other):
         if isinstance(other, EconItem):
@@ -224,7 +228,7 @@ class MarketListingItem(EconItem):
     @property
     def inspect_url(self) -> str | None:
         if self.description.d_id:
-            return f"steam://rungame/730/76561202255233023/+csgo_econ_action_preview%20M{self.market_id}A{self.asset_id}{self.description.d_id}"
+            return make_inspect_url(market_id=self.market_id, asset_id=self.asset_id, d_id=self.description.d_id)
 
 
 @dataclass(eq=False, slots=True)
@@ -376,15 +380,17 @@ class BaseTradeOfferItem(EconItem):
     def _set_tradable_after(self):
         if self.description is not None and self.description.market_tradable_restriction:
             # cannot do super()._set_tradable_after() due to super exception
-            sep = "Tradable After "
-            t_a_descr = next(filter(lambda d: sep in d.value, self.description.owner_descriptions or ()), None)
+            t_a_descr = next(
+                filter(lambda d: "Tradable After " in d.value, self.description.owner_descriptions or ()),
+                None,
+            )
             if t_a_descr is not None:
                 self.tradable_after = datetime.strptime(t_a_descr.value, TRADABLE_AFTER_DATE_FORMAT)
 
     @property
     def inspect_url(self) -> str | None:
-        if self.description is not None and self.description.d_id:
-            return f"steam://rungame/730/76561202255233023/+csgo_econ_action_preview%20S{self.owner_id}A{self.asset_id}D{self.description.d_id}"
+        if self.description is not None and self.description.d_id:  # can't do super().inspect_url due to an error
+            return make_inspect_url(owner_id=self.owner_id, asset_id=self.asset_id, d_id=self.description.d_id)
 
 
 @dataclass(eq=False, slots=True, kw_only=True)
@@ -483,7 +489,7 @@ class BuyOrderTableEntry(NamedTuple):
 class OrderGraphEntry(NamedTuple):
     price: int
     quantity: int
-    repr: int
+    repr: str
 
 
 @dataclass(eq=False, slots=True)

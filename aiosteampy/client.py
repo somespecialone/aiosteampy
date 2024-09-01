@@ -4,9 +4,8 @@ from typing import AsyncIterator, overload, Callable, final
 
 from aiohttp import ClientSession
 from aiohttp.client import _RequestContextManager
-from yarl import URL
 
-from .constants import STEAM_URL, Currency, App, AppContext, Language, T_PARAMS, T_HEADERS, EResult
+from .constants import STEAM_URL, Currency, AppContext, Language, T_PARAMS, T_HEADERS, EResult
 from .typed import WalletInfo, FundWalletInfo
 from .exceptions import EResultError, SessionExpired, SteamError
 from .utils import account_id_to_steam_id, generate_device_id

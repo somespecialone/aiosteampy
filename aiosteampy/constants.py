@@ -425,3 +425,6 @@ class EResult(EnumWithMultipleValues):
     NO_LAUNCHER_SPECIFIED = 117
     MUST_AGREE_TO_SSA = 118
     CLIENT_NO_LONGER_SUPPORTED = 119
+
+
+TRADABLE_AFTER_DATE_FORMAT = "Tradable After %b %d, %Y (%H:%M:%S) %Z"

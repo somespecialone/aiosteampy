@@ -343,7 +343,7 @@ class SteamCommunityPublicMixin(SteamHTTPTransportMixin):
         if_modified_since: datetime | str = ...,
         params: T_PARAMS = ...,
         headers: T_HEADERS = ...,
-    ) -> ItemOrdersHistogram:
+    ) -> tuple[ItemOrdersHistogram, datetime]:
         ...
 
     @overload
@@ -355,7 +355,7 @@ class SteamCommunityPublicMixin(SteamHTTPTransportMixin):
         if_modified_since: datetime | str = ...,
         params: T_PARAMS = ...,
         headers: T_HEADERS = ...,
-    ) -> ItemOrdersHistogramData:
+    ) -> tuple[ItemOrdersHistogramData, datetime]:
         ...
 
     @currency_required
@@ -367,7 +367,7 @@ class SteamCommunityPublicMixin(SteamHTTPTransportMixin):
         if_modified_since: datetime | str = None,
         params: T_PARAMS = {},
         headers: T_HEADERS = {},
-    ) -> ItemOrdersHistogramData | ItemOrdersHistogram:
+    ) -> tuple[ItemOrdersHistogramData | ItemOrdersHistogram, datetime]:
         """
         Do what described in method name.
 
@@ -382,7 +382,8 @@ class SteamCommunityPublicMixin(SteamHTTPTransportMixin):
         :param if_modified_since: `If-Modified-Since` header value
         :param params: extra params to pass to url
         :param headers: extra headers to send with request
-        :return: `ItemOrdersHistogramData` dict if `raw` is `True` or `ItemOrdersHistogram` model
+        :return: `ItemOrdersHistogramData` dict if `raw` is `True` or `ItemOrdersHistogram` model,
+            datetime object when resource was last modified
         :raises EResultError: for ordinary reasons
         :raises RateLimitExceeded: when you hit rate limit
         :raises ResourceNotModified: when `if_modified_since` header passed and Steam response with 304 status code
@@ -419,37 +420,42 @@ class SteamCommunityPublicMixin(SteamHTTPTransportMixin):
         if success is not EResult.OK:
             raise EResultError(rj.get("message", "Failed to fetch items order histogram"), success, rj)
 
+        last_modified = parse_time(r.headers["Last-Modified"])
+
         if raw:
-            return rj
+            return rj, last_modified
 
         # model parsing
-        return ItemOrdersHistogram(
-            sell_order_count=self._parse_item_order_histogram_count(rj["sell_order_count"]),
-            sell_order_price=self._parse_item_order_histogram_price(rj["sell_order_price"]),
-            sell_order_table=[
-                SellOrderTableEntry(
-                    self._parse_item_order_histogram_price(d["price"]),
-                    self._parse_item_order_histogram_price(d["price_with_fee"]),
-                    self._parse_item_order_histogram_count(d["quantity"]),
-                )
-                for d in rj["sell_order_table"]
-            ],
-            buy_order_count=self._parse_item_order_histogram_count(rj["buy_order_count"]),
-            buy_order_price=self._parse_item_order_histogram_price(rj["buy_order_price"]),
-            buy_order_table=[
-                BuyOrderTableEntry(
-                    self._parse_item_order_histogram_price(d["price"]),
-                    self._parse_item_order_histogram_count(d["quantity"]),
-                )
-                for d in rj["buy_order_table"]
-            ],
-            highest_buy_order=int(rj["highest_buy_order"]),
-            lowest_sell_order=int(rj["lowest_sell_order"]),
-            buy_order_graph=[OrderGraphEntry(int(d[0] * 100), d[1], d[2]) for d in rj["buy_order_graph"]],
-            sell_order_graph=[OrderGraphEntry(int(d[0] * 100), d[1], d[2]) for d in rj["sell_order_graph"]],
-            graph_max_y=rj["graph_max_y"],
-            graph_min_x=int(rj["graph_min_x"] * 100),
-            graph_max_x=int(rj["graph_max_x"] * 100),
+        return (
+            ItemOrdersHistogram(
+                sell_order_count=self._parse_item_order_histogram_count(rj["sell_order_count"]),
+                sell_order_price=self._parse_item_order_histogram_price(rj["sell_order_price"]),
+                sell_order_table=[
+                    SellOrderTableEntry(
+                        self._parse_item_order_histogram_price(d["price"]),
+                        self._parse_item_order_histogram_price(d["price_with_fee"]),
+                        self._parse_item_order_histogram_count(d["quantity"]),
+                    )
+                    for d in rj["sell_order_table"]
+                ],
+                buy_order_count=self._parse_item_order_histogram_count(rj["buy_order_count"]),
+                buy_order_price=self._parse_item_order_histogram_price(rj["buy_order_price"]),
+                buy_order_table=[
+                    BuyOrderTableEntry(
+                        self._parse_item_order_histogram_price(d["price"]),
+                        self._parse_item_order_histogram_count(d["quantity"]),
+                    )
+                    for d in rj["buy_order_table"]
+                ],
+                highest_buy_order=int(rj["highest_buy_order"]),
+                lowest_sell_order=int(rj["lowest_sell_order"]),
+                buy_order_graph=[OrderGraphEntry(int(d[0] * 100), d[1], d[2]) for d in rj["buy_order_graph"]],
+                sell_order_graph=[OrderGraphEntry(int(d[0] * 100), d[1], d[2]) for d in rj["sell_order_graph"]],
+                graph_max_y=rj["graph_max_y"],
+                graph_min_x=int(rj["graph_min_x"] * 100),
+                graph_max_x=int(rj["graph_max_x"] * 100),
+            ),
+            last_modified,
         )
 
     @staticmethod
@@ -685,13 +691,14 @@ class SteamCommunityPublicMixin(SteamHTTPTransportMixin):
         if r.status == 304:  # not modified if header "If-Modified-Since" is provided
             raise ResourceNotModified
 
-        last_modified = parse_time(r.headers["Last-Modified"])
-
         rj: dict[str, int | dict[str, dict]] = await r.json()
         success = EResult(rj.get("success"))
         if success is not EResult.OK:
             raise EResultError(rj.get("message", "Failed to fetch item listings"), success, rj)
-        elif not rj["total_count"] or not rj["assets"]:
+
+        last_modified = parse_time(r.headers["Last-Modified"])
+
+        if not rj["total_count"] or not rj["assets"]:
             return [], 0, last_modified
 
         if _item_descriptions_map is None:

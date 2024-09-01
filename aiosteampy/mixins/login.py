@@ -1,7 +1,6 @@
 import asyncio
 from datetime import datetime, timedelta
 from base64 import b64encode
-from http.cookies import SimpleCookie
 from time import time as time_time
 
 from yarl import URL
@@ -18,6 +17,7 @@ from ..utils import (
     remove_cookie_from_session,
     format_time,
     decode_jwt,
+    add_cookie_to_session,
 )
 from .http import SESSION_ID_COOKIE
 from .guard import SteamGuardMixin
@@ -67,16 +67,16 @@ class LoginMixin(SteamGuardMixin):
             # TODO checks
             # https://github.com/DoctorMcKay/node-steam-session/blob/698469cdbad3e555dda10c81f580f1ee3960156f/src/LoginSession.ts#L231
 
-            c = SimpleCookie()
-            c[STEAM_SECURE_COOKIE] = token
-            c[STEAM_SECURE_COOKIE]["path"] = "/"
-            c[STEAM_SECURE_COOKIE]["domain"] = STEAM_URL.COMMUNITY.host
-            c[STEAM_SECURE_COOKIE]["expires"] = format_time(datetime.now() + timedelta(days=365 * 5))
-            c[STEAM_SECURE_COOKIE]["samesite"] = "None"
-            c[STEAM_SECURE_COOKIE]["secure"] = True
-            c[STEAM_SECURE_COOKIE]["httponly"] = True
-
-            self.session.cookie_jar.update_cookies(cookies=c, response_url=STEAM_URL.COMMUNITY)
+            add_cookie_to_session(
+                self.session,
+                STEAM_URL.COMMUNITY,
+                STEAM_SECURE_COOKIE,
+                token,
+                expires=format_time(datetime.now() + timedelta(days=365 * 5)),
+                samesite="None",
+                secure=True,
+                httponly=True,
+            )
 
     @property
     def access_token_decoded(self) -> JWTToken | None:
@@ -177,16 +177,14 @@ class LoginMixin(SteamGuardMixin):
         # ensure that sessionid cookie is presented
         # https://github.com/DoctorMcKay/node-steam-session/blob/698469cdbad3e555dda10c81f580f1ee3960156f/src/LoginSession.ts#L872-L873
         if not r.cookies.get(SESSION_ID_COOKIE):
-            session_id = generate_session_id()
-
-            c = SimpleCookie()
-            c[SESSION_ID_COOKIE] = session_id
-            c[SESSION_ID_COOKIE]["path"] = "/"
-            c[SESSION_ID_COOKIE]["domain"] = r.real_url.host
-            c[SESSION_ID_COOKIE]["samesite"] = "None"
-            c[SESSION_ID_COOKIE]["secure"] = True
-
-            self.session.cookie_jar.update_cookies(cookies=c, response_url=STEAM_URL.COMMUNITY)
+            add_cookie_to_session(
+                self.session,
+                r.real_url,
+                SESSION_ID_COOKIE,
+                generate_session_id(),
+                samesite="None",
+                secure=True,
+            )
 
     async def _begin_auth_session_with_credentials(self) -> dict:
         pub_key, ts = await self._get_rsa_key()

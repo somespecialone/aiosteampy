@@ -25,12 +25,6 @@ class SteamWebApiMixin(ConfirmationMixin):
     # required instance attributes
     _api_key: str | None  # optional
 
-    # async def web_api_get(self):
-    #     pass
-    #
-    # async def web_api_post(self):
-    #     pass
-
     @overload
     async def call_web_api(
         self,

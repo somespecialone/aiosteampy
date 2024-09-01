@@ -8,7 +8,7 @@ from time import time as time_time
 from hmac import new as hmac_new
 from hashlib import sha1
 from functools import wraps, partial
-from typing import Callable, overload, TypeVar, TypeAlias
+from typing import Callable, overload, TypeVar, TypeAlias, Literal
 from http.cookies import SimpleCookie, Morsel
 from math import floor
 from secrets import token_hex
@@ -47,6 +47,8 @@ __all__ = (
     "parse_time",
     "format_time",
     "attribute_required",
+    "make_inspect_url",
+    "add_cookie_to_session",
 )
 
 
@@ -436,3 +438,54 @@ def attribute_required(attr: str, msg: str = None):
         return wrapper
 
     return decorator
+
+
+@overload
+def make_inspect_url(*, owner_id: int, asset_id: int, d_id: int) -> str:
+    ...
+
+
+@overload
+def make_inspect_url(*, market_id: int, asset_id: int, d_id: int) -> str:
+    ...
+
+
+def make_inspect_url(*, market_id: int = None, owner_id: int = None, asset_id: int, d_id: int) -> str:
+    if market_id:
+        return f"steam://rungame/730/76561202255233023/+csgo_econ_action_preview%20M{market_id}A{asset_id}D{d_id}"
+    else:
+        return f"steam://rungame/730/76561202255233023/+csgo_econ_action_preview%20S{owner_id}A{asset_id}D{d_id}"
+
+
+def add_cookie_to_session(
+    session: ClientSession,
+    url: URL | str,
+    name: str,
+    value: str,
+    *,
+    path="/",
+    expires: datetime | str = None,
+    samesite: str | Literal[True] = None,
+    secure: bool = False,
+    httponly: bool = False,
+):
+    if isinstance(url, str):
+        url = URL(url)
+
+    c = SimpleCookie()
+    c[name] = value
+    c[name]["path"] = path
+    c[name]["domain"] = url.host
+    if expires is not None:
+        if isinstance(expires, datetime):
+            c[name]["expires"] = format_time(expires)
+        else:  # str
+            c[name]["expires"] = expires
+    if samesite is not None:
+        c[name]["samesite"] = samesite
+    if secure:
+        c[name]["secure"] = secure
+    if httponly:
+        c[name]["httponly"] = httponly
+
+    session.cookie_jar.update_cookies(cookies=c, response_url=url)

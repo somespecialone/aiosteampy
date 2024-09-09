@@ -724,9 +724,11 @@ class SteamCommunityPublicMixin(SteamHTTPTransportMixin):
                     currency=Currency(int(l_data["currencyid"]) - 2000),
                     price=int(l_data["price"]),
                     fee=int(l_data["fee"]),
-                    converted_currency=Currency(int(l_data["converted_currencyid"]) - 2000),
-                    converted_fee=int(l_data["converted_fee"]),
-                    converted_price=int(l_data["converted_price"]),
+                    converted_currency=Currency(int(l_data["converted_currencyid"]) - 2000)
+                    if "converted_currencyid" in l_data
+                    else None,
+                    converted_fee=int(l_data["converted_fee"]) if "converted_fee" in l_data else None,
+                    converted_price=int(l_data["converted_price"]) if "converted_price" in l_data else None,
                 )
                 for l_data in rj["listinginfo"].values()
                 # due to "0", ignore items with no amount and prices (supposedly purchased)

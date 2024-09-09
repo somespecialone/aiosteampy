@@ -352,9 +352,10 @@ class MarketListing(BaseOrder):
     currency: Currency  # original currency
     fee: int
 
-    converted_currency: Currency
-    converted_price: int
-    converted_fee: int
+    # probably Steam do not return converted values if fee and price is already in requested currency
+    converted_currency: Currency | None
+    converted_price: int | None
+    converted_fee: int | None
 
     def __post_init__(self):
         if not self.item.market_id:
@@ -369,8 +370,9 @@ class MarketListing(BaseOrder):
         return self.price + self.fee
 
     @property
-    def total_converted_cost(self) -> int:
-        return self.converted_price + self.converted_fee
+    def total_converted_cost(self) -> int | None:
+        if self.converted_price is not None and self.converted_fee is not None:
+            return self.converted_price + self.converted_fee
 
 
 @dataclass(eq=False, slots=True, kw_only=True)

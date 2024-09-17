@@ -1,4 +1,4 @@
-"""Useful utility functions."""
+"""Abstract utils within `Steam` context and not"""
 
 import asyncio
 from base64 import b64decode, b64encode

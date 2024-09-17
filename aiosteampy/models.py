@@ -420,9 +420,30 @@ class BaseTradeOffer:
     def partner_id64(self) -> int:
         return account_id_to_steam_id(self.partner_id)
 
+    # TODO to remove in 0.7.0
     @property
     def is_active(self) -> bool:
+        from warnings import warn
+
+        warn(
+            "`is_active` property of `BaseTradeOffer` is deprecated. Use `active` instead",
+            DeprecationWarning,
+            stacklevel=2,
+        )
+        return self.active
+
+    # shorthands
+    @property
+    def active(self) -> bool:
         return self.status is TradeOfferStatus.ACTIVE
+
+    @property
+    def accepted(self):
+        return self.status is TradeOfferStatus.ACCEPTED
+
+    @property
+    def declined(self):
+        return self.status is TradeOfferStatus.DECLINED
 
     def __hash__(self):
         return self.id

@@ -230,8 +230,8 @@ class SteamClientBase(SteamPublicClientBase, ProfileMixin, MarketMixin, TradeMix
         Prepares account to work by loading main attributes (trade token, currency and country, optionally api key)
         from `Steam`. Register trade token and api key (optionally) if there is none.
 
-        :param api_key_domain: domain on which api key will be registered.
-            If not passed, api key will not be fetched and registered if there is none
+        :param api_key_domain: domain to register `Steam Web Api` key.
+            If not passed, api key will not be fetched and registered.
         :param force: force to reload all data even if it presented on client
         """
 
@@ -243,7 +243,7 @@ class SteamClientBase(SteamPublicClientBase, ProfileMixin, MarketMixin, TradeMix
             await self.get_trade_token()
             not self.trade_token and await self.register_new_trade_url()
 
-        if not self.currency or force:
+        if (not self.currency or not self.country) or force:
             wallet_info = await self.get_wallet_info()
             self.country = wallet_info["wallet_country"]
             self.currency = Currency(wallet_info["wallet_currency"])

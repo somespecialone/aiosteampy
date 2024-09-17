@@ -141,7 +141,7 @@ but not otherwise.
 ### v0.9.0
 
 - [ ] `Steam user` model with minimal attrs, retrieving/fetching
-- [ ] Refresh `access_token` mechanism
+- [x] Refresh `access_token` mechanism
 
 ### v1.0.0
 

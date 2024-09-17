@@ -818,30 +818,30 @@ class MarketMixin(ConfirmationMixin, SteamCommunityPublicMixin):
     ) -> WalletInfo:
         """
         Buy item listing from market.
-        Unfortunately, Steam requires referer header to buy item,
-        so `market hash name` and `game` is mandatory args.
+        Unfortunately, `Steam` requires `referer` header to buy item,
+        so `market_hash_name` and `app` is mandatory args in case of `obj` being a market id.
 
-        .. note:: Make sure that listing converted currency is wallet currency!
+        .. note:: Make sure that listing converted currency same as wallet currency!
 
         :param obj: id for listing itself (aka market id) or `MarketListing`
         :param price: Can be found on listing data in Steam under field `converted_price` divided by 100
         :param market_hash_name: as arg name
         :param app: `Steam` app
         :param fee: if fee of listing is different from default one,
-            can be found on listing data in Steam under field `converted_fee` divided by 100.
-            If you don't know what is this - then you definitely do not need it
+            can be found on listing data in Steam under field `converted_fee`.
+            If you don't know what this is - then you definitely do not need it
         :param payload: extra payload data
         :param headers: extra headers to send with request
         :return: wallet info
         :raises EResultError: for regular reasons
-        :raises ValueError:
+        :raises ValueError: if converted currency of `MarketListing` is different from wallet currency
         """
 
         if isinstance(obj, MarketListing):
             if obj.converted_currency is not self.currency:
                 raise ValueError(
-                    f"Currency of listing [{obj.converted_currency}] is "
-                    f"different from wallet [{self.currency}] one!"
+                    f"Currency of listing ({obj.converted_currency}) is "
+                    f"different from wallet ({self.currency}) one!"
                 )
 
             listing_id = obj.id

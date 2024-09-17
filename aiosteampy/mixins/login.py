@@ -126,7 +126,8 @@ class LoginMixin(SteamGuardMixin):
         # we can also check https://steamcommunity.com/my for redirect to profile page as indicator
         # https://github.com/DoctorMcKay/node-steamcommunity/blob/1067d4572ee9d467e8f686951901c51028c5c995/index.js#L290
 
-        r = await self.session.get(domain)
+        # ensure that redirects is allowed and access token can be refreshed
+        r = await self.session.get(domain, allow_redirects=True)
         rt = await r.text()
         return self.username in rt
 
@@ -313,20 +314,12 @@ class LoginMixin(SteamGuardMixin):
 
         return rj["data"]["webapi_token"] if rj["data"] else None
 
-    # async def refresh_access_token(self) -> str:
-    #     """"""
-    #
-    #     # TODO this
-    #     r = await self.session.post(
-    #         STEAM_URL.API.IAuthService.GenerateAccessTokenForApp,
-    #         data={"refresh_token": self._refresh_token, "steamid": self.steam_id},
-    #         headers={**API_HEADERS, **REFERER_HEADER},
-    #     )
-    #     rj = await r.json()
-    #
-    #     try:
-    #         self._access_token = rj["response"]["access_token"]
-    #     except KeyError:
-    #         raise EResultError("Can't renew access token.", rj)
-    #
-    #     return self._access_token
+    async def refresh_access_token(self) -> str:
+        """Request to refresh access token by web browser method"""
+
+        await self.session.get(
+            STEAM_URL.LOGIN / "jwt/refresh" % {"redir": str(STEAM_URL.COMMUNITY)},
+            allow_redirects=True,
+        )
+
+        return self.access_token

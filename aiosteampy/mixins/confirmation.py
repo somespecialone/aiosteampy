@@ -141,7 +141,6 @@ class ConfirmationMixin(LoginMixin):
     async def send_multiple_confirmations(self, confs: list[Confirmation], tag: CONF_OP_TAGS):
         """
         Perform confirmation action for multiple confs with single request to Steam.
-        Remove passed conf from inner cache.
 
         :param confs: list of `Confirmation` that you wand to proceed
         :param tag: string literal of confirmation tag. Can be 'allow' or 'cancel'

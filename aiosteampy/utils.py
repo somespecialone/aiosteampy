@@ -401,6 +401,8 @@ def find_item_nameid_in_text(text: str) -> int | None:
 
 
 def patch_session_with_http_proxy(session: ClientSession, proxy: str | URL) -> ClientSession:
+    """Patch `aiohttp.ClientSession` to make all requests go through web proxy"""
+
     session._request = partial(session._request, proxy=proxy)
     return session
 

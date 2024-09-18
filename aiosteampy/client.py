@@ -227,7 +227,7 @@ class SteamClientBase(SteamPublicClientBase, ProfileMixin, MarketMixin, TradeMix
 
     async def prepare(self, api_key_domain: str = None, *, force=False):
         """
-        Prepares account to work by loading main attributes (trade token, currency and country, optionally api key)
+        Prepares client to work by loading main attributes (trade token, currency and country, optionally api key)
         from `Steam`. Register trade token and api key (optionally) if there is none.
 
         :param api_key_domain: domain to register `Steam Web Api` key.

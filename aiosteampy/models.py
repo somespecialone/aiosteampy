@@ -420,7 +420,7 @@ class BaseTradeOffer:
     def partner_id64(self) -> int:
         return account_id_to_steam_id(self.partner_id)
 
-    # TODO to remove in 0.7.0
+    # TODO to remove in 0.8.0
     @property
     def is_active(self) -> bool:
         from warnings import warn

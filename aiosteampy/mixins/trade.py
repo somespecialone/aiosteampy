@@ -457,7 +457,7 @@ class TradeMixin(SteamWebApiMixin, SteamCommunityPublicMixin):
 
     async def cancel_trade_offer(self, obj: int | TradeOffer, *, payload: T_PAYLOAD = {}, headers: T_HEADERS = {}):
         """
-        Cancel outgoing trade offer. Remove offer from cache.
+        Cancel outgoing trade offer.
 
         :param obj:
         :param payload: extra payload data

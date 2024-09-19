@@ -1,4 +1,4 @@
-# Currencies converter
+# Currencies converter 💱
 
 A `dict-like` class to handle converting steam currencies.
 
@@ -18,7 +18,7 @@ poetry add aiosteampy[converter]
 Before start converting rates need to be loaded.
 
 ```python
-from aiosteampy.converter import CurrencyConverter
+from aiosteampy.ext.converter import CurrencyConverter
 
 converter = CurrencyConverter()
 await converter.load()

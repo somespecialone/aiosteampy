@@ -1,6 +1,6 @@
 ## Prerequisites
 
-You need python 3.10 and above to use this library.
+You need **python 3.10** and above to use this library.
 
 {% 
     include-markdown "../README.md"
@@ -11,5 +11,4 @@ You need python 3.10 and above to use this library.
 !!! tip "speedups"
     [Aiohttp docs](https://docs.aiohttp.org/en/stable/#library-installation) recommends install speedups (`aiodns`, ...)
 
-!!! info "`asyncsteampy`"
-    Old version still available on PyPI: [asyncsteampy](https://pypi.org/project/asyncsteampy/)
+[//]: # (TODO notes about steam updates and old version that will stop working in that case)

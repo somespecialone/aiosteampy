@@ -1,4 +1,4 @@
-# User Agents Server
+# User Agents Service 🕶️
 
 `List-like` class of user agents responsible for loading and getting random user agents.
 
@@ -8,7 +8,7 @@
 ## Creating instance and loading agents
 
 ```python
-from aiosteampy.user_agents import UserAgentsService
+from aiosteampy.ext.user_agents import UserAgentsService
 
 user_agents = UserAgentsService()
 await user_agents.load()

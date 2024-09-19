@@ -1,4 +1,4 @@
-site_name: Aiosteampy
+site_name: AIOSTEAMPY
 site_url: https://aiosteampy.somespecial.one
 site_author: Dmytro Tkachenko
 site_description: Trade and interact with steam market, webapi, guard.
@@ -6,7 +6,7 @@ site_description: Trade and interact with steam market, webapi, guard.
 repo_name: aiosteampy
 repo_url: https://github.com/somespecialone/aiosteampy
 
-copyright: Copyright &copy; 2022 - 2024 Dmytro Tkachenko
+copyright: Copyright &copy; 2022 - 2024 By Somespecialone with 💛
 
 theme:
   name: material
@@ -51,8 +51,8 @@ extra:
       link: mailto:itsme@somespecial.one
     - icon: fontawesome/brands/linkedin
       link: https://www.linkedin.com/in/somespecialone/
-    - icon: fontawesome/solid/globe
-      link: https://somespecial.one
+#    - icon: fontawesome/solid/globe
+#      link: https://somespecial.one
 
 plugins:
   - search
@@ -75,11 +75,16 @@ nav:
   - Overview: index.md
   - Install: install.md
   - "Getting started 🚀": get_started.md
+  - Design: design.md
+  - Exceptions: exceptions.md
+  - "Proxies 🌐": proxies.md
+  - Session: session.md
+  - "Scraping 🕷️": scraping.md
   - Client: client.md
-  - Market: market.md
+  - "Market 💹": market.md
   - Trade: trade.md
   - Public: public.md
-  - "Proxies 🌐": proxies.md
+  - "Utils&helpers": utils_helpers.md
   - Extensions:
       - "Converter 💱": ext/converter.md
       - "User Agents Service 🕶️": ext/user_agents.md

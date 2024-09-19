@@ -2,43 +2,42 @@ import asyncio
 import json
 from pathlib import Path
 
-from aiohttp import ClientSession
-
 cookie_file = Path("cookie.json")
 
 
 async def main():
     from aiosteampy import SteamClient, Currency
-    from aiosteampy.utils import restore_from_cookies, get_jsonable_cookies
+    from aiosteampy.helpers import restore_from_cookies
+    from aiosteampy.utils import get_jsonable_cookies
 
-    async with ClientSession(raise_for_status=True) as sess:
-        client = SteamClient(
-            "...",
-            "...",
-            123456789,
-            shared_secret="...",
-            identity_secret="...",
-            api_key="...",
-            trade_token="...",
-            wallet_currency=Currency.UAH,
-            wallet_country="UA",
-            session=sess,
-        )
+    client = SteamClient(
+        steam_id=123456789,
+        username="...",
+        password="...",
+        shared_secret="...",
+        identity_secret="...",
+        api_key="...",
+        trade_token="...",
+        wallet_currency=Currency.UAH,
+        wallet_country="UA",
+        proxy="socks5://username:pass@host:port",
+    )
 
-        if cookie_file.is_file():
-            with cookie_file.open("r") as f:
-                cookies = json.load(f)
-            await restore_from_cookies(cookies, client)
-        else:
-            await client.login()
+    if cookie_file.is_file():
+        with cookie_file.open("r") as f:
+            cookies = json.load(f)
+        await restore_from_cookies(cookies, client)
+    else:
+        await client.login()
 
-        try:
+    try:
+        ...  # do what you want
 
-            ...  # do what you want
+    finally:
+        with cookie_file.open("w") as f:
+            json.dump(get_jsonable_cookies(client.session), f)
 
-        finally:
-            with cookie_file.open("w") as f:
-                json.dump(get_jsonable_cookies(sess), f)
+        await client.session.close()
 
 
 if __name__ == "__main__":

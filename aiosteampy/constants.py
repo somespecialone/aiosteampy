@@ -18,6 +18,7 @@ class App(IntEnum):
     CS2 = 730
     CSGO = CS2  # alias
 
+    DOLLAR = 3069470
     DOTA2 = 570
     H1Z1 = 433850
     RUST = 252490
@@ -55,6 +56,7 @@ class AppContext(Enum):
     RUST = App.RUST, 2
     TF2 = App.TF2, 2
     PUBG = App.PUBG, 2
+    DOLLAR = App.DOLLAR, 2
 
     STEAM_GIFTS = App.STEAM, 1
     STEAM_COMMUNITY = App.STEAM, 6

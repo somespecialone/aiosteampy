@@ -2,7 +2,7 @@ We all have a one, but a big and tasty, pie 🥧, called `SteamMarket`. We all w
 that's why we're here.
 So the general idea is:
 
-!!! warning ""
+!!! danger ""
     Consume Steam resources **responsibly**.
     Bear in mind, we all benefit if `Steam` spends fewer resources fighting aggressive market scraping
 

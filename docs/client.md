@@ -1,6 +1,14 @@
+!!! danger "Deprecated documentation"
+    This and next parts of the documentation are not completed yet and contains information for old version.
+    Be careful!
+
+
 ### Init & login
 
 To prevent additional requests to `steam` when logging in we can pass all known data to init method.
+
+[//]: # (TODO identity_secret is optinal now)
+[//]: # (TODO write anywhere about App and AppContext)
 
 ```python
 from aiosteampy import SteamClient, Currency
@@ -21,9 +29,10 @@ client = SteamClient(
 await client.login()
 ```
 
-???+ note "Api key registration"
-    If steam account does obtain `api key`, it will be automatically registered on
-    `https://github.com/somespecialone/aiosteampy` during data initialization.
+!!! note "`Steam Web Api Key` registration"
+    Obtaining `api key` will be automatically registered on
+    `https://github.com/somespecialone/aiosteampy` domain during data initialization.
+    It is highly recommended to register `api key` on _domain of your choice_.
 
 ??? info "`client.login` args and data fetching"
     You can bypass this if pass `init_data=False`. But keep in mind - methods which requires missed data will throw errors.
@@ -31,15 +40,13 @@ await client.login()
 Addition to args above, there is:
 
 * `lang` - language of requests data. Do not recommend to change this until you know what you're doing.
-* `tz_offset` - just time zone offset that will be set to cookie.
+* `tz_offset` - string of time zone offset that will be set as cookie value.
 * `session` - [aiohttp.ClientSession](https://docs.aiohttp.org/en/stable/client_advanced.html#client-session).
-  
 
 !!! warning "Session"
     If you create `session` by yourself - `raise_for_status` must be `True`,
     `ClientSession(..., raise_for_status=True)`. If not, errors will be not handled right and this will cause strange
     behavior.
-
 
 ### Public methods client
 
@@ -51,11 +58,11 @@ from aiosteampy import SteamPublicClient
 
 client = SteamPublicClient()
 
-histogram = await client.fetch_item_orders_histogram(12345687)
+histogram = await client.get_item_orders_histogram(12345687)
 ...
 ```
 
-### Proxies
+### Proxies 🌐
 
 Read more about proxy support on the [dedicated page](./proxies.md)
 
@@ -64,18 +71,20 @@ Read more about proxy support on the [dedicated page](./proxies.md)
 In case you need to use multiple inheritance and `__slots__`, you can subclass `SteamCommunityMixin`:
 
 ```python
-from aiosteampy.client import SteamCommunityMixin, SteamClient
+from aiosteampy.client import SteamClientBase, SteamClient
 
 
-class MyClient(SteamCommunityMixin, ...):
+class MyClient(SteamClientBase, ...):
     __slots__ = (
         *SteamClient.__slots__,
         "attr",
         "attr1",  # your slots
     )
-    
+
     def __init__(self, *args, **kwargs):
         super().__init__(*args, **kwargs)
-        
+
         ...
 ```
+
+[//]: # (TODO inheritance, mixins)

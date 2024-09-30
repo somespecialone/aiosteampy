@@ -19,7 +19,7 @@ client = SteamClient(..., proxy="http://my-proxy.com")
 
 ### Session and proxy
 
-!!! note "Keep in mind"
+!!! danger "Bind your session to a proxy"
     `session` and `proxy` arguments are mutually exclusive. If you want to pass a `session` created by yourself,
     you are responsible for binding `session` to `proxy`
 

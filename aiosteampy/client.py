@@ -1,6 +1,6 @@
 from re import search as re_search
 from json import loads
-from typing import AsyncIterator, overload, Callable, final
+from typing import AsyncIterator, overload, Callable, final, TYPE_CHECKING
 
 from aiohttp import ClientSession
 from aiohttp.client import _RequestContextManager
@@ -22,13 +22,6 @@ DEF_TZ_OFFSET = "10800,0"
 
 
 class SteamPublicClientBase(SteamCommunityPublicMixin):
-    """
-    Base `Steam Public Community` client class.
-    Implements construction method.
-
-    .. note:: Subclass this if you want to make your custom public client
-    """
-
     __slots__ = ()
 
     @overload
@@ -69,6 +62,11 @@ class SteamPublicClientBase(SteamCommunityPublicMixin):
         user_agent: str = None,
     ):
         """
+        Base `Steam Public Community` client class.
+        Implements construction method.
+
+        .. note:: Subclass this if you want to make your custom public client
+
         :param language: language of `Steam` descriptions, responses, etc... Will be set to a cookie
         :param currency: currency of market data in `Steam` responses
         :param country: country of market data in `Steam` responses
@@ -93,13 +91,6 @@ class SteamPublicClientBase(SteamCommunityPublicMixin):
 
 
 class SteamClientBase(SteamPublicClientBase, ProfileMixin, MarketMixin, TradeMixin):
-    """
-    Base `Steam Community` client class.
-    Implements construction, util, account (inventory, wallet) methods.
-
-    .. note:: Subclass this if you want to make your custom client
-    """
-
     __slots__ = ()
 
     @overload
@@ -169,6 +160,11 @@ class SteamClientBase(SteamPublicClientBase, ProfileMixin, MarketMixin, TradeMix
         user_agent: str = None,
     ):
         """
+        Base `Steam Community` client class.
+        Implements construction, util, account (inventory, wallet) methods.
+
+        .. note:: Subclass this if you want to make your custom client
+
         :param steam_id: steam id (id64) or account id (id32)
         :param username:
         :param password:
@@ -464,8 +460,6 @@ class SteamClientBase(SteamPublicClientBase, ProfileMixin, MarketMixin, TradeMix
 
 @final
 class SteamClient(SteamClientBase):
-    """Ready to use client class with inherited methods from all mixins. Must be logged in."""
-
     __slots__ = (
         "_refresh_token",
         "session",
@@ -481,9 +475,145 @@ class SteamClient(SteamClientBase):
         "country",
     )
 
+    if TYPE_CHECKING:  # for PyCharm pop-up
+
+        @overload
+        def __init__(
+            self,
+            steam_id: int,
+            username: str,
+            password: str,
+            shared_secret: str,
+            identity_secret: str = ...,
+            *,
+            access_token: str = ...,
+            refresh_token: str = ...,
+            api_key: str = ...,
+            trade_token: str = ...,
+            language: Language = ...,
+            wallet_currency: Currency = ...,
+            wallet_country: str = ...,
+            tz_offset: str = ...,
+            session: ClientSession = ...,
+            user_agent: str = ...,
+        ):
+            ...
+
+        @overload
+        def __init__(
+            self,
+            steam_id: int,
+            username: str,
+            password: str,
+            shared_secret: str,
+            identity_secret: str = ...,
+            *,
+            access_token: str = ...,
+            refresh_token: str = ...,
+            api_key: str = ...,
+            trade_token: str = ...,
+            language: Language = ...,
+            wallet_currency: Currency = ...,
+            wallet_country: str = ...,
+            tz_offset: str = ...,
+            proxy: str = ...,
+            user_agent: str = ...,
+        ):
+            ...
+
+        def __init__(
+            self,
+            steam_id: int,
+            username: str,
+            password: str,
+            shared_secret: str,
+            identity_secret: str = None,
+            *,
+            access_token: str = None,
+            refresh_token: str = None,
+            api_key: str = None,
+            trade_token: str = None,
+            language=Language.ENGLISH,
+            wallet_currency: Currency = None,
+            wallet_country=DEF_COUNTRY,
+            tz_offset=DEF_TZ_OFFSET,
+            session: ClientSession = None,
+            proxy: str = None,
+            user_agent: str = None,
+        ):
+            """
+            Ready to use client class with inherited methods from all mixins. Must be logged in.
+
+            :param steam_id: steam id (id64) or account id (id32)
+            :param username:
+            :param password:
+            :param shared_secret:
+            :param identity_secret: required for confirmations
+            :param access_token: encoded JWT token string
+            :param refresh_token: encoded JWT token string
+            :param api_key: `Steam Web API` key to have access to `Steam Web API`. Can be used instead of `access_token`
+            :param trade_token: trade token of account. Needed to create a trade url
+            :param language: language of `Steam` descriptions, responses, etc... Will be set to a cookie
+            :param wallet_currency: currency of account wallet. Market methods requires this to be set
+            :param wallet_country: country of account wallet. Market methods requires this to be set
+            :param tz_offset: timezone offset. Will be set to a cookie
+            :param session: session instance. Must be created with `raise_for_status=True` for client to work properly
+            :param proxy: proxy url as string. Can be in format `scheme://username:password@host:port` or `scheme://host:port`
+            :param user_agent: user agent header value. Strongly advisable to set this
+            """
+
 
 @final
 class SteamPublicClient(SteamPublicClientBase):
-    """Client contains public methods that do not require authentication."""
-
     __slots__ = ("session", "currency", "country")
+
+    if TYPE_CHECKING:  # for PyCharm pop-up
+
+        @overload
+        def __init__(
+            self,
+            *,
+            language: Language = ...,
+            tz_offset: str = ...,
+            currency: Currency = ...,
+            country: str = ...,
+            session: ClientSession = ...,
+            user_agent: str = ...,
+        ):
+            ...
+
+        @overload
+        def __init__(
+            self,
+            *,
+            language: Language = ...,
+            tz_offset: str = ...,
+            currency: Currency = ...,
+            country: str = ...,
+            proxy: str = ...,
+            user_agent: str = ...,
+        ):
+            ...
+
+        def __init__(
+            self,
+            *,
+            language=Language.ENGLISH,
+            tz_offset=DEF_TZ_OFFSET,
+            currency=Currency.USD,
+            country=DEF_COUNTRY,
+            session: ClientSession = None,
+            proxy: str = None,
+            user_agent: str = None,
+        ):
+            """
+            Client contains public methods that do not require authentication.
+
+            :param language: language of `Steam` descriptions, responses, etc... Will be set to a cookie
+            :param currency: currency of market data in `Steam` responses
+            :param country: country of market data in `Steam` responses
+            :param tz_offset: timezone offset. Will be set to a cookie
+            :param session: session instance. Must be created with `raise_for_status=True` for client to work properly
+            :param proxy: proxy url as string. Can be in format `scheme://username:password@host:port` or `scheme://host:port`
+            :param user_agent: user agent header value. Strongly advisable to set this
+            """

@@ -27,12 +27,16 @@ class App(IntEnum):
     STEAM = 753
 
     @classmethod
-    def _missing_(cls, value: int):
-        return extend_enum(cls, cls._generate_name(value), value)  # add new member when missing
+    def extend(cls, name: str, value: int) -> "App":
+        return extend_enum(cls, name, value)
 
     @classmethod
     def _generate_name(cls, value) -> str:
         return f"{cls.__name__}_{value}"
+
+    @classmethod
+    def _missing_(cls, value: int):
+        return cls.extend(cls._generate_name(value), value)  # add new member when missing
 
     @property
     def app_id(self) -> int:
@@ -41,7 +45,7 @@ class App(IntEnum):
 
 class AppContext(Enum):
     """
-    Combination of `App` and `Context` (sub-inventory of the app)
+    Combination of `App` and context (sub-inventory of the app)
 
     .. seealso:: https://dev.doctormckay.com/topic/332-identifying-steam-items/
     """
@@ -61,14 +65,19 @@ class AppContext(Enum):
     STEAM_REWARDS = App.STEAM, 7  # item rewards
 
     @classmethod
+    def extend(cls, name: str, value: tuple[App | int, int]) -> "AppContext":
+        # for case when passed app id instead of an App enum, e.g. AppContext((730, 2))
+        with_enum = (App(value[0]), value[1])
+        return extend_enum(cls, name, with_enum)
+
+    @classmethod
     def _generate_name(cls, value: tuple[App, int]) -> str:
         return f"{cls.__name__}_{value[0]}_{value[1]}"
 
-    # for case when AppContext((730, 2))
     @classmethod
     def _missing_(cls, value: tuple[App | int, int]):
         with_enum = (App(value[0]), value[1])
-        return extend_enum(cls, cls._generate_name(with_enum), with_enum)
+        return cls.extend(cls._generate_name(with_enum), with_enum)
 
     @property
     def app(self) -> App:

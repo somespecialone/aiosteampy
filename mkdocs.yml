@@ -80,6 +80,7 @@ nav:
   - "Proxies 🌐": proxies.md
   - Session: session.md
   - "Scraping 🕷️": scraping.md
+  - Enums: enums.md
   - Client: client.md
   - "Market 💹": market.md
   - Trade: trade.md

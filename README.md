@@ -166,5 +166,6 @@ I will be very grateful for helping me get the things right.
 - [Steam Market id's storage repo](https://github.com/somespecialone/steam-item-name-ids)
 - [steamapi.xpaw.me](https://steamapi.xpaw.me/)
 - [Steam Exchange Rate Tracker](https://github.com/somespecialone/sert)
+- [ethanfurman/aenum](https://github.com/ethanfurman/aenum)
 
 <!--footer-end-->

@@ -8,7 +8,7 @@ Designed to be flexible with modest complexity, while being typed and developer 
 As you can read in [previous](./get_started.md#first-words) chapter, there is two **clients**: public and non-public.
 Both represents interaction layer with `SteamCommunity`.
 Each **client** instance has separate `session`, therefore as **cookies**, and other properties
-(country, currency, ...). 
+(country, currency, ...).
 
 !!! tip
     Think of them as a private-mode window of a web browser. Each **client** instance is a new private mode window,
@@ -46,20 +46,30 @@ This classes inherit all corresponding mixins. [Inheritance](./client.md#inherit
 There is two general types of exceptions: `python` (builtin exceptions, related to invalid arguments values,
 broken connection, so on) and `steam`, that raised when code faced error while trying to interact with `Steam`,
 as follows: `Steam` cannot return market listings, items not in inventory, malformed response, `Steam`
-return error result (`EResult`) deliberately for some reason (lol) or even give your **client** (mainly, by ip) a
-rate limit restriction ([more information](./scraping.md)).
+return error result (`EResult`) deliberately for some reason (😂) or even give your **client** (mainly, by ip) a
+[rate limit restriction](./scraping.md).
 
 ### Modules & entrypoints
 
 `Aiosteampy` contains `utils` and `helpers` moduls, each contain useful utilities to make work with **client** easier.
-[There is](./utils_helpers.md)
+[Is there](./utils_helpers.md)
 
 Alongside with mentioned moduls project have a few `extensions`:
 
 - [user agents](./ext/user_agents.md) - service, which main aim is to help get random user agent for your **client/s**
 - [currency converter](./ext/converter.md) - service, aims to help you convert `Steam` currencies
 
+### Enums
+
+At last, within the project exists two special enums `App` and `AppContext` with unusual behaviour (for `python`).
+In short, _they extend itself when member is missing_, previous means that hardcoded members are just _predefined_.
+
+!!! warning ""
+    Generally, `aiosteampy` support all apps and contexts!
+
+More on [dedicated page](./enums.md), worth reading.
+
 ## Epilogue
 
 _That's it_. Further information introduce short overview of methods, how things work more detailed and even
-hard to say some patterns. Good luck 👋!
+hard to say some patterns. Good luck 👋

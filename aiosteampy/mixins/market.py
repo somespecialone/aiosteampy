@@ -708,7 +708,7 @@ class MarketMixin(ConfirmationMixin, SteamCommunityPublicMixin):
         item_descrs_map: T_SHARED_DESCRIPTIONS,
     ):
         # assets field, has descriptions for listings, so we can not parse descrs from listings
-        for app_id, app_data in data["assets"].items():
+        for app_id, app_data in (data["assets"] or {}).items():  # thanks Steam for an empty list instead of a dict
             for context_id, context_data in app_data.items():
                 for asset_id, mixed_data in context_data.items():
                     key = create_ident_code(mixed_data["instanceid"], mixed_data["classid"], app_id)

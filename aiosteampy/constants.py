@@ -11,6 +11,14 @@ _T = TypeVar("_T")
 CORO: TypeAlias = Coroutine[Any, Any, _T]
 
 
+class StrEnum(str, Enum):
+    """Enum with possibility to be a query param serializable"""
+
+    # also for params serialization, make `print` to show only value which complicates debugging a little
+    def __str__(self):
+        return self.value
+
+
 class App(IntEnum):
     """App enum. Add new member, when missing"""
 
@@ -149,7 +157,7 @@ class Currency(IntEnum):  # already params serializable
     # RON = 47  # Romanian Leu
 
 
-class Language(str, Enum):  # need for params serialization
+class Language(StrEnum):
     """
     Steam languages.
 
@@ -185,10 +193,6 @@ class Language(str, Enum):  # need for params serialization
     TURKISH = "turkish"
     UKRAINIAN = "ukrainian"
     VIETNAMESE = "vietnamese"
-
-    # also for params serialization, make `print` to show only value which complicates debugging a little
-    def __str__(self):
-        return self.value
 
 
 class TradeOfferStatus(Enum):

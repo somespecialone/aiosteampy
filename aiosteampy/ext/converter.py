@@ -30,7 +30,7 @@ from ..constants import Currency
 __all__ = ("CurrencyConverter", "API_URL", "SERT_CRON")
 
 API_URL = URL("https://sert.somespecial.one/")
-SERT_CRON = "9,39 * * * ?"
+SERT_CRON = "9,39 * * * *"
 
 
 class CurrencyConverter(UserDict[Currency, tuple[float, datetime]]):
@@ -53,7 +53,7 @@ class CurrencyConverter(UserDict[Currency, tuple[float, datetime]]):
         self.api_url = api_url
 
         # normalize Deta cron expression
-        self._cron = croniter(cron_exp.replace("?", "*"), ret_type=datetime) if croniter else None
+        self._cron = croniter(cron_exp, ret_type=datetime) if croniter else None
         self._sync_task: asyncio.Task | None = None
 
     @property

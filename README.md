@@ -131,12 +131,12 @@ but not otherwise.
 - [x] Remove storage methods. Caching entities must be user responsibility
 - [x] Rename `fetch_...` methods to `get_...` to remove annoying methods symantic mess
 - [x] ~~Web browser mechanism to fetch trade offers from `Steam`, avoiding `Steam Web Api`~~
-- [ ] Edit profile privacy settings
+- [x] Edit profile privacy settings
 
 ### v0.8.0
 
 - [ ] Context managers as helpers to login/logout, load/dump or get/put cookies
-- [ ] Fetch/paginate over market search pages
+- [x] Fetch/paginate over market search pages
 
 ### v0.9.0
 

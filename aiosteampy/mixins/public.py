@@ -9,12 +9,7 @@ from ..constants import STEAM_URL, App, AppContext, Currency, T_PARAMS, T_HEADER
 from ..helpers import currency_required
 from ..typed import ItemOrdersHistogramData, ItemOrdersActivity, PriceOverview
 from ..exceptions import EResultError, SteamError, RateLimitExceeded, ResourceNotModified
-from ..utils import (
-    create_ident_code,
-    find_item_nameid_in_text,
-    parse_time,
-    format_time,
-)
+from ..utils import create_ident_code, find_item_nameid_in_text, parse_time, format_time, to_int_boolean
 from ..models import (
     ItemDescriptionEntry,
     ItemTag,
@@ -27,6 +22,7 @@ from ..models import (
     SellOrderTableEntry,
     BuyOrderTableEntry,
     OrderGraphEntry,
+    MarketSearchItem,
 )
 from .http import SteamHTTPTransportMixin
 
@@ -36,6 +32,8 @@ INV_COUNT = 5000
 LISTING_COUNT = 10
 
 INVENTORY_URL = STEAM_URL.COMMUNITY / "inventory"
+SEARCH_URL = STEAM_URL.MARKET / "search"
+SEARCH_RENDER_URL = SEARCH_URL / "render/"
 
 # listings, total count, last modified
 T_MARKET_ITEM_LISTINGS_DATA: TypeAlias = tuple[list[MarketListing], int, datetime]
@@ -44,6 +42,9 @@ INV_ITEM_DATA: TypeAlias = tuple[list[EconItem], int, int | None]  # items, tota
 ITEM_ORDER_HIST_PRICE_RE = re_compile(r"[^\d\s]*([\d,]+(?:\.\d+)?)[^\d\s]*")  # Author: ChatGPT
 
 T_SHARED_DESCRIPTIONS: TypeAlias = dict[str, ItemDescription]  # ident code : descr
+
+T_SORT_COLUMN: TypeAlias = Literal["price", "name", "quantity", "popular"]
+T_SORT_DIR: TypeAlias = Literal["asc", "desc"]
 
 
 class SteamCommunityPublicMixin(SteamHTTPTransportMixin):
@@ -191,7 +192,7 @@ class SteamCommunityPublicMixin(SteamHTTPTransportMixin):
             icon_large=data.get("icon_url_large"),
             commodity=bool(data["commodity"]),
             tradable=bool(data["tradable"]),
-            marketable=bool(data["marketable"]),
+            marketable=bool(data.get("marketable", True)),  # True in case of missing in data from market search page
             market_tradable_restriction=data.get("market_tradable_restriction"),
             market_buy_country_restriction=data.get("market_buy_country_restriction"),
             market_fee_app=data.get("market_fee_app"),
@@ -894,4 +895,192 @@ class SteamCommunityPublicMixin(SteamHTTPTransportMixin):
 
         return find_item_nameid_in_text(text)
 
-    # TODO market search method, pagination, auto-crawler in github runner for item-name-ids
+    async def get_market_search_app_filters(self, app: App) -> dict:
+        """
+        Fetch app filters facets for market search.
+        You can see them when click on `Show advanced options...`
+        button under search input field on `Steam` market page
+        """
+
+        r = await self.session.get(
+            STEAM_URL.MARKET / f"appfilters/{app.value}",
+            headers={"Referer": str(STEAM_URL.MARKET)},
+        )
+        rj = await r.json()
+        success = EResult(rj.get("success"))
+        if success is not EResult.OK:
+            raise EResultError(rj.get("message", "Failed to get app filters for market search"), success, rj)
+
+        return rj
+
+    async def get_market_search_results(
+        self,
+        query="",
+        app: App = None,
+        *,
+        start=0,
+        count=10,
+        descriptions=False,
+        sort_column: T_SORT_COLUMN = "popular",
+        sort_dir: T_SORT_DIR = "desc",
+        headers: T_HEADERS = {},
+        _item_descriptions_map: T_SHARED_DESCRIPTIONS = None,
+        **filters: str,
+    ) -> tuple[list[MarketSearchItem], int]:
+        """
+        Request search results from `Steam` for market.
+
+        You can find how to write filters by investigating how browser sends requests to a
+        `https://steamcommunity.com/market/search/render/` endpoint with enabled at least one option from
+        `advanced options` window.
+
+        Example for `CS2`, with `Collection` as `The Anubis Collection` will look like:
+            * get_market_search_results(..., **{"category_730_ItemSet[]": "tag_set_anubis"})
+
+        :param query: raw search query
+        :param app: just `Steam` app
+        :param start: start result position
+        :param count: total count of results on page
+        :param descriptions: to search in descriptions
+        :param sort_column: column to sort by
+        :param sort_dir: direction to sort by
+        :param filters: app search filters for market
+        :param headers: extra headers to send with request
+        :return: list of `MarketSearchItem`, total results count
+        :raises EResultError: for ordinary reasons
+        :raises RateLimitExceeded: when you hit rate limit
+        """
+
+        req_params = {
+            "norender": 1,
+            "query": query,  # empty, like in browser's request
+            "start": start,
+            "count": count,
+            "sort_column": sort_column,
+            "sort_dir": sort_dir,
+            "search_descriptions": to_int_boolean(descriptions),
+            **filters,
+        }
+
+        referer_params = {
+            "q": query,
+            "sort_column": sort_column,
+            "sort_dir": sort_dir,
+            **filters,
+        }
+
+        if app is not None:
+            req_params["appid"] = referer_params["appid"] = app.value
+        if descriptions:
+            referer_params["descriptions"] = 1
+
+        referer = SEARCH_URL % referer_params
+
+        try:
+            r = await self.session.get(SEARCH_RENDER_URL % req_params, headers={"Referer": str(referer), **headers})
+        except ClientResponseError as e:
+            if e.status == 429:
+                raise RateLimitExceeded("You have been rate limited, rest for a while!") from e
+            else:
+                raise e
+
+        rj: dict[str, int | list[dict[str, str | int | dict[str, str | int]]]] = await r.json()
+        success = EResult(rj.get("success"))
+        if success is not EResult.OK:
+            raise EResultError(rj.get("message", "Failed to fetch market search results"), success, rj)
+
+        if not rj["total_count"] or not rj["results"]:
+            return [], 0
+
+        if _item_descriptions_map is None:
+            _item_descriptions_map = {}
+
+        items = []
+        for item_data in rj["results"]:
+            descr_ident_code = create_ident_code(
+                item_data["asset_description"]["instanceid"],
+                item_data["asset_description"]["classid"],
+                item_data["asset_description"]["appid"],
+            )
+
+            if descr_ident_code in _item_descriptions_map:
+                description = _item_descriptions_map[descr_ident_code]
+            else:
+                description = self._create_item_descr(item_data["asset_description"])
+                _item_descriptions_map[descr_ident_code] = description
+
+            item = MarketSearchItem(
+                sell_listings=item_data["sell_listings"],
+                sell_price=item_data["sell_price"],
+                sell_price_text=item_data["sell_price_text"],
+                sale_price_text=item_data["sale_price_text"],
+                app_icon=item_data["app_icon"],
+                app_name=item_data["app_name"],
+                description=description,
+            )
+            items.append(item)
+
+        return items, rj["total_count"]
+
+    async def market_search_results(
+        self,
+        query="",
+        app: App = None,
+        *,
+        start=0,
+        count=10,
+        descriptions=False,
+        sort_column: T_SORT_COLUMN = "popular",
+        sort_dir: T_SORT_DIR = "desc",
+        headers: T_HEADERS = {},
+        _item_descriptions_map: T_SHARED_DESCRIPTIONS = None,
+        **filters: str,
+    ) -> AsyncIterator[tuple[list[MarketSearchItem], int]]:
+        """
+        Request search results from `Steam` for market.
+        Return async iterator to paginate over market search results pages.
+
+        You can find how to write filters by investigating how browser sends requests to a
+        `https://steamcommunity.com/market/search/render/` endpoint with enabled at least one option from
+        `advanced options` window.
+
+        Example for `CS2`, with `Collection` as `The Anubis Collection` will look like:
+            * get_market_search_results(..., **{"category_730_ItemSet[]": "tag_set_anubis"})
+
+        :param query: raw search query
+        :param app: just `Steam` app
+        :param start: start result position
+        :param count: total count of results on page
+        :param descriptions: to search in descriptions
+        :param sort_column: column to sort by
+        :param sort_dir: direction to sort by
+        :param filters: app search filters for market
+        :param headers: extra headers to send with request
+        :return: `AsyncIterator` that yields list of `MarketSearchItem`, total results count
+        :raises EResultError: for ordinary reasons
+        :raises RateLimitExceeded: when you hit rate limit
+        """
+
+        if _item_descriptions_map is None:
+            _item_descriptions_map = {}
+
+        total_count: int = 10e6  # simplify logic for initial iteration
+        while total_count > start:
+            # browser loads first batch from document request and not json api point, but anyway
+            # avoid excess destructuring
+            search_results = await self.get_market_search_results(
+                query,
+                app,
+                count=count,
+                descriptions=descriptions,
+                sort_column=sort_column,
+                sort_dir=sort_dir,
+                headers=headers,
+                _item_descriptions_map=_item_descriptions_map,
+                start=start,
+                **filters,
+            )
+            total_count = search_results[1]
+            start += count
+
+            yield search_results

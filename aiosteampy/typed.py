@@ -1,6 +1,12 @@
 """Typed dicts for responses and methods."""
 
-from typing import TypedDict, Literal
+from typing import TypedDict, Literal, TypeAlias
+
+
+# I am too lazy to make enum
+PrivacySettingsOptions: TypeAlias = Literal[1, 2, 3]
+PrivacySettingsCheckboxOptions: TypeAlias = Literal[1, 3]
+CommentPrivacySettingsOptions: TypeAlias = Literal[0, 1, 2]
 
 
 class SellOrderTableData(TypedDict):
@@ -134,17 +140,17 @@ class LocationData(TypedDict):
 
 
 class ProfilePrivacySettings(TypedDict):
-    PrivacyFriendsList: int
-    PrivacyInventory: int
-    PrivacyInventoryGifts: int
-    PrivacyOwnedGames: int
-    PrivacyPlaytime: int
-    PrivacyProfile: int
+    PrivacyFriendsList: PrivacySettingsOptions
+    PrivacyInventory: PrivacySettingsOptions
+    PrivacyInventoryGifts: PrivacySettingsCheckboxOptions
+    PrivacyOwnedGames: PrivacySettingsOptions
+    PrivacyPlaytime: PrivacySettingsCheckboxOptions
+    PrivacyProfile: PrivacySettingsOptions
 
 
 class ProfilePrivacy(TypedDict):
     PrivacySettings: ProfilePrivacySettings
-    eCommentPermission: int
+    eCommentPermission: CommentPrivacySettingsOptions
 
 
 class ProfilePreferences(TypedDict):
@@ -166,3 +172,15 @@ class ProfileData(TypedDict):
     # rgAvailableThemes
     # rgGoldenProfileData
     Privacy: ProfilePrivacy
+
+
+class AvatarUploadImagesData(TypedDict):
+    # 0: str  illegal variable annotation, funny
+    medium: str
+    full: str
+
+
+class AvatarUploadData(TypedDict):
+    hash: str
+    images: AvatarUploadImagesData
+    message: str

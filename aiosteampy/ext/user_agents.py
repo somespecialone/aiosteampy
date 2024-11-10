@@ -6,9 +6,9 @@ from random import choice
 from yarl import URL
 from aiohttp import ClientSession
 
-__all__ = ("UserAgentsService", "API_URL")
+__all__ = ("UserAgentsService", "SOURCE_URL")
 
-API_URL = URL("https://randua.somespecial.one")
+SOURCE_URL = URL("https://raw.githubusercontent.com/somespecialone/random-user-agent/refs/heads/master/ua.txt")
 
 
 class UserAgentsService(UserList[str]):
@@ -18,24 +18,15 @@ class UserAgentsService(UserList[str]):
     .. seealso:: https://github.com/somespecialone/random-user-agent
     """
 
-    __slots__ = ("_api_url",)
-
-    def __init__(self, *, api_url=API_URL):
-        """
-        :param api_url: url of `random user agent` backend service api
-        """
-
-        super().__init__()
-
-        self._api_url = api_url
-
     @property
     def agents(self) -> list[str]:
         return self.data
 
-    async def load(self):
+    async def load(self, source_url=SOURCE_URL):
+        """Load random user agents from `source url`"""
+
         async with ClientSession(raise_for_status=True) as sess:
-            r = await sess.get(self._api_url / "all")
+            r = await sess.get(source_url)
             agents: list[str] = (await r.text()).splitlines()
 
         self.data = agents

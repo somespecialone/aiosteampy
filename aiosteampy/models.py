@@ -57,22 +57,22 @@ class ItemDescription:
     market_name: str
     market_hash_name: str
 
-    type: str | None
+    type: str | None = None
 
-    name_color: str | None  # hexadecimal
-    background_color: str | None
+    name_color: str | None = None  # hexadecimal
+    background_color: str | None = None
 
     icon: str
-    icon_large: str | None
+    icon_large: str | None = None
 
-    actions: tuple[ItemAction, ...]
-    market_actions: tuple[ItemAction, ...]
-    owner_actions: tuple[ItemAction, ...]
-    tags: tuple[ItemTag, ...]
-    descriptions: tuple[ItemDescriptionEntry, ...]
-    owner_descriptions: tuple[ItemDescriptionEntry, ...]
+    actions: tuple[ItemAction, ...] = ()
+    market_actions: tuple[ItemAction, ...] = ()
+    owner_actions: tuple[ItemAction, ...] = ()
+    tags: tuple[ItemTag, ...] = ()
+    descriptions: tuple[ItemDescriptionEntry, ...] = ()
+    owner_descriptions: tuple[ItemDescriptionEntry, ...] = ()
 
-    fraud_warnings: tuple[str, ...]
+    fraud_warnings: tuple[str, ...] = ()
 
     commodity: bool  # item use buy orders on market
     tradable: bool  # item can be traded
@@ -535,3 +535,16 @@ class ItemOrdersHistogram:
     graph_max_x: int  # in cents
     # price_prefix: str | None
     # price_suffix: str | None
+
+
+@dataclass(eq=False, slots=True)
+class MarketSearchItem:
+    sell_listings: int
+    sell_price: int
+    sell_price_text: str
+    sale_price_text: str
+
+    app_icon: str
+    app_name: str
+
+    description: ItemDescription

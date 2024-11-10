@@ -2,6 +2,7 @@ from contextlib import suppress
 from typing import overload, Literal, TypeAlias, AsyncIterator, Callable
 from datetime import datetime
 from math import floor
+from re import search as re_search
 
 from aiohttp import ClientResponseError
 from aiohttp.client import _RequestContextManager
@@ -824,11 +825,11 @@ class MarketMixin(ConfirmationMixin, SteamCommunityPublicMixin):
         .. note:: Make sure that listing converted currency same as wallet currency!
 
         :param obj: id for listing itself (aka market id) or `MarketListing`
-        :param price: Can be found on listing data in Steam under field `converted_price` divided by 100
-        :param market_hash_name: as arg name
+        :param price: Can be found on listing data in `Steam` under field `converted_price`
+        :param market_hash_name: market hash name of item. Needed for `Referer` header value
         :param app: `Steam` app
         :param fee: if fee of listing is different from default one,
-            can be found on listing data in Steam under field `converted_fee`.
+            can be found on listing data in `Steam` under field `converted_fee`.
             If you don't know what this is - then you definitely do not need it
         :param payload: extra payload data
         :param headers: extra headers to send with request
@@ -838,10 +839,12 @@ class MarketMixin(ConfirmationMixin, SteamCommunityPublicMixin):
         """
 
         if isinstance(obj, MarketListing):
-            if obj.converted_currency is not self.currency:
+            if obj.converted_currency is None:
+                raise ValueError("Listing must contain converted currency!")
+            elif obj.converted_currency is not self.currency:
                 raise ValueError(
-                    f"Currency of listing ({obj.converted_currency}) is "
-                    f"different from wallet ({self.currency}) one!"
+                    f"Currency of listing ({obj.converted_currency.value}) is "
+                    f"different from wallet ({self.currency.value}) one!"
                 )
 
             listing_id = obj.id
@@ -851,6 +854,9 @@ class MarketMixin(ConfirmationMixin, SteamCommunityPublicMixin):
             app = obj.item.app_context.app
         else:
             listing_id = obj
+
+            if app is None or market_hash_name is None or price is None:
+                raise ValueError("`app`, `market_hash_name` and `price` arguments must be provided")
 
         fee = fee or ((floor(price * 0.05) or 1) + (floor(price * 0.10) or 1))
         data = {
@@ -1147,3 +1153,35 @@ class MarketMixin(ConfirmationMixin, SteamCommunityPublicMixin):
             )
             for e_data in rj["prices"]
         ]
+
+    async def get_market_availability_info(self) -> tuple[bool, datetime | None]:
+        """
+        Return market status of whether it is available or not and, if possible, "when" the market will be available
+
+        .. seealso:: https://help.steampowered.com/en/faqs/view/451E-96B3-D194-50FC
+        """
+
+        r = await self.session.get(STEAM_URL.MARKET, headers={"Referer": str(STEAM_URL.STORE)})
+        rt = await r.text()
+
+        available = True
+        when: datetime | None = None
+
+        if "The Market is unavailable for the following reason" in rt:
+            available = False
+
+            if "dateCanUseMarket" in rt:
+                when = datetime.strptime(
+                    re_search(r"var dateCanUseMarket = new Date\(\"(?P<date>.+)\"\);", rt).group("date"),
+                    "%a, %d %b %Y %H:%M:%S %z",
+                )
+
+        # it would be nice if we can retrieve purchase history from https://store.steampowered.com/account/history/
+        # domain (not steamcommunity, unfortunately, so cookies are separated), parse it and calc estimate market block
+        # datetime, depends on last store purchase
+
+        return available, when
+
+    async def is_market_available(self) -> bool:
+        info = await self.get_market_availability_info()
+        return info[0]

@@ -666,7 +666,8 @@ class SteamCommunityPublicMixin(SteamHTTPTransportMixin):
 
         base_url = STEAM_URL.MARKET / f"listings/{app.value}/{name}"
         params = {
-            "query": query,
+            "filter": query,
+            "query": "",  # as web browser
             "country": self.country,
             "currency": self.currency,
             "start": start,

@@ -1,3 +1,8 @@
+!!! danger "Deprecated documentation"
+    This part of the documentation is not finished yet and contains information for old versions.
+    So please check the code (and docstrings) to get a better understanding of how things work.
+
+
 `SteamPublicMixin` have methods that doesn't require authentication.
 
 ### Get market listings
@@ -36,6 +41,6 @@ client = SteamPublicClient(...)
 
 item_name_id = 12346789
 
-histogram = await client.fetch_item_orders_histogram(item_name_id)
+histogram = await client.get_item_orders_histogram(item_name_id)
 activity = await client.fetch_item_orders_activity(item_name_id)
 ```

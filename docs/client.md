@@ -1,6 +1,6 @@
 !!! danger "Deprecated documentation"
-    This and next parts of the documentation are not completed yet and contains information for old version.
-    Be careful!
+    This part of the documentation is not finished yet and contains information for old versions.
+    So please check the code (and docstrings) to get a better understanding of how things work.
 
 
 ### Init & login

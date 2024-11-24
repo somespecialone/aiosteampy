@@ -1,3 +1,10 @@
+[//]: # (TODO about responsibility of actives/money loss)
+
+!!! danger "Deprecated documentation"
+    This part of the documentation is not finished yet and contains information for old versions.
+    So please check the code (and docstrings) to get a better understanding of how things work.
+
+
 ## Main market methods of `MarketMixin`
 
 ???+ info "Get market listings and order histogram"
@@ -64,3 +71,6 @@ listings, total_count = await client.get_item_listings("★ Butterfly Knife | Sl
 
 wallet_info = await client.buy_market_listing(listings[0])
 ```
+
+
+[//]: # (TODO market listings, histogram, modified-since)

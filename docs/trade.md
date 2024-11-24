@@ -1,3 +1,8 @@
+!!! danger "Deprecated documentation"
+    This part of the documentation is not finished yet and contains information for old versions.
+    So please check the code (and docstrings) to get a better understanding of how things work.
+
+
 ## Methods of `TradeMixin`
 
 ### Make and send trade offer
@@ -20,20 +25,19 @@ offer_id = await client.make_trade_offer(partner_steam_id, [inv[0]], [partner_in
 ```python
 from aiosteampy import TradeOfferStatus
 
-offer = await client.fetch_trade(offer_id)
+offer = await client.get_trade_offer(offer_id)
 
 offer.status == TradeOfferStatus.ACCEPTED
 ```
 
 ### Get offers from Steam and counter one, accept & cancel
 
-
 ```python
 from aiosteampy import SteamClient, Game
 
 client = SteamClient(...)
 
-sent_offers, received_offers = await client.fetch_trade_offers()
+sent_offers, received_offers = await client.get_trade_offers()
 
 await client.counter_trade_offer(received_offers[0], to_receive=[], message='I want this to be a gift!')
 

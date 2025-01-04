@@ -1,7 +1,6 @@
 from contextlib import suppress
 from typing import overload, Literal, TypeAlias, AsyncIterator, Callable
 from datetime import datetime
-from math import floor
 from re import search as re_search
 
 from aiohttp import ClientResponseError
@@ -34,7 +33,7 @@ from ..models import (
 )
 from ..helpers import currency_required
 from ..exceptions import EResultError, SessionExpired
-from ..utils import create_ident_code, buyer_pays_to_receive
+from ..utils import create_ident_code, buyer_pays_to_receive, calc_market_listing_fee
 from .public import SteamCommunityPublicMixin, T_SHARED_DESCRIPTIONS
 from .confirmation import ConfirmationMixin
 
@@ -858,7 +857,7 @@ class MarketMixin(ConfirmationMixin, SteamCommunityPublicMixin):
             if app is None or market_hash_name is None or price is None:
                 raise ValueError("`app`, `market_hash_name` and `price` arguments must be provided")
 
-        fee = fee or ((floor(price * 0.05) or 1) + (floor(price * 0.10) or 1))
+        fee = fee or calc_market_listing_fee(price)
         data = {
             "sessionid": self.session_id,
             "currency": self.currency.value,

@@ -49,6 +49,7 @@ __all__ = (
     "attribute_required",
     "make_inspect_url",
     "add_cookie_to_session",
+    "calc_market_listing_fee",
 )
 
 
@@ -491,3 +492,18 @@ def add_cookie_to_session(
         c[name]["httponly"] = httponly
 
     session.cookie_jar.update_cookies(cookies=c, response_url=url)
+
+
+def calc_market_listing_fee(price: int, *, wallet_fee=0.05, publisher_fee=0.10, minimal_fee=1) -> int:
+    """
+    Calculate market fee for listing.
+
+    Use `get_wallet_info` method of the client to see fees values for specified `Steam` account
+
+    :param price: price of market listing
+    :param wallet_fee:
+    :param publisher_fee:
+    :param minimal_fee: minimal fee value
+    :return: calculated fee of price as integer
+    """
+    return (floor(price * wallet_fee) or minimal_fee) + (floor(price * publisher_fee) or minimal_fee)

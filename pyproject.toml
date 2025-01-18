@@ -1,6 +1,6 @@
 [tool.poetry]
 name = "aiosteampy"
-version = "0.7.1"
+version = "0.7.2"
 description = "Trade and interact with steam market, webapi, guard"
 license = "MIT"
 authors = ["Dmytro Tkachenko <itsme@somespecial.one>"]

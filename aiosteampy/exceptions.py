@@ -13,6 +13,9 @@ class EResultError(SteamError):
         self.result = result
         self.data = data
 
+    def __str__(self):
+        return self.msg
+
 
 class LoginError(SteamError):
     """Raised when a problem with login process occurred"""
@@ -33,3 +36,7 @@ class ResourceNotModified(SteamError):
     Special case when `If-Modified-Since` header included
     in request headers and Steam response with 304 status code
     """
+
+
+# class InsufficientBalance(SteamError):
+#     """"""

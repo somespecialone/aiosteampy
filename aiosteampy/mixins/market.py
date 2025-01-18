@@ -868,12 +868,19 @@ class MarketMixin(ConfirmationMixin, SteamCommunityPublicMixin):
             **payload,
         }
         headers = {"Referer": str(STEAM_URL.MARKET / f"listings/{app.value}/{market_hash_name}"), **headers}
-        r = await self.session.post(STEAM_URL.MARKET / f"buylisting/{listing_id}", data=data, headers=headers)
+        r = await self.session.post(
+            STEAM_URL.MARKET / f"buylisting/{listing_id}",
+            data=data,
+            headers=headers,
+            raise_for_status=False,
+        )
+        # ClientResponseError with code 502 [Bad Gateway] will be raised in case of insufficient balance, need
+        # to do something with this somehow ...
         rj: dict[str, dict[str, str]] = await r.json()
         wallet_info: WalletInfo = rj.get("wallet_info", {})
         success = EResult(wallet_info.get("success"))
         if success is not EResult.OK:
-            raise EResultError(wallet_info.get("message", "Failed to buy listing"), success, rj)
+            raise EResultError(rj.get("message", wallet_info.get("message", "Failed to buy listing")), success, rj)
 
         # how about to return remaining balance only?
         return wallet_info

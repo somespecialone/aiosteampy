@@ -225,6 +225,7 @@ class SteamClientBase(SteamPublicClientBase, ProfileMixin, MarketMixin, TradeMix
         """
         Prepares client to work by loading main attributes (trade token, currency and country, optionally api key)
         from `Steam`. Register trade token and api key (optionally) if there is none.
+        Edit privacy settings of inventory and related staff to be public
 
         :param api_key_domain: domain to register `Steam Web Api` key.
             If not passed, api key will not be fetched and registered.

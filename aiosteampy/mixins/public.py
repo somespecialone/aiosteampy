@@ -882,6 +882,7 @@ class SteamCommunityPublicMixin(SteamHTTPTransportMixin):
         :param app:
         :param headers: extra headers to send with request
         :return: `item_nameid`
+        :raises RateLimitExceeded: when you hit rate limit
 
         .. seealso:: https://github.com/somespecialone/steam-item-name-ids
         """
@@ -891,7 +892,14 @@ class SteamCommunityPublicMixin(SteamHTTPTransportMixin):
         else:  # str
             url = STEAM_URL.MARKET / f"listings/{app.value}/{obj}"
 
-        res = await self.session.get(url, headers=headers)
+        try:
+            res = await self.session.get(url, headers=headers)
+        except ClientResponseError as e:
+            if e.status == 429:
+                raise RateLimitExceeded("You have been rate limited, rest for a while!") from e
+            else:
+                raise e
+
         text = await res.text()
 
         return find_item_nameid_in_text(text)

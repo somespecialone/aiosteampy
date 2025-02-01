@@ -1,3 +1,5 @@
+from datetime import datetime
+
 from .constants import EResult
 
 
@@ -36,6 +38,13 @@ class ResourceNotModified(SteamError):
     Special case when `If-Modified-Since` header included
     in request headers and Steam response with 304 status code
     """
+
+    def __init__(self, last_modified: datetime, expires: datetime):
+        self.last_modified = last_modified
+        self.expires = expires
+
+    def __str__(self):
+        return ""
 
 
 # class InsufficientBalance(SteamError):

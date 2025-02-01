@@ -413,15 +413,15 @@ class SteamCommunityPublicMixin(SteamHTTPTransportMixin):
             else:
                 raise e
 
+        last_modified = parse_time(r.headers["Last-Modified"])
+
         if r.status == 304:  # not modified if header "If-Modified-Since" is provided
-            raise ResourceNotModified
+            raise ResourceNotModified(last_modified, parse_time(r.headers["Expires"]))
 
         rj: ItemOrdersHistogramData = await r.json()
         success = EResult(rj.get("success"))
         if success is not EResult.OK:
             raise EResultError(rj.get("message", "Failed to fetch items order histogram"), success, rj)
-
-        last_modified = parse_time(r.headers["Last-Modified"])
 
         if raw:
             return rj, last_modified
@@ -690,15 +690,15 @@ class SteamCommunityPublicMixin(SteamHTTPTransportMixin):
             else:
                 raise e
 
+        last_modified = parse_time(r.headers["Last-Modified"])
+
         if r.status == 304:  # not modified if header "If-Modified-Since" is provided
-            raise ResourceNotModified
+            raise ResourceNotModified(last_modified, parse_time(r.headers["Expires"]))
 
         rj: dict[str, int | dict[str, dict]] = await r.json()
         success = EResult(rj.get("success"))
         if success is not EResult.OK:
             raise EResultError(rj.get("message", "Failed to fetch item listings"), success, rj)
-
-        last_modified = parse_time(r.headers["Last-Modified"])
 
         if not rj["total_count"] or not rj["assets"]:
             return [], 0, last_modified

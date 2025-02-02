@@ -151,12 +151,12 @@ class SteamCommunityPublicMixin(SteamHTTPTransportMixin):
             for a_data in data["assets"]
         ]
 
-    @classmethod
-    def _create_item_actions(cls, actions: list[dict]) -> tuple[ItemAction, ...]:
+    @staticmethod
+    def _create_item_actions(actions: list[dict]) -> tuple[ItemAction, ...]:
         return tuple(ItemAction(a_data["link"], a_data["name"]) for a_data in actions)
 
-    @classmethod
-    def _create_item_tags(cls, tags: list[dict]) -> tuple[ItemTag, ...]:
+    @staticmethod
+    def _create_item_tags(tags: list[dict]) -> tuple[ItemTag, ...]:
         return tuple(
             ItemTag(
                 t_data["category"],
@@ -168,8 +168,8 @@ class SteamCommunityPublicMixin(SteamHTTPTransportMixin):
             for t_data in tags
         )
 
-    @classmethod
-    def _create_item_descr_entries(cls, descriptions: list[dict]) -> tuple[ItemDescriptionEntry, ...]:
+    @staticmethod
+    def _create_item_descr_entries(descriptions: list[dict]) -> tuple[ItemDescriptionEntry, ...]:
         return tuple(
             ItemDescriptionEntry(de_data["value"], de_data.get("color"))
             for de_data in descriptions
@@ -426,37 +426,38 @@ class SteamCommunityPublicMixin(SteamHTTPTransportMixin):
         if raw:
             return rj, last_modified
 
+        return self._create_item_orders_histogram(rj), last_modified
+
+    @classmethod
+    def _create_item_orders_histogram(cls, data: dict) -> ItemOrdersHistogram:
         # model parsing
-        return (
-            ItemOrdersHistogram(
-                sell_order_count=self._parse_item_order_histogram_count(rj["sell_order_count"]),
-                sell_order_price=self._parse_item_order_histogram_price(rj["sell_order_price"]),
-                sell_order_table=[
-                    SellOrderTableEntry(
-                        self._parse_item_order_histogram_price(d["price"]),
-                        self._parse_item_order_histogram_price(d["price_with_fee"]),
-                        self._parse_item_order_histogram_count(d["quantity"]),
-                    )
-                    for d in rj["sell_order_table"]
-                ],
-                buy_order_count=self._parse_item_order_histogram_count(rj["buy_order_count"]),
-                buy_order_price=self._parse_item_order_histogram_price(rj["buy_order_price"]),
-                buy_order_table=[
-                    BuyOrderTableEntry(
-                        self._parse_item_order_histogram_price(d["price"]),
-                        self._parse_item_order_histogram_count(d["quantity"]),
-                    )
-                    for d in rj["buy_order_table"]
-                ],
-                highest_buy_order=int(rj["highest_buy_order"]),
-                lowest_sell_order=int(rj["lowest_sell_order"]),
-                buy_order_graph=[OrderGraphEntry(int(d[0] * 100), d[1], d[2]) for d in rj["buy_order_graph"]],
-                sell_order_graph=[OrderGraphEntry(int(d[0] * 100), d[1], d[2]) for d in rj["sell_order_graph"]],
-                graph_max_y=rj["graph_max_y"],
-                graph_min_x=int(rj["graph_min_x"] * 100),
-                graph_max_x=int(rj["graph_max_x"] * 100),
-            ),
-            last_modified,
+        return ItemOrdersHistogram(
+            sell_order_count=cls._parse_item_order_histogram_count(data["sell_order_count"]),
+            sell_order_price=cls._parse_item_order_histogram_price(data["sell_order_price"]),
+            sell_order_table=[
+                SellOrderTableEntry(
+                    cls._parse_item_order_histogram_price(d["price"]),
+                    cls._parse_item_order_histogram_price(d["price_with_fee"]),
+                    cls._parse_item_order_histogram_count(d["quantity"]),
+                )
+                for d in data["sell_order_table"]
+            ],
+            buy_order_count=cls._parse_item_order_histogram_count(data["buy_order_count"]),
+            buy_order_price=cls._parse_item_order_histogram_price(data["buy_order_price"]),
+            buy_order_table=[
+                BuyOrderTableEntry(
+                    cls._parse_item_order_histogram_price(d["price"]),
+                    cls._parse_item_order_histogram_count(d["quantity"]),
+                )
+                for d in data["buy_order_table"]
+            ],
+            highest_buy_order=int(data["highest_buy_order"]),
+            lowest_sell_order=int(data["lowest_sell_order"]),
+            buy_order_graph=[OrderGraphEntry(int(d[0] * 100), d[1], d[2]) for d in data["buy_order_graph"]],
+            sell_order_graph=[OrderGraphEntry(int(d[0] * 100), d[1], d[2]) for d in data["sell_order_graph"]],
+            graph_max_y=data["graph_max_y"],
+            graph_min_x=int(data["graph_min_x"] * 100),
+            graph_max_x=int(data["graph_max_x"] * 100),
         )
 
     @staticmethod
@@ -712,33 +713,33 @@ class SteamCommunityPublicMixin(SteamHTTPTransportMixin):
         # Do we need to share items?
         self._parse_market_listing_items(rj["assets"], _item_descriptions_map, _market_econ_items_map)
 
-        return (
-            [
-                MarketListing(
-                    id=int(l_data["listingid"]),
-                    item=_market_econ_items_map[
-                        create_ident_code(
-                            l_data["asset"]["id"],
-                            l_data["asset"]["contextid"],
-                            l_data["asset"]["appid"],
-                        )
-                    ],
-                    currency=Currency(int(l_data["currencyid"]) - 2000),
-                    price=int(l_data["price"]),
-                    fee=int(l_data["fee"]),
-                    converted_currency=Currency(int(l_data["converted_currencyid"]) - 2000)
-                    if "converted_currencyid" in l_data
-                    else None,
-                    converted_fee=int(l_data["converted_fee"]) if "converted_fee" in l_data else None,
-                    converted_price=int(l_data["converted_price"]) if "converted_price" in l_data else None,
-                )
-                for l_data in rj["listinginfo"].values()
-                # due to "0", ignore items with no amount and prices (supposedly purchased)
-                if int(l_data["asset"]["amount"])
-            ],
-            rj["total_count"],
-            last_modified,
-        )
+        return self._create_market_listings(rj, _market_econ_items_map), rj["total_count"], last_modified
+
+    @classmethod
+    def _create_market_listings(cls, data: dict, items_map: dict[str, MarketListingItem]) -> list[MarketListing]:
+        return [
+            MarketListing(
+                id=int(l_data["listingid"]),
+                item=items_map[
+                    create_ident_code(
+                        l_data["asset"]["id"],
+                        l_data["asset"]["contextid"],
+                        l_data["asset"]["appid"],
+                    )
+                ],
+                currency=Currency(int(l_data["currencyid"]) - 2000),
+                price=int(l_data["price"]),
+                fee=int(l_data["fee"]),
+                converted_currency=Currency(int(l_data["converted_currencyid"]) - 2000)
+                if "converted_currencyid" in l_data
+                else None,
+                converted_fee=int(l_data["converted_fee"]) if "converted_fee" in l_data else None,
+                converted_price=int(l_data["converted_price"]) if "converted_price" in l_data else None,
+            )
+            for l_data in data["listinginfo"].values()
+            # due to "0", ignore items with no amount and prices (supposedly purchased)
+            if int(l_data["asset"]["amount"])
+        ]
 
     @classmethod
     def _parse_descriptions_from_market_assets(

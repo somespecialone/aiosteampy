@@ -1,5 +1,5 @@
 from contextlib import suppress
-from typing import TypeAlias, overload, AsyncIterator, Literal, Callable
+from typing import TypeAlias, overload, AsyncIterator, Literal, Callable, Sequence, Mapping
 from datetime import datetime
 from re import compile as re_compile
 
@@ -43,7 +43,7 @@ ITEM_ORDER_HIST_PRICE_RE = re_compile(r"[^\d\s]*([\d,]+(?:\.\d+)?)[^\d\s]*")  # 
 
 T_SHARED_DESCRIPTIONS: TypeAlias = dict[str, ItemDescription]  # ident code : descr
 
-T_SORT_COLUMN: TypeAlias = Literal["price", "name", "quantity", "popular"]
+T_SORT_COLUMN: TypeAlias = Literal["price", "name", "quantity", "popular", "default"]
 T_SORT_DIR: TypeAlias = Literal["asc", "desc"]
 
 
@@ -931,11 +931,11 @@ class SteamCommunityPublicMixin(SteamHTTPTransportMixin):
         start=0,
         count=10,
         descriptions=False,
-        sort_column: T_SORT_COLUMN = "popular",
+        sort_column: T_SORT_COLUMN = "default",
         sort_dir: T_SORT_DIR = "desc",
+        filters: str | Mapping[str, str | Sequence[str]] = "",
         headers: T_HEADERS = {},
         _item_descriptions_map: T_SHARED_DESCRIPTIONS = None,
-        **filters: str,
     ) -> tuple[list[MarketSearchItem], int]:
         """
         Request search results from `Steam` for market.
@@ -945,7 +945,7 @@ class SteamCommunityPublicMixin(SteamHTTPTransportMixin):
         `advanced options` window.
 
         Example for `CS2`, with `Collection` as `The Anubis Collection` will look like:
-            * get_market_search_results(..., **{"category_730_ItemSet[]": "tag_set_anubis"})
+            * get_market_search_results(app=App.CS2, filters={"category_730_ItemSet[]": "tag_set_anubis"})
 
         :param query: raw search query
         :param app: just `Steam` app
@@ -969,14 +969,12 @@ class SteamCommunityPublicMixin(SteamHTTPTransportMixin):
             "sort_column": sort_column,
             "sort_dir": sort_dir,
             "search_descriptions": to_int_boolean(descriptions),
-            **filters,
         }
 
         referer_params = {
             "q": query,
             "sort_column": sort_column,
             "sort_dir": sort_dir,
-            **filters,
         }
 
         if app is not None:
@@ -984,10 +982,13 @@ class SteamCommunityPublicMixin(SteamHTTPTransportMixin):
         if descriptions:
             referer_params["descriptions"] = 1
 
-        referer = SEARCH_URL % referer_params
+        referer = SEARCH_URL % referer_params % filters
 
         try:
-            r = await self.session.get(SEARCH_RENDER_URL % req_params, headers={"Referer": str(referer), **headers})
+            r = await self.session.get(
+                SEARCH_RENDER_URL % req_params % filters,
+                headers={"Referer": str(referer), **headers},
+            )
         except ClientResponseError as e:
             if e.status == 429:
                 raise RateLimitExceeded("You have been rate limited, rest for a while!") from e
@@ -1040,11 +1041,11 @@ class SteamCommunityPublicMixin(SteamHTTPTransportMixin):
         start=0,
         count=10,
         descriptions=False,
-        sort_column: T_SORT_COLUMN = "popular",
+        sort_column: T_SORT_COLUMN = "default",
         sort_dir: T_SORT_DIR = "desc",
+        filters: str | Mapping[str, str | Sequence[str]] = "",
         headers: T_HEADERS = {},
         _item_descriptions_map: T_SHARED_DESCRIPTIONS = None,
-        **filters: str,
     ) -> AsyncIterator[tuple[list[MarketSearchItem], int]]:
         """
         Request search results from `Steam` for market.
@@ -1088,7 +1089,7 @@ class SteamCommunityPublicMixin(SteamHTTPTransportMixin):
                 headers=headers,
                 _item_descriptions_map=_item_descriptions_map,
                 start=start,
-                **filters,
+                filters=filters,
             )
             total_count = search_results[1]
             start += count

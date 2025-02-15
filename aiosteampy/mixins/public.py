@@ -283,6 +283,7 @@ class SteamCommunityPublicMixin(SteamHTTPTransportMixin):
     ) -> EconItem | None:
         ...
 
+    # TODO start_assetid param to find specified asset id
     async def get_user_inventory_item(
         self,
         steam_id: int,
@@ -475,12 +476,10 @@ class SteamCommunityPublicMixin(SteamHTTPTransportMixin):
     def _parse_item_order_histogram_price(text: str) -> int:
         raw_price = ITEM_ORDER_HIST_PRICE_RE.search(text).group(1)
 
-        if "," in raw_price:  # 163,46₴
-            price = raw_price.replace(",", "")
-        elif "." in raw_price:  # £2.69
-            price = raw_price.replace(".", "")
-        else:
+        if "." not in raw_price and "," not in raw_price:
             price = int(raw_price) * 100  # add cents
+        else:  # 163,46₴ £2.69 $1,000.00
+            price = raw_price.replace(",", "").replace(".", "")
 
         return int(price)
 

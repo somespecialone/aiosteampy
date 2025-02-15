@@ -264,7 +264,7 @@ class LoginMixin(SteamGuardMixin):
         r = await self.session.post(
             STEAM_URL.LOGIN / "jwt/finalizelogin",
             data=data,
-            headers={**API_HEADERS, **REFERER_HEADER},
+            headers={**API_HEADERS, **REFERER_HEADER, "Origin": str(STEAM_URL.COMMUNITY)},
         )
         rj: dict = await r.json()
         if rj and rj.get("error"):

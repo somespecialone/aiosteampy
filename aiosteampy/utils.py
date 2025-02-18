@@ -292,6 +292,7 @@ def get_jsonable_cookies(session: ClientSession) -> JSONABLE_COOKIE_JAR:
             for field_key, morsel in cookie.items()
         }
         for cookie in session.cookie_jar._cookies.values()
+        if cookie  # skip empty cookies
     ]
 
 

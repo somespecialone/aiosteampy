@@ -24,6 +24,8 @@ DEF_TZ_OFFSET = "10800,0"
 class SteamPublicClientBase(SteamCommunityPublicMixin):
     __slots__ = ()
 
+    SLOTS = ("session", "currency", "country")
+
     @overload
     def __init__(
         self,
@@ -92,6 +94,18 @@ class SteamPublicClientBase(SteamCommunityPublicMixin):
 
 class SteamClientBase(SteamPublicClientBase, ProfileMixin, MarketMixin, TradeMixin):
     __slots__ = ()
+
+    SLOTS = (
+        *SteamPublicClientBase.SLOTS,
+        "username",
+        "steam_id",
+        "_password",
+        "_shared_secret",
+        "_identity_secret",
+        "_api_key",
+        "trade_token",
+        "device_id",
+    )
 
     @overload
     def __init__(
@@ -203,8 +217,10 @@ class SteamClientBase(SteamPublicClientBase, ProfileMixin, MarketMixin, TradeMix
         # login
         self.username = username
         self._password = password
-        self.access_token = access_token
-        self.refresh_token = refresh_token
+        if access_token is not None:
+            self.access_token = access_token
+        if refresh_token is not None:
+            self.refresh_token = refresh_token
 
         # profile
         self.trade_token = trade_token
@@ -468,20 +484,7 @@ class SteamClientBase(SteamPublicClientBase, ProfileMixin, MarketMixin, TradeMix
 
 @final
 class SteamClient(SteamClientBase):
-    __slots__ = (
-        "_refresh_token",
-        "session",
-        "username",
-        "steam_id",
-        "_password",
-        "_shared_secret",
-        "_identity_secret",
-        "_api_key",
-        "trade_token",
-        "device_id",
-        "currency",
-        "country",
-    )
+    __slots__ = SteamClientBase.SLOTS
 
     if TYPE_CHECKING:  # for PyCharm pop-up
 
@@ -573,7 +576,7 @@ class SteamClient(SteamClientBase):
 
 @final
 class SteamPublicClient(SteamPublicClientBase):
-    __slots__ = ("session", "currency", "country")
+    __slots__ = SteamPublicClientBase.SLOTS
 
     if TYPE_CHECKING:  # for PyCharm pop-up
 

@@ -3,7 +3,6 @@ from datetime import datetime, timedelta
 from base64 import b64encode
 from time import time as time_time
 
-from yarl import URL
 from aiohttp import ClientResponseError
 from aiohttp.client import _RequestContextManager
 from rsa import PublicKey, encrypt
@@ -32,6 +31,7 @@ API_HEADERS = {
     "sec-fetch-dest": "empty",
 }
 STEAM_SECURE_COOKIE = "steamLoginSecure"
+STEAM_REFRESH_COOKIE = "steamRefresh_steam"
 
 
 class LoginMixin(SteamGuardMixin):
@@ -45,7 +45,6 @@ class LoginMixin(SteamGuardMixin):
     # required instance attributes
     username: str
     _password: str
-    _refresh_token: str | None
 
     # better to cache it somehow
     @property
@@ -55,28 +54,11 @@ class LoginMixin(SteamGuardMixin):
         Can be used to make requests to a `Steam Web API`
         """
 
-        return self.get_access_token(STEAM_URL.COMMUNITY)
+        return self.get_access_token()
 
-    # https://github.com/DoctorMcKay/node-steam-session/blob/698469cdbad3e555dda10c81f580f1ee3960156f/src/LoginSession.ts#L231
     @access_token.setter
     def access_token(self, token: str | None):
-        if token is None:
-            remove_cookie_from_session(self.session, STEAM_URL.COMMUNITY, STEAM_SECURE_COOKIE)
-        else:
-            # accept only community token as project intent to be a "steam community" representation
-            # TODO checks
-            # https://github.com/DoctorMcKay/node-steam-session/blob/698469cdbad3e555dda10c81f580f1ee3960156f/src/LoginSession.ts#L231
-
-            add_cookie_to_session(
-                self.session,
-                STEAM_URL.COMMUNITY,
-                STEAM_SECURE_COOKIE,
-                token,
-                expires=format_time(datetime.now() + timedelta(days=365 * 5)),
-                samesite="None",
-                secure=True,
-                httponly=True,
-            )
+        self.set_access_token(token)
 
     @property
     def access_token_decoded(self) -> JWTToken | None:
@@ -87,38 +69,102 @@ class LoginMixin(SteamGuardMixin):
     def is_access_token_expired(self) -> bool:
         """If access token has expired. Also returns `True` if token is not yet set"""
         if token := self.access_token_decoded:
-            return (token["exp"]) <= int(time_time())
+            return token["exp"] <= int(time_time())  # truncate fractions
         else:
             return True
 
-    def get_access_token(self, domain: URL) -> str | None:
+    def get_access_token(self, domain=STEAM_URL.COMMUNITY) -> str | None:
         """Get encoded `JWT access token` as cookie value for `Steam Domain`"""
 
         if token := get_cookie_value_from_session(self.session, domain, STEAM_SECURE_COOKIE):
             return token.split("%7C%7C")[1]  # ||
 
+    def set_access_token(self, token: str | None, domain=STEAM_URL.COMMUNITY):
+        if token is None:
+            remove_cookie_from_session(self.session, domain, STEAM_SECURE_COOKIE)
+        else:
+            # checks from
+            # https://github.com/DoctorMcKay/node-steam-session/blob/811dadd2bfcc11de7861fff7442cb4a44ab61955/src/LoginSession.ts#L232
+
+            decoded = decode_jwt(token)
+
+            if "derive" in decoded["aud"]:
+                raise ValueError("Provided token is a refresh token, not an access token!")
+            if int(decoded["sub"]) != self.steam_id:
+                raise ValueError(f"Provided token belongs to a different account [{decoded['sub']}]")
+
+            # aud must contain "web:[domain]" entries, like "web:community" for community and this better be checked
+
+            if "%7C%7C" not in token:  # raw token
+                token = decoded["sub"] + "%7C%7C" + token
+
+            add_cookie_to_session(
+                self.session,
+                STEAM_URL.COMMUNITY,
+                STEAM_SECURE_COOKIE,
+                token,
+                # 5 years as steam default for access token
+                expires=format_time(datetime.now() + timedelta(days=365 * 5)),
+                samesite="None",
+                secure=True,
+                httponly=True,
+            )
+
     @property
     def refresh_token(self) -> str | None:
-        return self._refresh_token
+        return self.get_refresh_token()
 
     @refresh_token.setter
     def refresh_token(self, token: str | None):
-        # TODO checks
-        # https://github.com/DoctorMcKay/node-steam-session/blob/698469cdbad3e555dda10c81f580f1ee3960156f/src/LoginSession.ts#L280
-        self._refresh_token = token
+        self.set_refresh_token(token)
 
     @property
     def refresh_token_decoded(self) -> JWTToken | None:
-        if token := self._refresh_token:
+        if token := self.refresh_token:
             return decode_jwt(token)
 
     @property
     def is_refresh_token_expired(self) -> bool:
         """If refresh token has expired. Also returns `True` if token is not yet set"""
         if token := self.refresh_token_decoded:
-            return (token["exp"]) <= int(time_time())
+            return token["exp"] <= int(time_time())  # truncate fractions
         else:
             return True
+
+    def get_refresh_token(self) -> str | None:
+        if token := get_cookie_value_from_session(self.session, STEAM_URL.LOGIN, STEAM_REFRESH_COOKIE):
+            return token.split("%7C%7C")[1]  # ||
+
+    def set_refresh_token(self, token: str | None):
+        if token is None:
+            remove_cookie_from_session(self.session, STEAM_URL.LOGIN, STEAM_REFRESH_COOKIE)
+        else:
+            # checks from
+            # https://github.com/DoctorMcKay/node-steam-session/blob/811dadd2bfcc11de7861fff7442cb4a44ab61955/src/LoginSession.ts#L281
+
+            decoded = decode_jwt(token)
+
+            if "derive" not in decoded["aud"]:
+                raise ValueError("Provided token is an access token, not a refresh token!")
+            if "web" not in decoded["aud"]:
+                raise ValueError("Token platform type is different from web browser!")
+            if int(decoded["sub"]) != self.steam_id:
+                raise ValueError(f"Provided token belongs to a different account [{decoded['sub']}]")
+
+            if "%7C%7C" not in token:  # raw token
+                token = decoded["sub"] + "%7C%7C" + token
+
+            add_cookie_to_session(
+                self.session,
+                STEAM_URL.LOGIN,
+                STEAM_REFRESH_COOKIE,
+                token,
+                # one year as steam default for refresh token
+                expires=format_time(datetime.now() + timedelta(days=365)),
+                samesite="None",
+                secure=True,
+                httponly=True,
+            )
 
     async def is_session_alive(self, domain=STEAM_URL.COMMUNITY) -> bool:
         """Check if session is alive for `Steam` domain"""
@@ -149,14 +195,21 @@ class LoginMixin(SteamGuardMixin):
         init_session and await self.session.get(STEAM_URL.COMMUNITY)
 
         session_data = await self._begin_auth_session_with_credentials()
-        await self._update_auth_session_with_steam_guard_code(session_data)
-        await self._poll_auth_session_status(session_data)
-        fin_data = await self._finalize_login()  # there can be retrieved steam id
+        client_id = session_data["response"]["client_id"]
+        request_id = session_data["response"]["request_id"]
+        steam_id = session_data["response"]["steamid"]  # steam id, if it needs to be retrieved
+
+        await self._update_auth_session_with_steam_guard_code(client_id, steam_id)
+        access_token, refresh_token = await self._poll_auth_session_status(client_id, request_id)
+        fin_data = await self._finalize_login(nonce=refresh_token)
+
+        fin_data_steam_id = fin_data["steamID"]
+        transfer_datas: list[dict] = fin_data["transfer_info"]
 
         # https://github.com/DoctorMcKay/node-steam-session/blob/64463d7468c1c860afb80164b8c5831e629f657f/src/LoginSession.ts#L845
         loop = asyncio.get_event_loop()
         transfers = [
-            loop.create_task(self._perform_transfer(d, fin_data["steamID"])) for d in fin_data["transfer_info"]
+            loop.create_task(self._perform_transfer(d["url"], d["params"], fin_data_steam_id)) for d in transfer_datas
         ]
         # there is no guarantee that first completed transfer will be to community and
         # steamLoginSecure cookie will be not present yet, so better to wait until all transfers completed,
@@ -164,16 +217,17 @@ class LoginMixin(SteamGuardMixin):
         # moreover, steam domains (store, community, help, tv, login) has own access tokens
         await asyncio.wait(transfers, return_when=asyncio.ALL_COMPLETED)
 
-        # Transfers exception check ?
+        if self.refresh_token is None:
+            raise LoginError("Refresh token cookie is not presented after login attempt")
 
-    async def _perform_transfer(self, data: dict, steam_id: str | int = None):
+    async def _perform_transfer(self, url: str, params: dict, steam_id: str | int = None):
         """Perform a transfer of params and tokens to steam login endpoints"""
 
-        r = await self.session.post(data["url"], data={**data["params"], "steamID": steam_id or self.steam_id})
+        r = await self.session.post(url, data={**params, "steamID": steam_id or self.steam_id})
         # https://github.com/DoctorMcKay/node-steam-session/blob/698469cdbad3e555dda10c81f580f1ee3960156f/src/LoginSession.ts#L864
         # make sure that `steamLoginSecure` cookie is present
-        if not r.cookies.get("steamLoginSecure"):
-            raise LoginError("'steamLoginSecure' cookie is not present in result", r.cookies)
+        if not r.cookies.get(STEAM_SECURE_COOKIE):
+            raise LoginError("Access token cookie is not present in result", r.cookies)
 
         # ensure that sessionid cookie is presented
         # https://github.com/DoctorMcKay/node-steam-session/blob/698469cdbad3e555dda10c81f580f1ee3960156f/src/LoginSession.ts#L872-L873
@@ -215,15 +269,15 @@ class LoginMixin(SteamGuardMixin):
         )
         return await r.json()
 
-    async def _update_auth_session_with_steam_guard_code(self, session_data: dict):
+    async def _update_auth_session_with_steam_guard_code(self, client_id: str | int, steam_id: str | int):
         # Doesn't check allowed confirmations, but it's probably not needed
         # as steam accounts suited for trading must have a steam guard and device code.
 
         # https://github.com/DoctorMcKay/node-steam-session/blob/64463d7468c1c860afb80164b8c5831e629f657f/src/LoginSession.ts#L735
         # https://github.com/DoctorMcKay/node-steam-session/blob/64463d7468c1c860afb80164b8c5831e629f657f/src/enums-steam/EAuthSessionGuardType.ts
         data = {
-            "client_id": session_data["response"]["client_id"],
-            "steamid": session_data["response"]["steamid"],
+            "client_id": client_id,
+            "steamid": steam_id,
             "code_type": 3,
             "code": self.two_factor_code,
         }
@@ -237,27 +291,24 @@ class LoginMixin(SteamGuardMixin):
         except ClientResponseError as e:
             raise LoginError("Error updating steam guard code") from e
 
-    async def _poll_auth_session_status(self, session_resp: dict):
-        data = {
-            "client_id": session_resp["response"]["client_id"],
-            "request_id": session_resp["response"]["request_id"],
-        }
+    async def _poll_auth_session_status(self, client_id: str | int, request_id: str | int) -> tuple[str, str]:
+        """Get current auth session status from steam, return access_token and refresh_token"""
+
         r = await self.session.post(
             STEAM_URL.API.IAuthService.PollAuthSessionStatus,
-            data=data,
+            data={"client_id": client_id, "request_id": request_id},
             headers=REFERER_HEADER,
         )
         rj = await r.json()
         if rj.get("response", {"had_remote_interaction": True})["had_remote_interaction"]:
             raise LoginError("Error polling auth session status", rj)
 
-        self._refresh_token = rj["response"]["refresh_token"]
-        # access token already presented in cookie, btw this token has "web" aud unlike others
-        # self.access_token = rj["response"]["access_token"]
+        # this access token has "web" aud unlike others
+        return rj["response"]["access_token"], rj["response"]["refresh_token"]
 
-    async def _finalize_login(self) -> dict:
+    async def _finalize_login(self, nonce: str) -> dict:
         data = {
-            "nonce": self._refresh_token,
+            "nonce": nonce,
             "sessionid": self.session_id,
             "redir": str(STEAM_URL.COMMUNITY / "login/home/?goto="),
         }
@@ -297,6 +348,7 @@ class LoginMixin(SteamGuardMixin):
             allow_redirects=False,
         )
 
+    # TODO to remove in 0.8.0
     async def get_store_access_token_from_steam(self) -> str | None:
         """
         Fetch access token for `Steam Store` domain (https://store.steampowered.com/).
@@ -305,6 +357,14 @@ class LoginMixin(SteamGuardMixin):
         :return: raw token string or `None`
         :raises EResultError: for ordinary reasons
         """
+
+        from warnings import warn
+
+        warn(
+            "`get_store_access_token_from_steam` method of `LoginMixin` is deprecated. Use `get_access_token(STEAM_URL.STORE)` instead",
+            DeprecationWarning,
+            stacklevel=2,
+        )
 
         r = await self.session.get(STEAM_URL.STORE / "pointssummary/ajaxgetasyncconfig")
         rj = await r.json()
@@ -321,5 +381,11 @@ class LoginMixin(SteamGuardMixin):
             STEAM_URL.LOGIN / "jwt/refresh" % {"redir": str(STEAM_URL.COMMUNITY)},
             allow_redirects=True,
         )
+
+        # option from above still works, anyway this is new browser behavior
+        # POST to STEAM_URL.LOGIN / jwt/ajaxrefresh % {"redir": str(STEAM_URL.COMMUNITY)}
+        # j_resp, check for success
+        # POST to 'login_url' from resp, data is {**j_resp, "prior": self.access_token}
+        # j_resp, check for success
 
         return self.access_token

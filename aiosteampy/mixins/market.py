@@ -651,7 +651,7 @@ class MarketMixin(ConfirmationMixin, SteamCommunityPublicMixin):
         if _item_descriptions_map is None:
             _item_descriptions_map = {}
 
-        self._parse_item_descrs_from_my_listings(rj, _item_descriptions_map)
+        self._parse_item_descrs_from_my_listings_or_market_history(rj, _item_descriptions_map)
 
         active = self._parse_my_listings(rj["listings"], _item_descriptions_map)
         to_confirm = self._parse_my_listings(rj["listings_to_confirm"], _item_descriptions_map)
@@ -702,7 +702,7 @@ class MarketMixin(ConfirmationMixin, SteamCommunityPublicMixin):
             yield listings_data[0]
 
     @classmethod
-    def _parse_item_descrs_from_my_listings(
+    def _parse_item_descrs_from_my_listings_or_market_history(
         cls,
         data: dict[str, dict | list[dict]],
         item_descrs_map: T_SHARED_DESCRIPTIONS,
@@ -715,13 +715,13 @@ class MarketMixin(ConfirmationMixin, SteamCommunityPublicMixin):
                     if key not in item_descrs_map:
                         item_descrs_map[key] = cls._create_item_descr(mixed_data)
 
-        for listing_data in data["listings_to_confirm"]:
+        for listing_data in data.get("listings_to_confirm", ()):
             mixed_data = listing_data["asset"]
             key = create_ident_code(mixed_data["instanceid"], mixed_data["classid"], mixed_data["appid"])
             if key not in item_descrs_map:
                 item_descrs_map[key] = cls._create_item_descr(mixed_data)
 
-        for order_data in data["buy_orders"]:
+        for order_data in data.get("buy_orders", ()):
             descr_data = order_data["description"]
             key = create_ident_code(descr_data["instanceid"], descr_data["classid"], descr_data["appid"])
             if key not in item_descrs_map:
@@ -932,7 +932,7 @@ class MarketMixin(ConfirmationMixin, SteamCommunityPublicMixin):
         if _market_history_listings_map is None:
             _market_history_listings_map = {}
 
-        self._parse_item_descrs_from_my_listings(rj["assets"], _item_descriptions_map)
+        self._parse_item_descrs_from_my_listings_or_market_history(rj, _item_descriptions_map)
         self._parse_assets_for_history_listings(rj["assets"], _item_descriptions_map, _market_history_econ_items_map)
         self._parse_history_listings(rj, _market_history_econ_items_map, _market_history_listings_map)
 

@@ -9,6 +9,11 @@ PrivacySettingsCheckboxOptions: TypeAlias = Literal[1, 3]
 CommentPrivacySettingsOptions: TypeAlias = Literal[0, 1, 2]
 
 
+class SteamObjectResponse(TypedDict, total=False):
+    success: int
+    message: str  # optional, exists if success != 1
+
+
 class SellOrderTableData(TypedDict):
     price: str
     price_with_fee: str
@@ -20,8 +25,7 @@ class BuyOrderTableData(TypedDict):
     quantity: str
 
 
-class ItemOrdersHistogramData(TypedDict):
-    success: int
+class ItemOrdersHistogramData(SteamObjectResponse):
     sell_order_count: str
     sell_order_price: str
     sell_order_table: list[SellOrderTableData]
@@ -55,14 +59,12 @@ class Activity(TypedDict):
     persona_seller: str
 
 
-class ItemOrdersActivity(TypedDict):
-    success: int
+class ItemOrdersActivity(SteamObjectResponse):
     activity: list[Activity]
     timestamp: int
 
 
-class PriceOverview(TypedDict):
-    success: int
+class PriceOverview(SteamObjectResponse):
     lowest_price: str
     volume: str
     median_price: str
@@ -81,7 +83,7 @@ class TradeOffersSummary(TypedDict):
     escrow_sent_count: int
 
 
-class WalletInfo(TypedDict):
+class WalletInfo(SteamObjectResponse):
     wallet_currency: int
     wallet_country: str
     wallet_state: str
@@ -94,7 +96,6 @@ class WalletInfo(TypedDict):
     wallet_delayed_balance: str
     wallet_max_balance: str
     wallet_trade_max_balance: str
-    success: int
     rwgrsn: int
 
 
@@ -103,10 +104,9 @@ class UserWallet(TypedDict):
     currency: str
 
 
-class FundWalletInfo(TypedDict):
+class FundWalletInfo(SteamObjectResponse):
     """From `https://store.steampowered.com/api/getfundwalletinfo`"""
 
-    success: int
     currency: str
     country_code: str
     alternate_min_amount: bool
@@ -184,3 +184,15 @@ class AvatarUploadData(TypedDict):
     hash: str
     images: AvatarUploadImagesData
     message: str
+
+
+class MarketSearchFilterOptionTag(TypedDict):
+    localized_name: str
+    matches: str
+
+
+class MarketSearchFilterOption(TypedDict):
+    appid: int
+    localized_name: str
+    name: str
+    tags: dict[str, MarketSearchFilterOptionTag]

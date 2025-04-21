@@ -1,6 +1,6 @@
 [tool.poetry]
 name = "aiosteampy"
-version = "0.7.6"
+version = "0.7.7"
 description = "Trade and interact with steam market, webapi, guard"
 license = "MIT"
 authors = ["Dmytro Tkachenko <itsme@somespecial.one>"]
@@ -65,6 +65,7 @@ mkdocs = "^1.5.3"
 mkdocs-material = "^9.4.7"
 mkdocs-git-revision-date-localized-plugin = "^1.2.1"
 mkdocs-include-markdown-plugin = "^6.0.3"
+mkdocs-open-in-new-tab = "^1.0.8"
 
 [tool.pytest.ini_options]
 testpaths = ["tests"]

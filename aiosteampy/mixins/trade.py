@@ -201,40 +201,45 @@ class TradeMixin(SteamWebApiMixin, SteamCommunityPublicMixin):
             raise EResultError("Failed to fetch trade offers", e.result, e.data) from e
 
         data: dict[str, dict | list[dict]] = rj["response"]
+        next_cursor = data.get("next_cursor", 0)
+
+        if "descriptions" not in data:  # no offers
+            return [], [], next_cursor
 
         self._update_item_descrs_map_from_trades(data["descriptions"], _item_descriptions_map)
 
         return (
             [self._create_trade_offer(d, _item_descriptions_map) for d in data.get("trade_offers_sent", ())],
             [self._create_trade_offer(d, _item_descriptions_map) for d in data.get("trade_offers_received", ())],
-            data.get("next_cursor", 0),
+            next_cursor,
         )
 
-    @overload
-    async def trade_offers(
-        self,
-        *,
-        time_historical_cutoff: int | datetime = ...,
-        sent: bool = ...,
-        received: bool = ...,
-        cursor: int = ...,
-        params: T_PARAMS = ...,
-        headers: T_HEADERS = ...,
-    ) -> AsyncIterator[T_TRADE_OFFERS_DATA]:
-        ...
-
-    @overload
-    async def trade_offers(
-        self,
-        *,
-        historical_only: Literal[True] = ...,
-        sent: bool = ...,
-        received: bool = ...,
-        cursor: int = ...,
-        params: T_PARAMS = ...,
-        headers: T_HEADERS = ...,
-    ) -> AsyncIterator[T_TRADE_OFFERS_DATA]:
-        ...
+    # PyCharm doesn't like overloads and AsyncIterators being combined, well so
+    # @overload
+    # async def trade_offers(
+    #     self,
+    #     *,
+    #     time_historical_cutoff: int | datetime = ...,
+    #     sent: bool = ...,
+    #     received: bool = ...,
+    #     cursor: int = ...,
+    #     params: T_PARAMS = ...,
+    #     headers: T_HEADERS = ...,
+    # ) -> AsyncIterator[T_TRADE_OFFERS_DATA]:
+    #     ...
+    #
+    # @overload
+    # async def trade_offers(
+    #     self,
+    #     *,
+    #     historical_only: Literal[True] = ...,
+    #     sent: bool = ...,
+    #     received: bool = ...,
+    #     cursor: int = ...,
+    #     params: T_PARAMS = ...,
+    #     headers: T_HEADERS = ...,
+    # ) -> AsyncIterator[T_TRADE_OFFERS_DATA]:
+    #     ...
 
     async def trade_offers(
         self,
@@ -288,6 +293,8 @@ class TradeMixin(SteamWebApiMixin, SteamCommunityPublicMixin):
             more_offers = bool(cursor)
 
             yield offers_data
+
+    # TODO async iterators over specific type of offers, like `sent_trade_offers`, `received_trade_offers`
 
     async def get_trade_offers_summary(self, *, params: T_PARAMS = {}, headers: T_HEADERS = {}) -> TradeOffersSummary:
         """

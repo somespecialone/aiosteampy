@@ -351,11 +351,20 @@ class MarketListing(BaseOrder):
 
     currency: Currency  # original currency
     fee: int
+    steam_fee: int
+    publisher_fee: int
 
     # probably Steam do not return converted values if fee and price is already in requested currency
     converted_currency: Currency | None
     converted_price: int | None
     converted_fee: int | None
+    converted_steam_fee: int
+    converted_publisher_fee: int
+
+    converted_price_per_unit: int
+    converted_fee_per_unit: int
+    converted_steam_fee_per_unit: int
+    converted_publisher_fee_per_unit: int
 
     def __post_init__(self):
         if not self.item.market_id:

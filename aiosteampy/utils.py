@@ -299,17 +299,17 @@ def get_jsonable_cookies(session: ClientSession) -> JSONABLE_COOKIE_JAR:
 def receive_to_buyer_pays(
     amount: int,
     *,
-    publisher_fee=0.1,
+    publisher_fee=0.10,
     steam_fee=0.05,
     wallet_fee_min=1,
     wallet_fee_base=0,
 ) -> tuple[int, int, int]:
     """
-    Convert `to_receive` amount in `buyer_pays`. Mostly needed for placing sell listing.
-    Works just like on sell listing window on steam.
+    Convert `to_receive` amount to `buyer_pays`. Mostly needed for placing sell listing.
+    Works just like function from sell listing window on `Steam`.
 
-    :param amount: amount in cents
-    :return: steam fee value, publisher fee value, buyer pays amount
+    :param amount: desired to receive amount in cents
+    :return: `Steam` fee value, publisher fee value, buyer pays amount
     """
 
     steam_fee_value = int(floor(max(amount * steam_fee, wallet_fee_min) + wallet_fee_base))
@@ -320,17 +320,17 @@ def receive_to_buyer_pays(
 def buyer_pays_to_receive(
     amount: int,
     *,
-    publisher_fee=0.1,
+    publisher_fee=0.10,
     steam_fee=0.05,
     wallet_fee_min=1,
     wallet_fee_base=0,
 ) -> tuple[int, int, int]:
     """
-    Convert `buyer_pays` amount in `to_receive`. Mostly needed for placing sell listing.
-    Works just like on sell listing window on steam.
+    Convert `buyer_pays` amount to `to_receive`. Mostly needed for placing sell listing.
+    Works just like function from sell listing window on `Steam`.
 
-    :param amount: amount in cents
-    :return: steam fee value, publisher fee value, amount to receive
+    :param amount: desired amount, that buyer must pay, in cents
+    :return: `Steam` fee value, publisher fee value, amount to receive
     """
 
     # I don't know how it works, it's just a copy of js function working on inputs in steam front
@@ -497,14 +497,15 @@ def add_cookie_to_session(
 
 def calc_market_listing_fee(price: int, *, wallet_fee=0.05, publisher_fee=0.10, minimal_fee=1) -> int:
     """
-    Calculate market fee for listing.
+    Calculate total market fee for listing.
 
     Use `get_wallet_info` method of the client to see fees values for specified `Steam` account
 
-    :param price: price of market listing
-    :param wallet_fee:
-    :param publisher_fee:
+    :param price: price of market listing without fee (subtotal)
+    :param wallet_fee: steam fee. Defaults to 0.05 (5%)
+    :param publisher_fee: app publisher fee. Defaults to 0.10 (10%)
     :param minimal_fee: minimal fee value
     :return: calculated fee of price as integer
     """
+
     return (floor(price * wallet_fee) or minimal_fee) + (floor(price * publisher_fee) or minimal_fee)

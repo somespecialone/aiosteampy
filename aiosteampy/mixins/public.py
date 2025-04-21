@@ -7,7 +7,7 @@ from aiohttp import ClientResponseError
 
 from ..constants import STEAM_URL, App, AppContext, Currency, T_PARAMS, T_HEADERS, EResult
 from ..helpers import currency_required
-from ..typed import ItemOrdersHistogramData, ItemOrdersActivity, PriceOverview
+from ..typed import ItemOrdersHistogramData, ItemOrdersActivity, PriceOverview, MarketSearchFilterOption
 from ..exceptions import EResultError, SteamError, RateLimitExceeded, ResourceNotModified
 from ..utils import create_ident_code, find_item_nameid_in_text, parse_time, format_time, to_int_boolean
 from ..models import (
@@ -257,6 +257,8 @@ class SteamCommunityPublicMixin(SteamHTTPTransportMixin):
             more_items = bool(last_assetid)
 
             yield inventory_data
+
+    # TODO iteration over items
 
     @overload
     async def get_user_inventory_item(
@@ -721,6 +723,7 @@ class SteamCommunityPublicMixin(SteamHTTPTransportMixin):
 
     @classmethod
     def _create_market_listings(cls, data: dict, items_map: dict[str, MarketListingItem]) -> list[MarketListing]:
+        # casting to integers just to make sure that Steam didn't give us a surprise
         return [
             MarketListing(
                 id=int(l_data["listingid"]),
@@ -734,11 +737,19 @@ class SteamCommunityPublicMixin(SteamHTTPTransportMixin):
                 currency=Currency(int(l_data["currencyid"]) - 2000),
                 price=int(l_data["price"]),
                 fee=int(l_data["fee"]),
+                steam_fee=int(l_data["steam_fee"]),
+                publisher_fee=int(l_data["publisher_fee"]),
                 converted_currency=Currency(int(l_data["converted_currencyid"]) - 2000)
                 if "converted_currencyid" in l_data
                 else None,
                 converted_fee=int(l_data["converted_fee"]) if "converted_fee" in l_data else None,
                 converted_price=int(l_data["converted_price"]) if "converted_price" in l_data else None,
+                converted_steam_fee=int(l_data["converted_steam_fee"]),
+                converted_publisher_fee=int(l_data["converted_publisher_fee"]),
+                converted_price_per_unit=int(l_data["converted_price_per_unit"]),
+                converted_fee_per_unit=int(l_data["converted_fee_per_unit"]),
+                converted_steam_fee_per_unit=int(l_data["converted_steam_fee_per_unit"]),
+                converted_publisher_fee_per_unit=int(l_data["converted_publisher_fee_per_unit"]),
             )
             for l_data in data["listinginfo"].values()
             # due to "0", ignore items with no amount and prices (supposedly purchased)
@@ -909,7 +920,7 @@ class SteamCommunityPublicMixin(SteamHTTPTransportMixin):
 
         return find_item_nameid_in_text(text)
 
-    async def get_market_search_app_filters(self, app: App) -> dict:
+    async def get_market_search_app_filters(self, app: App) -> dict[str, MarketSearchFilterOption]:
         """
         Fetch app filters facets for market search.
         You can see them when click on `Show advanced options...`
@@ -925,7 +936,7 @@ class SteamCommunityPublicMixin(SteamHTTPTransportMixin):
         if success is not EResult.OK:
             raise EResultError(rj.get("message", "Failed to get app filters for market search"), success, rj)
 
-        return rj
+        return rj["facets"]
 
     async def get_market_search_results(
         self,

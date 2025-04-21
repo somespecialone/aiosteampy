@@ -518,13 +518,13 @@ class OrderGraphEntry(NamedTuple):
 @dataclass(eq=False, slots=True)
 class ItemOrdersHistogram:
     sell_order_count: int
-    sell_order_price: int
+    sell_order_price: int | None
     sell_order_table: list[SellOrderTableEntry]
     buy_order_count: int
-    buy_order_price: int
+    buy_order_price: int | None
     buy_order_table: list[BuyOrderTableEntry]
-    highest_buy_order: int
-    lowest_sell_order: int
+    highest_buy_order: int | None
+    lowest_sell_order: int | None
 
     # prices in integers (cents)!
     buy_order_graph: list[OrderGraphEntry]

@@ -441,7 +441,7 @@ class SteamCommunityPublicMixin(SteamHTTPTransportMixin):
                     cls._parse_item_order_histogram_price(d["price_with_fee"]),
                     cls._parse_item_order_histogram_count(d["quantity"]),
                 )
-                for d in data["sell_order_table"]
+                for d in data["sell_order_table"] or ()
             ],
             buy_order_count=cls._parse_item_order_histogram_count(data["buy_order_count"]),
             buy_order_price=cls._parse_item_order_histogram_price(data["buy_order_price"]),
@@ -450,10 +450,10 @@ class SteamCommunityPublicMixin(SteamHTTPTransportMixin):
                     cls._parse_item_order_histogram_price(d["price"]),
                     cls._parse_item_order_histogram_count(d["quantity"]),
                 )
-                for d in data["buy_order_table"]
+                for d in data["buy_order_table"] or ()
             ],
-            highest_buy_order=int(data["highest_buy_order"]),
-            lowest_sell_order=int(data["lowest_sell_order"]),
+            highest_buy_order=int(data["highest_buy_order"]) if data["highest_buy_order"] is not None else None,
+            lowest_sell_order=int(data["lowest_sell_order"]) if data["lowest_sell_order"] is not None else None,
             buy_order_graph=[OrderGraphEntry(int(d[0] * 100), d[1], d[2]) for d in data["buy_order_graph"]],
             sell_order_graph=[OrderGraphEntry(int(d[0] * 100), d[1], d[2]) for d in data["sell_order_graph"]],
             graph_max_y=data["graph_max_y"],
@@ -462,8 +462,10 @@ class SteamCommunityPublicMixin(SteamHTTPTransportMixin):
         )
 
     @staticmethod
-    def _parse_item_order_histogram_count(text: str) -> int:
-        if "." in text:
+    def _parse_item_order_histogram_count(text: str | int) -> int:
+        if type(text) is int:
+            return text
+        elif "." in text:
             count_raw = text.replace(".", "")
         elif "," in text:  # to be sure
             count_raw = text.replace(",", "")
@@ -473,7 +475,10 @@ class SteamCommunityPublicMixin(SteamHTTPTransportMixin):
         return int(count_raw)
 
     @staticmethod
-    def _parse_item_order_histogram_price(text: str) -> int:
+    def _parse_item_order_histogram_price(text: str | None) -> int | None:
+        if text is None:
+            return None
+
         raw_price = ITEM_ORDER_HIST_PRICE_RE.search(text).group(1)
 
         if "." not in raw_price and "," not in raw_price:

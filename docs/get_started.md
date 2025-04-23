@@ -1,12 +1,12 @@
 ## First words
 
-First of all, main entity to hold all interaction with `SteamCommunity` is **client**. There is two type of **clients**:
+First of all, main entity to hold all interaction with `SteamCommunity` is **client**. There are two type of **clients**:
 
 * `SteamPublicClient` - for methods that do not require authentication, such as getting market data, listings,
   getting non-private inventory of users, etc...
 * `SteamClient` - all from `SteamPublicClient` plus methods related to personal `Steam` account: login, inventory of
   self, trade offers creation, declining, countering, buying market listings, creating sell orders and more.
-  This page contains examples based on this **client**.
+  _This page contains examples based on this **client**._
 
 ### Client creation, login and preparing
 
@@ -74,8 +74,6 @@ await client.cancel_sell_listing(listing_id)
 
 ```python
 from aiosteampy import AppContext, SteamClient
-
-client: SteamClient
 
 # get self inventory
 inv, _, _ = await client.get_inventory(AppContext.CS2)

@@ -6,11 +6,11 @@ site_description: Trade and interact with steam market, webapi, guard.
 repo_name: aiosteampy
 repo_url: https://github.com/somespecialone/aiosteampy
 
-copyright: Copyright &copy; 2022 - 2024 By Somespecialone with 💛
+copyright: Copyright &copy; 2022 - 2025 By Somespecialone with 💛
 
 theme:
   name: material
-  custom_dir: docs/theme
+  custom_dir: docs/config/theme
   logo: logo.svg
   favicon: logo.svg
   icon:
@@ -39,7 +39,7 @@ theme:
         name: Switch to dark mode
 
 extra_css:
-  - theme/extra.css
+  - config/theme/extra.css
 
 extra:
   social:
@@ -59,6 +59,7 @@ plugins:
   - git-revision-date-localized:
       type: date
   - include-markdown
+  - open-in-new-tab
 
 markdown_extensions:
   - admonition

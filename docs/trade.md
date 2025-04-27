@@ -67,6 +67,18 @@ elif offer.status is TradeOfferStatus.CANCELED:
     print("Offer has been canceled")
 elif offer.status is TradeOfferStatus.INVALID_ITEMS:
     print("Offer contains invalid items")
+
+# Or, more briefly, using properties of the offer
+if offer.active:
+    print("Offer is active")
+elif offer.accepted:
+    print("Offer has been accepted")
+elif offer.declined:
+    print("Offer has been declined")
+elif offer.canceled:
+    print("Offer has been canceled")
+elif offer.countered:
+    print("Offer has been countered")
 ```
 
 ### Get Trade History

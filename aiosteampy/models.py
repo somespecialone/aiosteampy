@@ -386,7 +386,7 @@ class MarketListing(BaseOrder):
 
 @dataclass(eq=False, slots=True, kw_only=True)
 class BaseTradeOfferItem(EconItem):
-    description: ItemDescription | None  # sometimes data has no description, because of course
+    description: ItemDescription | None  # not active trade offers have no description on items
 
     def _set_tradable_after(self):
         if self.description is not None and self.description.market_tradable_restriction:
@@ -453,6 +453,14 @@ class BaseTradeOffer:
     @property
     def declined(self):
         return self.status is TradeOfferStatus.DECLINED
+
+    @property
+    def canceled(self):
+        return self.status is TradeOfferStatus.CANCELED
+
+    @property
+    def countered(self):
+        return self.status is TradeOfferStatus.COUNTERED
 
     def __hash__(self):
         return self.id

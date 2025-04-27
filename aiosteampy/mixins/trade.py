@@ -64,7 +64,8 @@ class TradeMixin(SteamWebApiMixin, SteamCommunityPublicMixin):
         if _item_descriptions_map is None:
             _item_descriptions_map = {}
 
-        self._update_item_descrs_map_from_trades(data["descriptions"], _item_descriptions_map)
+        if "descriptions" in data:
+            self._update_item_descrs_map_from_trades(data["descriptions"], _item_descriptions_map)
 
         return self._create_trade_offer(data["offer"], _item_descriptions_map)
 
@@ -94,7 +95,7 @@ class TradeMixin(SteamWebApiMixin, SteamCommunityPublicMixin):
     def _parse_items_for_trade(cls, items: list[dict], item_descrs_map: T_SHARED_DESCRIPTIONS) -> list[TradeOfferItem]:
         return [
             TradeOfferItem(
-                asset_id=a_data["assetid"],
+                asset_id=int(a_data["assetid"]),
                 amount=int(a_data["amount"]),
                 missing=a_data["missing"],
                 est_usd=int(a_data.get("est_usd", 0)),
@@ -203,10 +204,8 @@ class TradeMixin(SteamWebApiMixin, SteamCommunityPublicMixin):
         data: dict[str, dict | list[dict]] = rj["response"]
         next_cursor = data.get("next_cursor", 0)
 
-        if "descriptions" not in data:  # no offers
-            return [], [], next_cursor
-
-        self._update_item_descrs_map_from_trades(data["descriptions"], _item_descriptions_map)
+        if "descriptions" in data:
+            self._update_item_descrs_map_from_trades(data["descriptions"], _item_descriptions_map)
 
         return (
             [self._create_trade_offer(d, _item_descriptions_map) for d in data.get("trade_offers_sent", ())],

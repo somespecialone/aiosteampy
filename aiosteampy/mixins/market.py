@@ -1116,7 +1116,7 @@ class MarketMixin(ConfirmationMixin, SteamCommunityPublicMixin):
 
     async def fetch_price_history(
         self,
-        obj: str,
+        obj: str | ItemDescription,
         app: App = None,
         *,
         params: T_PARAMS = {},

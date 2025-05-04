@@ -39,7 +39,7 @@ As example, `MarketMixin` responsible for methods related to `SteamMarket`: buyi
 and more, `TradeMixin`, otherwise, responsible for methods related to trade offers: create, counter, decline, ...
 
 So, if you want to augment client behaviour, subclass `SteamClientBase` or `SteamPublicClientBase` for your needs. 
-This classes inherit all corresponding mixins. [Inheritance](./client.md#inheritance)
+Those classes inherit all corresponding mixins. [Mixins](./client.md#mixins-and-their-functionality)
 
 ### Exceptions
 

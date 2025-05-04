@@ -16,7 +16,7 @@ class EResultError(SteamError):
         self.data = data
 
     def __str__(self):
-        return self.msg
+        return f"{self.msg}; {self.result}"
 
 
 class LoginError(SteamError):

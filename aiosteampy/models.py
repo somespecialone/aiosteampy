@@ -414,16 +414,10 @@ class TradeOfferItem(BaseTradeOfferItem):
 
 @dataclass(eq=False, slots=True)
 class BaseTradeOffer:
-    id: int
-
     owner_id: int  # steam id64 of entity owner acc (SteamClient)
     partner_id: int  # id32
 
     status: TradeOfferStatus
-
-    @property
-    def trade_offer_id(self) -> int:
-        return self.id
 
     @property
     def partner_id64(self) -> int:
@@ -462,13 +456,15 @@ class BaseTradeOffer:
     def countered(self):
         return self.status is TradeOfferStatus.COUNTERED
 
-    def __hash__(self):
-        return self.id
-
 
 @dataclass(eq=False, slots=True)
 class TradeOffer(BaseTradeOffer):
     """Steam Trade Offer entity."""
+
+    trade_offer_id: int
+    """The trade offer's unique numeric ID"""
+    trade_id: int | None
+    """A numeric trade ID, if the offer was accepted"""
 
     is_our_offer: bool
 
@@ -487,6 +483,14 @@ class TradeOffer(BaseTradeOffer):
 
         for i in self.items_to_receive:
             i.owner_id = self.partner_id64
+
+    def __hash__(self):
+        return self.trade_offer_id
+
+    @property
+    def id(self) -> int:
+        """Alias for `trade_offer_id`"""
+        return self.trade_offer_id
 
     @property
     def sender(self) -> int:
@@ -509,10 +513,23 @@ class HistoryTradeOfferItem(BaseTradeOfferItem):
 
 @dataclass(eq=False, slots=True)
 class HistoryTradeOffer(BaseTradeOffer):
+    """Accepted trade offer entity from the history of trades."""
+
+    trade_id: int
+    """A numeric trade ID of an accepted offer"""
+
     time_init: datetime
 
     assets_received: list[HistoryTradeOfferItem]
     assets_given: list[HistoryTradeOfferItem]
+
+    def __hash__(self):
+        return self.trade_id
+
+    @property
+    def id(self) -> int:
+        """Alias for `trade_id`"""
+        return self.trade_id
 
 
 class SellOrderTableEntry(NamedTuple):

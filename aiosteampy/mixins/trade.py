@@ -5,7 +5,7 @@ from json import dumps as jdumps
 from yarl import URL
 
 from ..typed import TradeOffersSummary
-from ..constants import STEAM_URL, CORO, T_HEADERS, T_PARAMS, T_PAYLOAD, AppContext, App
+from ..constants import STEAM_URL, CORO, T_HEADERS, T_PARAMS, T_PAYLOAD, AppContext, App, EResult
 from ..exceptions import EResultError, SteamError
 from ..models import (
     TradeOffer,
@@ -32,7 +32,7 @@ class TradeMixin(SteamWebApiMixin, SteamCommunityPublicMixin):
 
     async def get_trade_offer(
         self,
-        offer_id: int,
+        trade_offer_id: int,
         *,
         params: T_PARAMS = {},
         headers: T_HEADERS = {},
@@ -41,14 +41,16 @@ class TradeMixin(SteamWebApiMixin, SteamCommunityPublicMixin):
         """
         Fetch trade offer from Steam.
 
-        :param offer_id:
+        .. seealso:: https://steamapi.xpaw.me/#IEconService/GetTradeOffer
+
+        :param trade_offer_id: trade offer id of the offer to fetch. Do not confuse it with `trade_id`
         :param params: extra params to pass to url
         :param headers: extra headers to send with request
         :raises EResultError: for ordinary reasons
         """
 
         params = {
-            "tradeofferid": offer_id,
+            "tradeofferid": trade_offer_id,
             "language": self.language,
             "get_descriptions": 1,
             **params,
@@ -57,7 +59,14 @@ class TradeMixin(SteamWebApiMixin, SteamCommunityPublicMixin):
         try:
             rj = await self.call_web_api(STEAM_URL.API.IEconService.GetTradeOffer, params=params, headers=headers)
         except EResultError as e:
-            raise EResultError("Failed to fetch trade offer", e.result, e.data) from e
+            if e.result is EResult.NO_MATCH:
+                raise EResultError(
+                    "Trade not found. Did you use `trade_id` instead of `trade_offer_id`?",
+                    e.result,
+                    e.data,
+                ) from e
+            else:
+                raise EResultError("Failed to fetch trade offer", e.result, e.data) from e
 
         data: dict[str, dict | list[dict]] = rj["response"]
 
@@ -78,7 +87,8 @@ class TradeMixin(SteamWebApiMixin, SteamCommunityPublicMixin):
 
     def _create_trade_offer(self, data: dict, item_descrs_map: T_SHARED_DESCRIPTIONS) -> TradeOffer:
         return TradeOffer(
-            id=int(data["tradeofferid"]),
+            trade_offer_id=int(data["tradeofferid"]),
+            trade_id=int(data["tradeid"]) if "tradeid" in data else None,
             owner_id=self.steam_id,
             partner_id=data["accountid_other"],
             is_our_offer=data["is_our_offer"],
@@ -151,7 +161,7 @@ class TradeMixin(SteamWebApiMixin, SteamCommunityPublicMixin):
         _item_descriptions_map: T_SHARED_DESCRIPTIONS = None,
     ) -> T_TRADE_OFFERS_DATA:
         """
-        Fetch trade offers from `Steam Web Api`.
+        Fetch trade offers from `Steam Web Api`. History trade offers are not included!
 
         .. note:: You can paginate by yourself passing `cursor` arg.
             Returned cursor with 0 value means that there is no more pages
@@ -256,8 +266,6 @@ class TradeMixin(SteamWebApiMixin, SteamCommunityPublicMixin):
         """
         Fetch trade offers from `Steam Web Api`. Return async iterator to paginate over offers pages.
 
-        .. note:: Method requires API key
-
         :param active_only: fetch active, changed since `time_historical_cutoff` tradeoffs only or not
         :param time_historical_cutoff: timestamp for `active_only`
         :param historical_only: opposite for `active_only`
@@ -318,16 +326,18 @@ class TradeMixin(SteamWebApiMixin, SteamCommunityPublicMixin):
 
     async def get_trade_receipt(
         self,
-        offer_id: int,
+        trade_id: int,
         *,
         params: T_PARAMS = {},
         headers: T_HEADERS = {},
         _item_descriptions_map: T_SHARED_DESCRIPTIONS = None,
     ) -> HistoryTradeOffer:
         """
-        Fetch single trade offer from history.
+        Fetch single trade offer from history of accepted trade offers.
 
-        :param offer_id:
+        .. seealso:: https://steamapi.xpaw.me/#IEconService/GetTradeStatus
+
+        :param trade_id: trade id of accepted trade offer. Do not confuse it with `trade_offer_id`
         :param params: extra params to pass to url
         :param headers: extra headers to send with request
         :return: `HistoryTradeOffer`
@@ -335,7 +345,7 @@ class TradeMixin(SteamWebApiMixin, SteamCommunityPublicMixin):
         """
 
         params = {
-            "tradeid": offer_id,
+            "tradeid": trade_id,
             "get_descriptions": 1,
             "language": self.language,
             **params,
@@ -343,7 +353,14 @@ class TradeMixin(SteamWebApiMixin, SteamCommunityPublicMixin):
         try:
             rj = await self.call_web_api(STEAM_URL.API.IEconService.GetTradeStatus, params=params, headers=headers)
         except EResultError as e:
-            raise EResultError("Failed to fetch trade receipt", e.result, e.data) from e
+            if e.result is EResult.NO_MATCH:
+                raise EResultError(
+                    "Trade not found. Did you use `trade_offer_id` instead of `trade_id`?",
+                    e.result,
+                    e.data,
+                ) from e
+            else:
+                raise EResultError("Failed to fetch trade receipt", e.result, e.data) from e
 
         if _item_descriptions_map is None:
             _item_descriptions_map = {}
@@ -366,10 +383,8 @@ class TradeMixin(SteamWebApiMixin, SteamCommunityPublicMixin):
         _item_descriptions_map: T_SHARED_DESCRIPTIONS = None,
     ) -> tuple[list[HistoryTradeOffer], int]:
         """
-        Fetch history trades with changed assets data.
+        Fetch accepted history trades with changed assets data.
         You can paginate by yourself with this method.
-
-        .. note:: Method requires API key
 
         :param max_trades: page size
         :param start_after_time: timestamp
@@ -411,7 +426,7 @@ class TradeMixin(SteamWebApiMixin, SteamCommunityPublicMixin):
 
     def _create_history_trade_offer(self, data: dict, item_descrs_map: T_SHARED_DESCRIPTIONS) -> HistoryTradeOffer:
         return HistoryTradeOffer(
-            id=int(data["tradeid"]),
+            trade_id=int(data["tradeid"]),
             owner_id=self.steam_id,
             partner_id=steam_id_to_account_id(int(data["steamid_other"])),
             time_init=datetime.fromtimestamp(data["time_init"]),
@@ -475,7 +490,7 @@ class TradeMixin(SteamWebApiMixin, SteamCommunityPublicMixin):
         if isinstance(obj, TradeOffer):
             if not obj.is_our_offer:
                 raise TypeError("You can't cancel not your offer! Are you trying to decline incoming offer?")
-            offer_id = obj.id
+            offer_id = obj.trade_offer_id
         else:
             offer_id = obj
         offer_data = await self.perform_action_with_offer(offer_id, "cancel", payload, headers)
@@ -497,7 +512,7 @@ class TradeMixin(SteamWebApiMixin, SteamCommunityPublicMixin):
         if isinstance(obj, TradeOffer):
             if obj.is_our_offer:
                 raise TypeError("You can't decline your offer! Are you trying to cancel outgoing offer?")
-            offer_id = obj.id
+            offer_id = obj.trade_offer_id
         else:
             offer_id = obj
         offer_data = await self.perform_action_with_offer(offer_id, "decline", payload, headers)
@@ -558,7 +573,7 @@ class TradeMixin(SteamWebApiMixin, SteamCommunityPublicMixin):
         if isinstance(obj, TradeOffer):
             if obj.is_our_offer:
                 raise TypeError("You can't accept your offer! Are you trying to cancel outgoing offer?")
-            offer_id = obj.id
+            offer_id = obj.trade_offer_id
             partner = obj.partner_id64
         else:  # int
             if not partner:
@@ -804,12 +819,12 @@ class TradeMixin(SteamWebApiMixin, SteamCommunityPublicMixin):
         """
 
         if isinstance(obj, TradeOffer):
-            offer_id = obj.id
+            offer_id = obj.trade_offer_id
             to_give_updated = [*obj.items_to_give, *to_give]
             to_receive_updated = [*obj.items_to_receive, *to_receive]
             if obj.is_our_offer:
                 raise TypeError("You can't counter your offer!")
-        else:  # trade id
+        else:  # trade offer id
             offer_id = obj
             to_give_updated = to_give
             to_receive_updated = to_receive

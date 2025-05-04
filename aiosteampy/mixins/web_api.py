@@ -106,17 +106,19 @@ class SteamWebApiMixin(ConfirmationMixin):
             else:
                 raise e
 
-        # https://github.com/DoctorMcKay/node-steam-tradeoffer-manager/blob/7d27ae16642ad810a44d1aed7837872b92392daf/lib/webapi.js#L56
         result = EResult(int(r.headers["X-Eresult"]))
-        if r.content.total_bytes > 0:
-            rj: dict = await r.json()
-            if len(rj) > 1 or len(rj.get("response", ())) > 0:
-                return rj
+        rj: dict | None = await r.json()  # read & parse content regardless of result
 
-        elif result is not EResult.OK:
+        # https://github.com/DoctorMcKay/node-steam-tradeoffer-manager/blob/7d27ae16642ad810a44d1aed7837872b92392daf/lib/webapi.js#L56
+        if result is EResult.FAIL and rj is not None and (len(rj) > 1 or len(rj.get("response", ())) > 0):
+            result = EResult.OK
+
+        if result is not EResult.OK:
             raise EResultError(f"Failed to make {method} request to '{url}'", result)
-        else:
-            raise SteamError("Invalid response")
+        elif rj is None:
+            raise SteamError("Invalid response", r)
+
+        return rj
 
     async def get_api_key(self) -> str:
         """

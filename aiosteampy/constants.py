@@ -11,6 +11,7 @@ _T = TypeVar("_T")
 CORO: TypeAlias = Coroutine[Any, Any, _T]
 
 
+# TODO StrEnum from stdlib for python 3.11+
 class StrEnum(str, Enum):
     """Enum with possibility to be a query param serializable"""
 

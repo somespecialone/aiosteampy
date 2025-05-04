@@ -25,12 +25,12 @@ sent_offers, received_offers, next_cursor = await client.get_trade_offers()
 
 # Print sent offers
 for offer in sent_offers:
-    print(f"Offer ID: {offer.id}, Partner: {offer.partner_id}, Status: {offer.status}")
+    print(f"Trade Offer ID: {offer.trade_offer_id}, Partner: {offer.partner_id}, Status: {offer.status}")
     print(f"Items to give: {len(offer.items_to_give)}, Items to receive: {len(offer.items_to_receive)}")
 
 # Print received offers
 for offer in received_offers:
-    print(f"Offer ID: {offer.id}, Partner: {offer.partner_id}, Status: {offer.status}")
+    print(f"Trade Offer ID: {offer.trade_offer_id}, Partner: {offer.partner_id}, Status: {offer.status}")
     print(f"Items to give: {len(offer.items_to_give)}, Items to receive: {len(offer.items_to_receive)}")
 ```
 
@@ -96,10 +96,36 @@ trades, total_history_trades = await client.get_trade_history()
 
 # Print trade history
 for trade in trades:
-    print(f"Trade ID: {trade.id}, Partner: {trade.partner_id}")
+    print(f"Trade ID: {trade.trade_id}, Partner: {trade.partner_id}")
     print(f"Assets given: {len(trade.assets_given)}, Assets received: {len(trade.assets_received)}")
     print(f"Time initiated: {trade.time_init}")
 ```
+
+!!! note "Trade history and IDs"
+    Trade history contains only **accepted** trades.
+    So, `Trade ID`s are not the same as `Trade Offer ID`s (say thank you, Valve)
+
+
+### Get Trade Receipt
+
+Get details of an **accepted** trade:
+
+```python
+from aiosteampy import SteamClient
+
+client = SteamClient(...)
+await client.login()
+
+trade_id = 1234567890  # trade ID of accepted trade offer from history
+
+# Get trade receipt
+history_trade_offer = await client.get_trade_receipt(trade_id)
+
+# Print receipt details
+for item in history_trade_offer.assets_given:
+    print(f"Given item: {item.description.market_name}, Old Asset ID: {item.asset_id}, New Asset ID: {item.new_asset_id}")
+```
+
 
 ### Get Trade Offers Summary
 
@@ -175,7 +201,7 @@ offer = await client.make_trade_offer(
     message="Let's trade!",
     fetch=True
 )
-print(f"Created offer: {offer.id}, Status: {offer.status}")
+print(f"Created offer: {offer.trade_offer_id}, Status: {offer.status}")
 ```
 
 ## Managing Trade Offers
@@ -269,22 +295,4 @@ if received_offers:
         message="Counter offer",
         partner_id=76561198123456789  # Partner's Steam ID
     )
-```
-
-## Trade Receipt
-
-Get details of a completed trade:
-
-```python
-from aiosteampy import SteamClient
-
-client = SteamClient(...)
-await client.login()
-
-# Get trade receipt
-receipt = await client.get_trade_receipt(1234567890)
-
-# Print receipt details
-for item in receipt.assets_given:
-    print(f"Given item: {item.description.market_name}, Asset ID: {item.asset_id}")
 ```

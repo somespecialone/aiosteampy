@@ -74,7 +74,7 @@ class ConfirmationMixin(LoginMixin):
     async def confirm_trade_offer(self, obj: int | TradeOffer) -> Confirmation:
         """Perform sell trade offer confirmation."""
 
-        conf = await self.get_confirmation(obj.id if isinstance(obj, TradeOffer) else obj)
+        conf = await self.get_confirmation(obj.trade_offer_id if isinstance(obj, TradeOffer) else obj)
         await self.allow_confirmation(conf)
 
         return conf

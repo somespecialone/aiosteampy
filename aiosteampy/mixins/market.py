@@ -1151,15 +1151,9 @@ class MarketMixin(ConfirmationMixin, SteamCommunityPublicMixin):
         if success is not EResult.OK:
             raise EResultError(rj.get("message", "Failed to fetch price history"), success, rj)
 
-        import re
-
         return [
             PriceHistoryEntry(
-                date=datetime.strptime(
-                    # Extract just the "Apr 08 2025" part from "Apr 08 2025 08: +0"
-                    re.match(r"([A-Za-z]+ \d+ \d+)", e_data[0]).group(1),
-                    "%b %d %Y"
-                ),
+                date=datetime.strptime(e_data[0].replace("+0", "+0000"), "%b %d %Y %H: %z"),
                 price=e_data[1],
                 daily_volume=int(e_data[2]),
             )

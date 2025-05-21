@@ -899,6 +899,8 @@ class SteamCommunityPublicMixin(SteamHTTPTransportMixin):
         :param headers: extra headers to send with request
         :return: `item_nameid`
         :raises RateLimitExceeded: when you hit rate limit
+        :raises ValueError: when failed to find item name id
+        :raises ClientResponseError: for arbitrary reasons
 
         .. seealso:: https://github.com/somespecialone/steam-item-name-ids
         """
@@ -909,16 +911,22 @@ class SteamCommunityPublicMixin(SteamHTTPTransportMixin):
             url = STEAM_URL.MARKET / f"listings/{app.value}/{obj}"
 
         try:
-            res = await self.session.get(url, headers=headers)
+            r = await self.session.get(url, headers=headers)
         except ClientResponseError as e:
             if e.status == 429:
                 raise RateLimitExceeded("You have been rate limited, rest for a while!") from e
             else:
                 raise e
 
-        text = await res.text()
+        text = await r.text()
 
-        return find_item_nameid_in_text(text)
+        res = find_item_nameid_in_text(text)
+        if not res:
+            raise ValueError(
+                "Couldn't find item name id in page. Are you sure that item exists and you pass full market name?"
+            )
+
+        return res
 
     async def get_market_search_app_filters(self, app: App) -> dict[str, MarketSearchFilterOption]:
         """

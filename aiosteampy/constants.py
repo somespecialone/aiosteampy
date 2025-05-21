@@ -1,5 +1,6 @@
 """Constants and enums, some types"""
 
+from sys import version_info
 from typing import TypeAlias, Any, TypeVar, Coroutine, Mapping
 from enum import Enum, IntEnum
 
@@ -11,13 +12,17 @@ _T = TypeVar("_T")
 CORO: TypeAlias = Coroutine[Any, Any, _T]
 
 
-# TODO StrEnum from stdlib for python 3.11+
-class StrEnum(str, Enum):
-    """Enum with possibility to be a query param serializable"""
+if version_info < (3, 11):
 
-    # also for params serialization, make `print` to show only value which complicates debugging a little
-    def __str__(self):
-        return self.value
+    class StrEnum(str, Enum):
+        """Enum with possibility to be a query param serializable"""
+
+        # also for params serialization, make `print` to show only value which complicates debugging a little
+        def __str__(self):
+            return self.value
+
+else:
+    from enum import StrEnum
 
 
 class App(IntEnum):

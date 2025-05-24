@@ -1,6 +1,7 @@
 """Abstract utils within `Steam` context and not"""
 
 import asyncio
+
 from base64 import b64decode, b64encode
 from datetime import datetime
 from struct import pack, unpack
@@ -15,7 +16,7 @@ from secrets import token_hex
 from re import search as re_search, compile as re_compile
 from json import loads as j_loads
 
-from aiohttp import ClientSession, ClientResponse
+from aiohttp import ClientSession, ClientResponse, MultipartWriter
 from yarl import URL
 
 from .typed import JWTToken
@@ -119,12 +120,17 @@ async def do_session_steam_auth(session: ClientSession, auth_url: str | URL) -> 
     :return: response with history, headers and data
     """
 
-    r = await session.get(auth_url)
+    r = await session.get(auth_url, allow_redirects=True)
     rt = await r.text()
 
     data = extract_openid_payload(rt)
 
-    return await session.post("https://steamcommunity.com/openid/login", data=data, allow_redirects=True)
+    mpwriter = MultipartWriter("form-data")
+    for field, field_value in data.items():
+        part = mpwriter.append(field_value)
+        part.set_content_disposition("form-data", name=field)
+
+    return await session.post("https://steamcommunity.com/openid/login", data=mpwriter, allow_redirects=True)
 
 
 def get_cookie_value_from_session(session: ClientSession, url: URL | str, field: str) -> str | None:

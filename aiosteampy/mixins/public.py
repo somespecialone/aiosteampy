@@ -737,23 +737,21 @@ class SteamCommunityPublicMixin(SteamHTTPTransportMixin):
                 currency=Currency(int(l_data["currencyid"]) - 2000),
                 price=int(l_data["price"]),
                 fee=int(l_data["fee"]),
-                steam_fee=int(l_data["steam_fee"]),
-                publisher_fee=int(l_data["publisher_fee"]),
+                steam_fee=int(l_data.get("steam_fee", 0)),
+                publisher_fee=int(l_data.get("publisher_fee", 0)),
                 converted_currency=Currency(int(l_data["converted_currencyid"]) - 2000)
                 if "converted_currencyid" in l_data
                 else None,
-                converted_fee=int(l_data["converted_fee"]) if "converted_fee" in l_data else None,
-                converted_price=int(l_data["converted_price"]) if "converted_price" in l_data else None,
-                converted_steam_fee=int(l_data["converted_steam_fee"]),
-                converted_publisher_fee=int(l_data["converted_publisher_fee"]),
-                converted_price_per_unit=int(l_data["converted_price_per_unit"]),
-                converted_fee_per_unit=int(l_data["converted_fee_per_unit"]),
-                converted_steam_fee_per_unit=int(l_data["converted_steam_fee_per_unit"]),
-                converted_publisher_fee_per_unit=int(l_data["converted_publisher_fee_per_unit"]),
+                converted_fee=int(l_data.get("converted_fee", 0)),
+                converted_price=int(l_data.get("converted_price", 0)),
+                converted_steam_fee=int(l_data.get("converted_steam_fee", 0)),
+                converted_publisher_fee=int(l_data.get("converted_publisher_fee", 0)),
+                converted_price_per_unit=int(l_data.get("converted_price_per_unit", 0)),
+                converted_fee_per_unit=int(l_data.get("converted_fee_per_unit", 0)),
+                converted_steam_fee_per_unit=int(l_data.get("converted_steam_fee_per_unit", 0)),
+                converted_publisher_fee_per_unit=int(l_data.get("converted_publisher_fee_per_unit", 0)),
             )
             for l_data in data["listinginfo"].values()
-            # due to "0", ignore items with no amount and prices (supposedly purchased)
-            if int(l_data["asset"]["amount"])
         ]
 
     @classmethod

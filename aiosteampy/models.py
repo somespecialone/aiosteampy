@@ -354,10 +354,10 @@ class MarketListing(BaseOrder):
     steam_fee: int
     publisher_fee: int
 
-    # probably Steam do not return converted values if fee and price is already in requested currency
+    # converted values are not presented in data if listing is sold
     converted_currency: Currency | None
-    converted_price: int | None
-    converted_fee: int | None
+    converted_price: int
+    converted_fee: int
     converted_steam_fee: int
     converted_publisher_fee: int
 
@@ -379,9 +379,13 @@ class MarketListing(BaseOrder):
         return self.price + self.fee
 
     @property
-    def total_converted_cost(self) -> int | None:
-        if self.converted_price is not None and self.converted_fee is not None:
-            return self.converted_price + self.converted_fee
+    def total_converted_cost(self) -> int:
+        return self.converted_price + self.converted_fee
+
+    @property
+    def is_sold(self) -> bool:
+        """If listing is sold and unavailable for purchase"""
+        return self.steam_fee == 0 and self.converted_fee == 0
 
 
 @dataclass(eq=False, slots=True, kw_only=True)

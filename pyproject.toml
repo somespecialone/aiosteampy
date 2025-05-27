@@ -1,17 +1,14 @@
-[tool.poetry]
+[project]
 name = "aiosteampy"
 version = "0.7.11"
 description = "Trade and interact with steam market, webapi, guard"
-license = "MIT"
-authors = ["Dmytro Tkachenko <itsme@somespecial.one>"]
+license = { text = "MIT" }
+authors = [{ name = "Dmytro Tkachenko", email = "itsme@somespecial.one" }]
 readme = "README.md"
-homepage = "https://aiosteampy.somespecial.one"
-repository = "https://github.com/somespecialone/aiosteampy"
-documentation = "https://aiosteampy.somespecial.one"
 keywords = ["steam", "trade", "steamguard", "asyncio", "steam-market"]
 classifiers = [
     "Framework :: AsyncIO",
-    "Development Status :: 3 - Alpha",
+    "Development Status :: 4 - Beta",
     "Intended Audience :: Developers",
     "Intended Audience :: Information Technology",
     "Topic :: Software Development",
@@ -28,36 +25,31 @@ classifiers = [
     "Programming Language :: Python :: 3.13",
     "Typing :: Typed",
 ]
+requires-python = ">=3.10"
+dependencies = [
+    "aiohttp (>=3.8,<4.0)",
+    "rsa (>=4.8,<5.0) ; python_version >= '3.10' and python_version < '4'",
+    "aenum (>=3.1.2,<4.0.0)",
+]
 
-include = ["LICENSE"]
-packages = [{ include = "aiosteampy" }]
+[project.optional-dependencies]
+converter = ["croniter>=2.0,<4.0"]
+socks = ["aiohttp-socks>=0.8.4,<1.0.0"]
+all = ["croniter>=2.0,<4.0", "aiohttp-socks>=0.8.4,<1.0.0"]
 
-[tool.poetry.urls]
+[project.urls]
+Homepage = "https://github.com/somespecialone/aiosteampy"
+Repository = "https://github.com/somespecialone/aiosteampy"
+Documentation = "https://aiosteampy.somespecial.one"
 "Bug Tracker" = "https://github.com/somespecialone/aiosteampy/issues"
 
-[tool.poetry.dependencies]
-python = "^3.10"
-aiohttp = "^3.8"
-rsa = "^4.8"
-aenum = ">=3.1.2, <4.0.0"
-croniter = { version = ">=2.0, <4.0", optional = true }
-aiohttp-socks = { version = ">=0.8.4, <1.0.0", optional = true }
-
-[tool.poetry.extras]
-converter = ["croniter"]
-socks = ["aiohttp-socks"]
-all = ["croniter", "aiohttp-socks"]
+[tool.poetry]
+requires-poetry = ">=2.0"
+packages = [{ include = "aiosteampy" }]
+include = [{ path = "LICENSE", format = "sdist" }]
 
 [tool.poetry.group.dev.dependencies]
 black = "^23.12.1"
-
-[tool.poetry.group.test]
-optional = true
-[tool.poetry.group.test.dependencies]
-pytest = "^7.2.0"
-pytest-asyncio = "^0.20.1"
-pytest-cov = "^4.0.0"
-python-dotenv = "^1.0.0"
 
 [tool.poetry.group.docs]
 optional = true
@@ -68,18 +60,14 @@ mkdocs-git-revision-date-localized-plugin = "^1.2.1"
 mkdocs-include-markdown-plugin = "^6.0.3"
 mkdocs-open-in-new-tab = "^1.0.8"
 
-[tool.pytest.ini_options]
-testpaths = ["tests"]
-asyncio_mode = "auto"
-markers = ["incremental"]
-
-[tool.coverage.run]
-source = ["aiosteampy"]
-omit = ["*/__init__.py"]
+#[tool.poetry.group.test]
+#optional = true
+#[tool.poetry.group.test.dependencies]
+# deps for testing
 
 [tool.black]
 line-length = 120
 
 [build-system]
-requires = ["poetry-core"]
+requires = ["poetry-core>=2.0.0,<3.0.0"]
 build-backend = "poetry.core.masonry.api"

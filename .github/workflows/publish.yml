@@ -22,7 +22,7 @@ jobs:
         with:
           python-version: '3.10'
           cache: poetry
-      - run: poetry install
+      - run: poetry sync --only main
 
       - name: Build distribution package
         run: poetry build

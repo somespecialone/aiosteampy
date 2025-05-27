@@ -25,7 +25,7 @@ jobs:
         with:
           python-version: '3.10'
           cache: poetry
-      - run: poetry install --with docs
+      - run: poetry sync --only docs
 
       - name: Build docs
         run: poetry run mkdocs build

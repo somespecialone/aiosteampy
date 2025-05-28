@@ -4,7 +4,7 @@ This document describes the utility and helper functions available in the `aiost
 
 ## Utils
 
-[Utils.py](https://github.com/somespecialone/aiosteampy/blob/master/aiosteampy/utils.py) in a repository
+[Utils.py](https://github.com/somespecialone/aiosteampy/blob/main/aiosteampy/utils.py) in a repository
 
 ### Authentication and Security
 
@@ -53,7 +53,7 @@ This document describes the utility and helper functions available in the `aiost
 
 ## Helpers
 
-[Heplers.py](https://github.com/somespecialone/aiosteampy/blob/master/aiosteampy/helpers.py) in a repository
+[Heplers.py](https://github.com/somespecialone/aiosteampy/blob/main/aiosteampy/helpers.py) in a repository
 
 
 ### Session Management

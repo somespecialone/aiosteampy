@@ -2,7 +2,7 @@ name: Docs
 
 on:
   push:
-    branches: [ master ]
+    branches: [ main ]
     paths: [ "mkdocs.yml", "docs/**", "README.md", "examples/**" ]
 
 concurrency:

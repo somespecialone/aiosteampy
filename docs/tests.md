@@ -33,10 +33,10 @@ And optional:
 * `TEST_GAME_CONTEXT_ID` - context id of that game.
 * `TEST_ASSET_ID` - asset id of item in inventory if you want to choose one.
 * `TEST_COOKIE_FILE_PATH` - string path to json serialized cookies file via
-  [utils/get_jsonable_cookies](https://github.com/somespecialone/aiosteampy/blob/master/aiosteampy/utils.py).
+  [utils/get_jsonable_cookies](https://github.com/somespecialone/aiosteampy/blob/main/aiosteampy/utils.py).
 
 !!! info ""
-    All env variables listed in [tests/data](https://github.com/somespecialone/aiosteampy/blob/master/tests/data.py)
+    All env variables listed in [tests/data](https://github.com/somespecialone/aiosteampy/blob/main/tests/data.py)
 
 !!! warning "Requirements"
     You need at least `one marketable item` in passed or default game inventory!

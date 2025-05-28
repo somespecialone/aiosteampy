@@ -8,7 +8,7 @@ hide:
 
 ---
 
-[aiosteampy/examples/session.py](https://github.com/somespecialone/aiosteampy/blob/master/examples/session.py)
+[aiosteampy/examples/session.py](https://github.com/somespecialone/aiosteampy/blob/main/examples/session.py)
 
 ```python
 {% include "../../examples/session.py" %}

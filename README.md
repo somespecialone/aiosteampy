@@ -19,10 +19,10 @@
 
 Previously this library was a soft fork of [bukson/steampy](https://github.com/bukson/steampy) with intend to
 provide asynchronous methods and proxies support.
-But now it _standalone_ project. 
+But now it _standalone_ project.
 
 > Created for steam trading purposes mostly.
-Inspired by [DoctorMcKay/node-steamcommunity](https://github.com/DoctorMcKay/node-steamcommunity)
+> Inspired by [DoctorMcKay/node-steamcommunity](https://github.com/DoctorMcKay/node-steamcommunity)
 
 ---
 
@@ -31,11 +31,11 @@ Inspired by [DoctorMcKay/node-steamcommunity](https://github.com/DoctorMcKay/nod
 <!--header-end-->
 
 > [!IMPORTANT]
-> The project is unstable and there might be some breaking changes in the future unless stable (**first major**) version 
+> The project is unstable and there might be some breaking changes in the future unless stable (**first major**) version
 > is released.
-> 
+>
 > Take a look at [TODO](#todo-)
-> 
+>
 > See full documentation [here](https://aiosteampy.somespecial.one/) 📖
 
 <!--install-start-->
@@ -54,12 +54,22 @@ pipenv install aiosteampy
 poetry add aiosteampy
 ```
 
-Project have some extras [currencies converter](https://aiosteampy.somespecial.one/ext/converter/),
-[socks proxies](https://aiosteampy.somespecial.one/proxies).
-To install them all, please, use `aiosteampy[all]` install target:
+```shell
+uv add aiosteampy
+```
+
+Project does have extras as [socks](https://aiosteampy.somespecial.one/proxies) proxies
+and currencies [converter](https://aiosteampy.somespecial.one/ext/converter/).
+
+Either of extras can be installed separately with the appropriate **installation target**:
+`aiosteampy[socks]` or `aiosteampy[converter]`.
+
+Or all extras at once `aiosteampy[all]`.
+
+An **UV** example
 
 ```shell
-poetry add aiosteampy[all]
+uv add aiosteampy[socks]
 ```
 
 <!--install-end-->
@@ -146,8 +156,8 @@ but not otherwise.
 ### v1.0.0
 
 - [ ] Tests with `Steam API` mocking. Target coverage ~70%. Key points (listings, inventory items, trade offers) testing
-suits is mandatory
-- [ ] Maturity, battle-testing in **more** different cases by **more** participants/users 
+  suits is mandatory
+- [ ] Maturity, battle-testing in **more** different cases by **more** participants/users
 
 ## Contribution 💛
 

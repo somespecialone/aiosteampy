@@ -1,8 +1,8 @@
 [project]
 name = "aiosteampy"
-version = "0.7.11"
+version = "0.7.12"
 description = "Trade and interact with steam market, webapi, guard"
-license = { text = "MIT" }
+license = "MIT"
 authors = [{ name = "Dmytro Tkachenko", email = "itsme@somespecial.one" }]
 readme = "README.md"
 keywords = ["steam", "trade", "steamguard", "asyncio", "steam-market"]
@@ -15,7 +15,6 @@ classifiers = [
     "Topic :: Software Development :: Libraries",
     "Topic :: Software Development :: Libraries :: Python Modules",
     "Operating System :: OS Independent",
-    "License :: OSI Approved :: MIT License",
     "Programming Language :: Python",
     "Programming Language :: Python :: 3",
     "Programming Language :: Python :: 3 :: Only",

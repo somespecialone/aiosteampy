@@ -66,6 +66,7 @@ class SteamCommunityPublicMixin(SteamHTTPTransportMixin):
         *,
         last_assetid: int = None,
         count=INV_COUNT,
+        start_assetid: int = None,
         params: T_PARAMS = {},
         headers: T_HEADERS = {},
         _item_descriptions_map: T_SHARED_DESCRIPTIONS = None,
@@ -81,6 +82,7 @@ class SteamCommunityPublicMixin(SteamHTTPTransportMixin):
         :param app_context: `Steam` app+context
         :param last_assetid:
         :param count: page size
+        :param start_assetid: start_assetid for partial inv fetch
         :param params: extra params to pass to url
         :param headers: extra headers to send with request
         :return: list of `EconItem`, total count of items in inventory, last asset id of the list
@@ -93,6 +95,8 @@ class SteamCommunityPublicMixin(SteamHTTPTransportMixin):
         params = {"l": self.language, "count": count, **params}
         if last_assetid:
             params["last_assetid"] = last_assetid
+        if start_assetid:
+            params["start_assetid"] = start_assetid
         headers = {"Referer": str(inv_url), **headers}
 
         try:
@@ -215,6 +219,7 @@ class SteamCommunityPublicMixin(SteamHTTPTransportMixin):
         *,
         last_assetid: int = None,
         count=INV_COUNT,
+        start_assetid: int = None,
         params: T_PARAMS = {},
         headers: T_HEADERS = {},
         _item_descriptions_map: T_SHARED_DESCRIPTIONS = None,
@@ -228,6 +233,7 @@ class SteamCommunityPublicMixin(SteamHTTPTransportMixin):
         :param app_context: `Steam` app+context
         :param last_assetid:
         :param count: page size
+        :param start_assetid: start_assetid for partial inv fetch
         :param params: extra params to pass to url
         :param headers: extra headers to send with request
         :return: `AsyncIterator` that yields list of `EconItem`, total count of items in inventory, last asset id of the list
@@ -248,6 +254,7 @@ class SteamCommunityPublicMixin(SteamHTTPTransportMixin):
                 app_context,
                 last_assetid=last_assetid,
                 count=count,
+                start_assetid=start_assetid,
                 params=params,
                 headers=headers,
                 _item_descriptions_map=_item_descriptions_map,

@@ -74,9 +74,7 @@ class SteamCommunityPublicMixin(SteamHTTPTransportMixin):
         """
         Fetches inventory of user.
 
-        .. note::
-            * You can paginate by yourself passing `last_assetid` arg
-            * `count` arg value that less than 2000 lead to responses with strange amount of assets
+        .. note:: You can paginate by yourself passing `start_assetid` arg
 
         :param steam_id: steamid64 of user
         :param app_context: `Steam` app+context
@@ -227,8 +225,6 @@ class SteamCommunityPublicMixin(SteamHTTPTransportMixin):
         """
         Fetches inventory of user. Return async iterator to paginate over inventory pages.
 
-        .. note:: `count` arg value that less than 2000 lead to responses with strange amount of assets
-
         :param steam_id: steamid64 of user
         :param app_context: `Steam` app+context
         :param last_assetid:
@@ -247,7 +243,8 @@ class SteamCommunityPublicMixin(SteamHTTPTransportMixin):
 
         more_items = True
         while more_items:
-            # browser do first request with count=75, receiving data with `last_assetid` only
+            # browser does the first request with count=75,
+            # receiving data with last_assetid if there are more items (and no assets for some apps, ex. CS2)
             # avoid excess destructuring
             inventory_data = await self.get_user_inventory(
                 steam_id,
@@ -259,13 +256,10 @@ class SteamCommunityPublicMixin(SteamHTTPTransportMixin):
                 headers=headers,
                 _item_descriptions_map=_item_descriptions_map,
             )
-            last_assetid = inventory_data[2]
-            # let's assume that field "last_assetid" always present with "more_items" so we can depend on it
-            more_items = bool(last_assetid)
+            start_assetid = inventory_data[2]
+            more_items = bool(inventory_data[2])
 
             yield inventory_data
-
-    # TODO iteration over items
 
     @overload
     async def get_user_inventory_item(
@@ -292,7 +286,7 @@ class SteamCommunityPublicMixin(SteamHTTPTransportMixin):
     ) -> EconItem | None:
         ...
 
-    # TODO start_assetid param to find specified asset id
+    # unfortunately, option with start_assetid does not work
     async def get_user_inventory_item(
         self,
         steam_id: int,

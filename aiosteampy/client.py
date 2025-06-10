@@ -341,6 +341,7 @@ class SteamClientBase(SteamPublicClientBase, ProfileMixin, MarketMixin, TradeMix
         *,
         last_assetid: int = None,
         count=INV_COUNT,
+        start_assetid: int = None,
         params: T_PARAMS = {},
         headers: T_HEADERS = {},
         _item_descriptions_map: T_SHARED_DESCRIPTIONS = None,
@@ -348,13 +349,12 @@ class SteamClientBase(SteamPublicClientBase, ProfileMixin, MarketMixin, TradeMix
         """
         Fetches self inventory.
 
-        .. note::
-            * You can paginate by yourself passing `last_assetid` arg
-            * `count` arg value that less than 2000 lead to responses with strange amount of assets
+        .. note:: You can paginate by yourself passing `start_assetid` arg
 
         :param app_context: `Steam` app+context
         :param last_assetid:
         :param count: page size
+        :param start_assetid: start_assetid for partial inv fetch
         :param params: extra params to pass to url
         :param headers: extra headers to send with request
         :return: list of `EconItem`, total count of items in inventory, last asset id of the list
@@ -369,6 +369,7 @@ class SteamClientBase(SteamPublicClientBase, ProfileMixin, MarketMixin, TradeMix
                 app_context,
                 last_assetid=last_assetid,
                 count=count,
+                start_assetid=start_assetid,
                 params=params,
                 headers=headers,
                 _item_descriptions_map=_item_descriptions_map,
@@ -385,6 +386,7 @@ class SteamClientBase(SteamPublicClientBase, ProfileMixin, MarketMixin, TradeMix
         *,
         last_assetid: int = None,
         count=INV_COUNT,
+        start_assetid: int = None,
         params: T_PARAMS = {},
         headers: T_HEADERS = {},
         _item_descriptions_map: T_SHARED_DESCRIPTIONS = None,
@@ -392,11 +394,10 @@ class SteamClientBase(SteamPublicClientBase, ProfileMixin, MarketMixin, TradeMix
         """
         Fetches self inventory. Return async iterator to paginate over inventory pages.
 
-        .. note:: `count` arg value that less than 2000 lead to responses with strange amount of assets
-
         :param app_context: `Steam` app+context
         :param last_assetid:
         :param count: page size
+        :param start_assetid: start_assetid for partial inv fetch
         :param params: extra params to pass to url
         :param headers: extra headers to send with request
         :return: `AsyncIterator` that yields list of `EconItem`, total count of items in inventory, last asset id of the list
@@ -410,6 +411,7 @@ class SteamClientBase(SteamPublicClientBase, ProfileMixin, MarketMixin, TradeMix
             app_context,
             last_assetid=last_assetid,
             count=count,
+            start_assetid=start_assetid,
             params=params,
             headers=headers,
             _item_descriptions_map=_item_descriptions_map,

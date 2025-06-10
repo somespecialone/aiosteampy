@@ -28,7 +28,7 @@ from .http import SteamHTTPTransportMixin
 
 
 # steam limit rules
-INV_COUNT = 5000
+INV_COUNT = 2000
 LISTING_COUNT = 10
 
 INVENTORY_URL = STEAM_URL.COMMUNITY / "inventory"

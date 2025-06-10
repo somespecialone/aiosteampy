@@ -1052,6 +1052,7 @@ class MarketMixin(ConfirmationMixin, SteamCommunityPublicMixin):
                     id=int(p_data["listingid"]),
                     currency=Currency(int(p_data["currencyid"]) - 2000),
                     received_currency=Currency(int(p_data["received_currencyid"]) - 2000),
+                    paid_amount=int(p_data["paid_amount"]),
                     paid_fee=int(p_data["paid_fee"]),
                     steam_fee=int(p_data["steam_fee"]),
                     publisher_fee=int(p_data["publisher_fee"]),

@@ -150,10 +150,11 @@ class EconItem:
 
     def _set_tradable_after(self):
         if self.description.market_tradable_restriction:
-            sep = "Tradable After "
+            sep = "Tradable/Marketable After "
             t_a_descr = next(filter(lambda d: sep in d.value, self.description.owner_descriptions or ()), None)
             if t_a_descr is not None:
-                self.tradable_after = datetime.strptime(t_a_descr.value, TRADABLE_AFTER_DATE_FORMAT)
+                date_string = t_a_descr.value.split(sep)[1]
+                self.tradable_after = datetime.strptime(date_string, TRADABLE_AFTER_DATE_FORMAT)
 
     @property
     def ident_code(self) -> str:
@@ -394,13 +395,15 @@ class BaseTradeOfferItem(EconItem):
 
     def _set_tradable_after(self):
         if self.description is not None and self.description.market_tradable_restriction:
+            sep = "Tradable/Marketable After "
             # cannot do super()._set_tradable_after() due to super exception
             t_a_descr = next(
-                filter(lambda d: "Tradable After " in d.value, self.description.owner_descriptions or ()),
+                filter(lambda d: sep in d.value, self.description.owner_descriptions or ()),
                 None,
             )
             if t_a_descr is not None:
-                self.tradable_after = datetime.strptime(t_a_descr.value, TRADABLE_AFTER_DATE_FORMAT)
+                date_string = t_a_descr.value.split(sep)[1]
+                self.tradable_after = datetime.strptime(date_string, TRADABLE_AFTER_DATE_FORMAT)
 
     @property
     def inspect_url(self) -> str | None:

@@ -446,4 +446,4 @@ class EResult(EnumWithMultipleValues):
     CLIENT_NO_LONGER_SUPPORTED = 119
 
 
-TRADABLE_AFTER_DATE_FORMAT = "Tradable After %b %d, %Y (%H:%M:%S) %Z"
+TRADABLE_AFTER_DATE_FORMAT = "%b %d, %Y (%H:%M:%S) %Z"

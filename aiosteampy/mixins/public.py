@@ -482,7 +482,7 @@ class SteamCommunityPublicMixin(SteamHTTPTransportMixin):
         if text is None:
             return None
 
-        raw_price = ITEM_ORDER_HIST_PRICE_RE.search(text).group(1)
+        raw_price = ITEM_ORDER_HIST_PRICE_RE.search(text.replace(" ","")).group(1)
 
         if "." not in raw_price and "," not in raw_price:
             price = int(raw_price) * 100  # add cents

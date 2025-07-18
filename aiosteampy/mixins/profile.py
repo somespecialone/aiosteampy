@@ -247,3 +247,15 @@ class ProfileMixin(LoginMixin):
             raise EResultError(rj.get("message", "Failed to upload avatar"), success, rj)
 
         return rj
+
+    # maybe that part belongs more to trade mixin
+    def trade_acknowledge(self):
+        """
+        Accept and acknowledge trade protection rules.
+        You need it only once before you can make trade offers
+        """
+
+        headers = {"Referer": str(self.profile_url / "tradeoffers/"), "Origin": str(STEAM_URL.COMMUNITY)}
+        data = {"sessionid": self.session_id, "message": 1}
+
+        return self.session.post(STEAM_URL.COMMUNITY / "trade/new/acknowledge", data=data, headers=headers)

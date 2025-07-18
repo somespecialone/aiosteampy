@@ -728,7 +728,17 @@ class TradeMixin(SteamWebApiMixin, SteamCommunityPublicMixin):
         rj = await r.json()
         offer_id = int(rj["tradeofferid"])
         if confirm and rj.get("needs_mobile_confirmation"):
-            conf = await self.confirm_trade_offer(offer_id)
+            try:
+                conf = await self.confirm_trade_offer(offer_id)
+            except EResultError as e:
+                if e.result is EResult.INVALID:
+                    raise EResultError(
+                        "Failed to confirm trade offer. Are you sure that you acknowledged protection rules?",
+                        EResult.INVALID,
+                    ) from e
+                else:
+                    raise e
+
             offer_id = conf.creator_id
 
         return await self.get_trade_offer(offer_id, headers=headers) if fetch else offer_id

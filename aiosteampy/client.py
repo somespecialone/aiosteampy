@@ -270,6 +270,8 @@ class SteamClientBase(SteamPublicClientBase, ProfileMixin, MarketMixin, TradeMix
         ):
             await self.edit_privacy_settings(inventory=3, inventory_gifts=True, profile=3)
 
+        await self.trade_acknowledge()
+
     async def get_wallet_info(self) -> WalletInfo:
         """
         Fetch wallet info from inventory page.

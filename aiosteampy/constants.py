@@ -221,6 +221,7 @@ class ConfirmationType(Enum):
     TRADE = 2
     LISTING = 3
     API_KEY = 4  # TODO find api key value
+    PURCHASE = 12
 
     @classmethod
     def get(cls, v: int) -> "ConfirmationType":

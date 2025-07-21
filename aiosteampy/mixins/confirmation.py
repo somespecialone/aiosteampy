@@ -5,7 +5,7 @@ from datetime import datetime
 
 from ..constants import STEAM_URL, ConfirmationType, AppContext, CORO, EResult
 from ..exceptions import EResultError, SessionExpired
-from ..models import Confirmation, MyMarketListing, EconItem, TradeOffer
+from ..models import Confirmation, MyMarketListing, EconItem, TradeOffer, MarketListing
 from ..utils import create_ident_code
 from .login import LoginMixin
 
@@ -79,6 +79,14 @@ class ConfirmationMixin(LoginMixin):
 
         return conf
 
+    async def confirm_market_purchase(self, confirmation_id: int) -> Confirmation:
+        """Perform market purchase confirmation."""
+
+        conf = await self.get_confirmation(confirmation_id)
+        await self.allow_confirmation(conf)
+
+        return conf
+
     async def get_confirmation(self, key: str | int, *, update_listings=True) -> Confirmation:
         """
         Fetch all confirmations from `Steam`, filter and get one.
@@ -111,6 +119,18 @@ class ConfirmationMixin(LoginMixin):
         confs and await self.allow_multiple_confirmations(confs)
         return confs
 
+    async def cancel_all_confirmations(self) -> list[Confirmation]:
+        """
+        Fetch all confirmations and cancel them with single request to `Steam`.
+
+        :return: list of allowed confirmations
+        :raises EResultError: for ordinary reasons
+        """
+
+        confs = await self.get_confirmations()
+        confs and await self.cancel_multiple_confirmations(confs)
+        return confs
+
     def allow_confirmation(self, conf: Confirmation) -> CORO[None]:
         """Shorthand for `send_confirmation(conf, 'allow')`."""
 
@@ -137,6 +157,11 @@ class ConfirmationMixin(LoginMixin):
         """Shorthand for `send_multiple_confirmations(conf, 'allow')`."""
 
         return self.send_multiple_confirmations(confs, "allow")
+
+    def cancel_multiple_confirmations(self, confs: list[Confirmation]) -> CORO[None]:
+        """Shorthand for `send_multiple_confirmations(conf, 'cancel')`."""
+
+        return self.send_multiple_confirmations(confs, "cancel")
 
     async def send_multiple_confirmations(self, confs: list[Confirmation], tag: CONF_OP_TAGS):
         """

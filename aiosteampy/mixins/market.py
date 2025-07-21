@@ -780,6 +780,9 @@ class MarketMixin(ConfirmationMixin, SteamCommunityPublicMixin):
             for o_data in orders
         ]
 
+    # TODO return None when confirmation needed
+    # it is possible that confirmation required for any purchase
+    # therefore we cannot return WalletInfo anymore
     @overload
     async def buy_market_listing(
         self,
@@ -787,7 +790,7 @@ class MarketMixin(ConfirmationMixin, SteamCommunityPublicMixin):
         *,
         payload: T_PAYLOAD = ...,
         headers: T_HEADERS = ...,
-    ) -> WalletInfo:
+    ) -> WalletInfo | None:
         ...
 
     @overload
@@ -801,7 +804,7 @@ class MarketMixin(ConfirmationMixin, SteamCommunityPublicMixin):
         fee: int = ...,
         payload: T_PAYLOAD = ...,
         headers: T_HEADERS = ...,
-    ) -> WalletInfo:
+    ) -> WalletInfo | None:
         ...
 
     @currency_required
@@ -815,7 +818,7 @@ class MarketMixin(ConfirmationMixin, SteamCommunityPublicMixin):
         fee: int = None,
         payload: T_PAYLOAD = {},
         headers: T_HEADERS = {},
-    ) -> WalletInfo:
+    ) -> WalletInfo | None:
         """
         Buy item listing from market.
         Unfortunately, `Steam` requires `referer` header to buy item,
@@ -876,7 +879,11 @@ class MarketMixin(ConfirmationMixin, SteamCommunityPublicMixin):
         )
         # ClientResponseError with code 502 [Bad Gateway] will be raised in case of insufficient balance, need
         # to do something with this somehow ...
-        rj: dict[str, dict[str, str]] = await r.json()
+        rj: dict[str, dict[str, str] | bool | int] = await r.json()
+        if rj.get("need_confirmation"):  # 406 status code also
+            await self.confirm_market_purchase(int(rj["confirmation"]["confirmation_id"]))
+            return
+
         wallet_info: WalletInfo = rj.get("wallet_info", {})
         success = EResult(wallet_info.get("success"))
         if success is not EResult.OK:

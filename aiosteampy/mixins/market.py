@@ -722,7 +722,10 @@ class MarketMixin(ConfirmationMixin, SteamCommunityPublicMixin):
                 item_descrs_map[key] = cls._create_item_descr(mixed_data)
 
         for order_data in data.get("buy_orders", ()):
-            descr_data = order_data["description"]
+            descr_data = order_data.get("description")
+            if not descr_data:  # ignore orders with invalid outdated descriptions
+                continue
+
             key = create_ident_code(descr_data["instanceid"], descr_data["classid"], descr_data["appid"])
             if key not in item_descrs_map:
                 item_descrs_map[key] = cls._create_item_descr(descr_data)

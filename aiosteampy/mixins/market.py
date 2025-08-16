@@ -783,17 +783,15 @@ class MarketMixin(ConfirmationMixin, SteamCommunityPublicMixin):
             for o_data in orders
         ]
 
-    # TODO return None when confirmation needed
-    # it is possible that confirmation required for any purchase
-    # therefore we cannot return WalletInfo anymore
     @overload
     async def buy_market_listing(
         self,
         obj: MarketListing,
         *,
+        confirmation_id: int = ...,
         payload: T_PAYLOAD = ...,
         headers: T_HEADERS = ...,
-    ) -> WalletInfo | None:
+    ) -> WalletInfo:
         ...
 
     @overload
@@ -805,9 +803,10 @@ class MarketMixin(ConfirmationMixin, SteamCommunityPublicMixin):
         app: App,
         *,
         fee: int = ...,
+        confirmation_id: int = ...,
         payload: T_PAYLOAD = ...,
         headers: T_HEADERS = ...,
-    ) -> WalletInfo | None:
+    ) -> WalletInfo:
         ...
 
     @currency_required
@@ -819,9 +818,10 @@ class MarketMixin(ConfirmationMixin, SteamCommunityPublicMixin):
         app: App = None,
         *,
         fee: int = None,
+        confirmation_id: int = 0,
         payload: T_PAYLOAD = {},
         headers: T_HEADERS = {},
-    ) -> WalletInfo | None:
+    ) -> WalletInfo:
         """
         Buy item listing from market.
         Unfortunately, `Steam` requires `referer` header to buy item,
@@ -836,6 +836,7 @@ class MarketMixin(ConfirmationMixin, SteamCommunityPublicMixin):
         :param fee: if fee of listing is different from default one,
             can be found on listing data in `Steam` under field `converted_fee`.
             If you don't know what this is - then you definitely do not need it
+        :param confirmation_id: id of market purchase confirmation
         :param payload: extra payload data
         :param headers: extra headers to send with request
         :return: wallet info
@@ -871,6 +872,7 @@ class MarketMixin(ConfirmationMixin, SteamCommunityPublicMixin):
             "fee": fee,
             "total": price + fee,
             "quantity": 1,
+            "confirmation": confirmation_id,
             **payload,
         }
         headers = {"Referer": str(STEAM_URL.MARKET / f"listings/{app.value}/{market_hash_name}"), **headers}
@@ -883,9 +885,19 @@ class MarketMixin(ConfirmationMixin, SteamCommunityPublicMixin):
         # ClientResponseError with code 502 [Bad Gateway] will be raised in case of insufficient balance, need
         # to do something with this somehow ...
         rj: dict[str, dict[str, str] | bool | int] = await r.json()
-        if rj.get("need_confirmation"):  # 406 status code also
-            await self.confirm_market_purchase(int(rj["confirmation"]["confirmation_id"]))
-            return
+        if rj.get("need_confirmation"):  # 406 status code, success 22 also
+            confirmation_id = int(rj["confirmation"]["confirmation_id"])
+            await self.confirm_market_purchase(confirmation_id)
+            return await self.buy_market_listing(
+                obj,
+                price,
+                market_hash_name,
+                app,
+                fee=fee,
+                confirmation_id=confirmation_id,
+                payload=payload,
+                headers=headers,
+            )
 
         wallet_info: WalletInfo = rj.get("wallet_info", {})
         success = EResult(wallet_info.get("success"))

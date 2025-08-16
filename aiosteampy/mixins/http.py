@@ -10,12 +10,7 @@ except ImportError:
     ProxyConnector = None
 
 from ..constants import STEAM_URL, Language
-from ..utils import (
-    get_cookie_value_from_session,
-    remove_cookie_from_session,
-    patch_session_with_http_proxy,
-    add_cookie_to_session,
-)
+from ..utils import get_cookie_value_from_session, remove_cookie_from_session, add_cookie_to_session
 
 SESSION_ID_COOKIE = "sessionid"
 LANG_COOKIE = "Steam_Language"
@@ -120,7 +115,7 @@ class SteamHTTPTransportMixin:
                 except ValueError as e:
                     raise InvalidURL(proxy) from e
 
-                session = patch_session_with_http_proxy(ClientSession(raise_for_status=True), proxy)
+                session = ClientSession(proxy=proxy, raise_for_status=True)
 
         elif session:
             if not session._raise_for_status:
@@ -133,12 +128,12 @@ class SteamHTTPTransportMixin:
 
         return session
 
-    # _proxy attr will be much easier, straight and less error-prone, why I need this?
+    # will return proxy url even if it is passed to ClientSession directly outside of init
     @property
     def proxy(self) -> str | None:
         """Proxy url in format `scheme://username:password@host:port` or `scheme://host:port`"""
 
-        if isinstance(self.session.connector, ProxyConnector or int):  # socks, int to avoid TypeError if None
+        if ProxyConnector is not None and isinstance(self.session.connector, ProxyConnector):
             c: ProxyConnector = self.session.connector
 
             scheme = str(c._proxy_type.name).lower()
@@ -147,19 +142,10 @@ class SteamHTTPTransportMixin:
             host = c._proxy_host
             port = c._proxy_port
 
+            if username and password:  # with auth
+                return f"{scheme}://{username}:{password}@{host}:{port}"
+            else:
+                return f"{scheme}://{host}:{port}"
+
         else:
-            def_arg: URL | None = signature(self.session._request).parameters["proxy"].default  # magic
-
-            if def_arg is None:  # client without proxy
-                return None
-
-            scheme = def_arg.scheme
-            username = def_arg.user
-            password = def_arg.password
-            host = def_arg.host
-            port = def_arg.port
-
-        if username and password:  # with auth
-            return f"{scheme}://{username}:{password}@{host}:{port}"
-        else:
-            return f"{scheme}://{host}:{port}"
+            return str(self.session._default_proxy)

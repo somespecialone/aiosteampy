@@ -1,6 +1,6 @@
 [project]
 name = "aiosteampy"
-version = "0.7.16"
+version = "0.7.17"
 description = "Trade and interact with steam market, webapi, guard"
 license = "MIT"
 authors = [{ name = "Dmytro Tkachenko", email = "itsme@somespecial.one" }]

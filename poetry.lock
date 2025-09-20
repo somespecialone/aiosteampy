@@ -1685,4 +1685,4 @@ socks = ["aiohttp-socks"]
 [metadata]
 lock-version = "2.1"
 python-versions = ">=3.10"
-content-hash = "0f5ce8846eeaefd2e963cc5bcb2b84893df635ecca2c7028e7178f834c391b38"
+content-hash = "df818b3d11456970d71417868aecc0fdb1dd4a97fe4d0d234a77fad35ae5b66b"

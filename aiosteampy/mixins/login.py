@@ -195,9 +195,12 @@ class LoginMixin(SteamGuardMixin):
         init_session and await self.session.get(STEAM_URL.COMMUNITY)
 
         session_data = await self._begin_auth_session_with_credentials()
-        client_id = session_data["response"]["client_id"]
-        request_id = session_data["response"]["request_id"]
-        steam_id = session_data["response"]["steamid"]  # steam id, if it needs to be retrieved
+        try:
+            client_id = session_data["response"]["client_id"]
+            request_id = session_data["response"]["request_id"]
+            steam_id = session_data["response"]["steamid"]  # steam id, if it needs to be retrieved
+        except KeyError:
+            raise LoginError("Could not obtain login data", session_data) from None
 
         await self._update_auth_session_with_steam_guard_code(client_id, steam_id)
         access_token, refresh_token = await self._poll_auth_session_status(client_id, request_id)

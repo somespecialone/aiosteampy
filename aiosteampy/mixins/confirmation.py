@@ -87,6 +87,14 @@ class ConfirmationMixin(LoginMixin):
 
         return conf
 
+    async def confirm_buy_order(self, confirmation_id: int) -> Confirmation:
+        """Perform placing market buy order confirmation."""
+
+        conf = await self.get_confirmation(confirmation_id)
+        await self.allow_confirmation(conf)
+
+        return conf
+
     async def get_confirmation(self, key: str | int, *, update_listings=True) -> Confirmation:
         """
         Fetch all confirmations from `Steam`, filter and get one.

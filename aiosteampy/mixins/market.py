@@ -452,6 +452,7 @@ class MarketMixin(ConfirmationMixin, SteamCommunityPublicMixin):
         price: int,
         quantity=1,
         fetch=False,
+        confirmation_id: int | None = None,
         payload: T_PAYLOAD = {},
         headers: T_HEADERS = {},
         _item_descriptions_map: T_SHARED_DESCRIPTIONS = None,
@@ -464,6 +465,7 @@ class MarketMixin(ConfirmationMixin, SteamCommunityPublicMixin):
         :param price: price of single item
         :param quantity: just quantity
         :param fetch: make request and return buy order
+        :param confirmation_id: id of market purchase confirmation
         :param payload: extra payload data
         :param headers: extra headers to send with request
         :return: buy order id or `BuyOrder`
@@ -485,9 +487,26 @@ class MarketMixin(ConfirmationMixin, SteamCommunityPublicMixin):
             "quantity": quantity,
             **payload,
         }
+        if confirmation_id is not None:
+            data["confirmation_id"] = confirmation_id
+
         headers = {"Referer": str(STEAM_URL.MARKET / f"listings/{app.value}/{name}"), **headers}
         r = await self.session.post(STEAM_URL.MARKET / "createbuyorder/", data=data, headers=headers)
         rj: dict = await r.json()
+        if rj.get("need_confirmation"):
+            confirmation_id = int(rj["confirmation"]["confirmation_id"])
+            await self.confirm_market_purchase(confirmation_id)
+            return await self.place_buy_order(
+                obj,
+                app,
+                price=price,
+                quantity=quantity,
+                fetch=fetch,
+                confirmation_id=confirmation_id,
+                payload=payload,
+                headers=headers,
+            )
+
         success = EResult(rj.get("success"))
         if success is not EResult.OK:
             raise EResultError(rj.get("message", "Failed to create buy order"), success, rj)
@@ -1214,3 +1233,7 @@ class MarketMixin(ConfirmationMixin, SteamCommunityPublicMixin):
     async def is_market_available(self) -> bool:
         info = await self.get_market_availability_info()
         return info[0]
+
+    # TODO get_buy_order_status
+    # https://steamcommunity.com/market/getbuyorderstatus
+    # query params: sessionid, buy_orderid

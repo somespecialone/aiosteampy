@@ -23,6 +23,7 @@ from ..models import (
     BuyOrderTableEntry,
     OrderGraphEntry,
     MarketSearchItem,
+    AssetProperty,
 )
 from .http import SteamHTTPTransportMixin
 
@@ -142,6 +143,23 @@ class SteamCommunityPublicMixin(SteamHTTPTransportMixin):
             if key not in descrs_map:
                 descrs_map[key] = cls._create_item_descr(d_data)
 
+        properties_map: dict[str, tuple[AssetProperty, ...]] = {}
+        for properties_data in data.get("asset_properties", ()):
+            properties_list: list[AssetProperty] = []
+            for prop_data in properties_data["asset_properties"]:
+                prop_data: dict[str, int | str]
+
+                if "float_value" in prop_data:
+                    value = float(prop_data["float_value"])
+                elif "int_value" in prop_data:
+                    value = int(prop_data["int_value"])
+                else:
+                    value = None  # there is definitely a value, but we neglect it
+
+                properties_list.append(AssetProperty(prop_data["propertyid"], prop_data["name"], value))
+
+            properties_map[properties_data["assetid"]] = tuple(properties_list)
+
         return [
             EconItem(
                 asset_id=int(a_data["assetid"]),
@@ -149,6 +167,7 @@ class SteamCommunityPublicMixin(SteamHTTPTransportMixin):
                 amount=int(a_data["amount"]),
                 description=descrs_map[create_ident_code(a_data["instanceid"], a_data["classid"], a_data["appid"])],
                 app_context=AppContext((App(int(a_data["appid"])), int(a_data["contextid"]))),
+                properties=properties_map.get(a_data["assetid"], ()),
             )
             for a_data in data["assets"]
         ]
@@ -482,7 +501,7 @@ class SteamCommunityPublicMixin(SteamHTTPTransportMixin):
         if text is None:
             return None
 
-        raw_price = ITEM_ORDER_HIST_PRICE_RE.search(text.replace(" ","")).group(1)
+        raw_price = ITEM_ORDER_HIST_PRICE_RE.search(text.replace(" ", "")).group(1)
 
         if "." not in raw_price and "," not in raw_price:
             price = int(raw_price) * 100  # add cents

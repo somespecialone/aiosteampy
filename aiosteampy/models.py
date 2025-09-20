@@ -36,6 +36,12 @@ class ItemTag(NamedTuple):
     color: str | None  # hexadecimal
 
 
+class AssetProperty(NamedTuple):
+    id: int
+    name: str
+    value: str | int | float | None
+
+
 @dataclass(eq=False, slots=True, frozen=True, kw_only=True)
 class ItemDescription:
     """
@@ -140,6 +146,8 @@ class EconItem:
 
     description: ItemDescription
     tradable_after: datetime | None = field(init=False, default=None)
+
+    properties: tuple[AssetProperty, ...] = ()
 
     def __post_init__(self):
         self._set_ident_code()

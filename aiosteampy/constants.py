@@ -67,6 +67,7 @@ class AppContext(Enum):
     # predefined
     CS2 = App.CS2, 2
     CSGO = CS2  # alias
+    CS2_PROTECTED = App.CS2, 16  # trade protection
 
     DOTA2 = App.DOTA2, 2
     H1Z1 = App.H1Z1, 2

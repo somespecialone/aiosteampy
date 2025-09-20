@@ -148,6 +148,7 @@ class EconItem:
     def _set_ident_code(self):
         self.id = create_ident_code(self.asset_id, self.app_context.context, self.app_context.app.value)
 
+    # TODO this. Also, protected_until, hold_until properties in 0.8.0
     def _set_tradable_after(self):
         if self.description.market_tradable_restriction:
             sep = "Tradable/Marketable After "
@@ -155,6 +156,14 @@ class EconItem:
             if t_a_descr is not None:
                 date_string = t_a_descr.value.split(sep)[1]
                 self.tradable_after = datetime.strptime(date_string, TRADABLE_AFTER_DATE_FORMAT)
+                return
+
+            sep = "This item is trade-protected and cannot be consumed, modified, or transferred until "
+            t_a_descr = next(filter(lambda d: sep in d.value, self.description.owner_descriptions or ()), None)
+            if t_a_descr is not None:
+                date_string = t_a_descr.value.split(sep)[1]
+                self.tradable_after = datetime.strptime(date_string, TRADABLE_AFTER_DATE_FORMAT)
+                return
 
     @property
     def ident_code(self) -> str:

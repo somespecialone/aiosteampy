@@ -452,7 +452,7 @@ class MarketMixin(ConfirmationMixin, SteamCommunityPublicMixin):
         price: int,
         quantity=1,
         fetch=False,
-        confirmation_id: int | None = None,
+        confirmation: int = 0,
         payload: T_PAYLOAD = {},
         headers: T_HEADERS = {},
         _item_descriptions_map: T_SHARED_DESCRIPTIONS = None,
@@ -465,7 +465,7 @@ class MarketMixin(ConfirmationMixin, SteamCommunityPublicMixin):
         :param price: price of single item
         :param quantity: just quantity
         :param fetch: make request and return buy order
-        :param confirmation_id: id of market purchase confirmation
+        :param confirmation: id of market purchase confirmation
         :param payload: extra payload data
         :param headers: extra headers to send with request
         :return: buy order id or `BuyOrder`
@@ -485,24 +485,28 @@ class MarketMixin(ConfirmationMixin, SteamCommunityPublicMixin):
             "market_hash_name": name,
             "price_total": price * quantity,
             "quantity": quantity,
+            "confirmation": confirmation,
             **payload,
         }
-        if confirmation_id is not None:
-            data["confirmation_id"] = confirmation_id
 
         headers = {"Referer": str(STEAM_URL.MARKET / f"listings/{app.value}/{name}"), **headers}
-        r = await self.session.post(STEAM_URL.MARKET / "createbuyorder/", data=data, headers=headers)
+        r = await self.session.post(
+            STEAM_URL.MARKET / "createbuyorder/",
+            data=data,
+            headers=headers,
+            raise_for_status=False,
+        )
         rj: dict = await r.json()
         if rj.get("need_confirmation"):
-            confirmation_id = int(rj["confirmation"]["confirmation_id"])
-            await self.confirm_market_purchase(confirmation_id)
+            confirmation = int(rj["confirmation"]["confirmation_id"])
+            await self.confirm_market_purchase(confirmation)
             return await self.place_buy_order(
                 obj,
                 app,
                 price=price,
                 quantity=quantity,
                 fetch=fetch,
-                confirmation_id=confirmation_id,
+                confirmation=confirmation,
                 payload=payload,
                 headers=headers,
             )

@@ -32,11 +32,39 @@ class App(IntEnum):
     CS2 = 730
     CSGO = CS2  # alias
 
-    DOTA2 = 570
-    H1Z1 = 433850
-    RUST = 252490
-    TF2 = 440
-    PUBG = 578080
+    DOTA2 = 570  # Dota 2
+    H1Z1 = 433850  # H1Z1 (Z1 Battle Royale)
+    RUST = 252490  # Rust
+    TF2 = 440  # Team Fortress 2
+    PUBG = 578080  # PUBG: Battlegrounds
+
+    KF2 = 232090  # Killing Floor 2
+    BANANA = 2923300  # Banana
+    DST = 322330  # Don't Starve Together
+    PD2 = 218620  # Payday 2
+    UNTURNED = 304930  # Unturned
+    ASIANCATS = 2667970  # 100 Asian Cats
+    ATS = 270880  # American Truck Simulator
+    ARMELLO = 290340  # Armello
+    BLOCKPOST = 706990  # Blockpost Legacy
+    BTOUR = 397900  # Business Tour - Online Multiplayer Board Game
+    CRABGAME = 1782210  # Crab Game
+    DEPTH = 274940  # Depth
+    ETS2 = 227300  # Euro Truck Simulator 2
+    FISHIDLE2 = 3037410  # Fish Idle 2: Underwater Mystery
+    GWYF = 431240  # Golf With Your Friends
+    GREMLINS = 369990  # Gremlins, Inc.
+    HEROSIEGE = 269210  # Hero Siege
+    MOVEORDIE = 323850  # Move or Die
+    MOE = 1371580  # Myth of Empires
+    PERFECTHEIST2 = 1521580  # Perfect Heist 2
+    RQO = 2962300  # Royal Quest Online
+    SPACEENG = 244850  # Space Engineers
+    SPEEDRUN = 207140  # SpeedRunners
+    STEAMVR = 250820  # SteamVR
+    THEFRONT = 2285150  # The Front
+    UPGUN = 1575870  # UpGun
+    LONGVINTER = 1635450  # Longvinter
 
     STEAM = 753
 

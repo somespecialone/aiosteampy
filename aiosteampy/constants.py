@@ -214,6 +214,7 @@ class TradeOfferStatus(Enum):
     CONFIRMATION_NEED = 9
     CANCELED_BY_SECONDARY_FACTOR = 10
     STATE_IN_ESCROW = 11
+    TRADE_REVERSED = 12
 
 
 # https://github.com/DoctorMcKay/node-steamcommunity/blob/master/resources/EConfirmationType.js

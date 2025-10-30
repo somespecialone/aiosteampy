@@ -1,7 +1,6 @@
 import asyncio
 from datetime import datetime, timedelta
 from base64 import b64encode
-import base64
 from time import time as time_time
 
 from aiohttp import ClientResponseError
@@ -25,6 +24,7 @@ from .guard import SteamGuardMixin
 # Import protobuf for new Steam auth API
 try:
     from .. import auth_pb2
+
     PROTOBUF_AVAILABLE = True
 except ImportError:
     PROTOBUF_AVAILABLE = False
@@ -254,15 +254,17 @@ class LoginMixin(SteamGuardMixin):
 
     async def _begin_auth_session_with_credentials(self) -> dict:
         pub_key, ts = await self._get_rsa_key()
-        
+
         if not PROTOBUF_AVAILABLE:
-            raise LoginError("Protobuf library is required for Steam authentication. Install it with: pip install protobuf")
-        
+            raise LoginError(
+                "Protobuf library is required for Steam authentication. Install it with: pip install protobuf"
+            )
+
         # Create device details message
         device_details = auth_pb2.CAuthentication_BeginAuthSessionViaCredentials_Request.DeviceDetails()
-        device_details.device_friendly_name = str(self.user_agent) if self.user_agent else "Unknown"
+        device_details.device_friendly_name = self.user_agent if self.user_agent else "Unknown"
         device_details.platform_type = auth_pb2.k_EAuthTokenPlatformType_WebBrowser
-        
+
         # Create auth session request
         session_request = auth_pb2.CAuthentication_BeginAuthSessionViaCredentials_Request()
         session_request.account_name = self.username
@@ -273,10 +275,10 @@ class LoginMixin(SteamGuardMixin):
         session_request.website_id = "Community"
         session_request.device_details.CopyFrom(device_details)
         session_request.additional_field = 8  # New required field by Steam
-        
+
         # Encode to protobuf and base64
-        encoded = base64.b64encode(session_request.SerializeToString()).decode("utf-8")
-        
+        encoded = b64encode(session_request.SerializeToString()).decode("utf-8")
+
         # Send request with protobuf encoding
         r = await self.session.post(
             STEAM_URL.API.IAuthService.BeginAuthSessionViaCredentials,
@@ -285,12 +287,12 @@ class LoginMixin(SteamGuardMixin):
             },
             headers=REFERER_HEADER,
         )
-        
+
         # Handle response (could be JSON or protobuf)
         if r.status == 200:
             if r.content_type == "application/json":
                 return await r.json()
-            elif r.content_type == 'application/x-protobuf' or r.content_type == 'application/octet-stream':
+            elif r.content_type == "application/x-protobuf" or r.content_type == "application/octet-stream":
                 binary_content = await r.read()
                 response = auth_pb2.CAuthentication_BeginAuthSessionViaCredentials_Response()
                 response.ParseFromString(binary_content)
@@ -298,10 +300,10 @@ class LoginMixin(SteamGuardMixin):
                     "response": {
                         "client_id": response.client_id,
                         "request_id": response.request_id,  # Keep as bytes
-                        "steamid": str(response.steamid)
+                        "steamid": str(response.steamid),
                     }
                 }
-        
+
         raise LoginError(f"Unexpected response: {r.status} {r.content_type}")
 
     async def _update_auth_session_with_steam_guard_code(self, client_id: str | int, steam_id: str | int):
@@ -330,8 +332,10 @@ class LoginMixin(SteamGuardMixin):
         """Get current auth session status from steam, return access_token and refresh_token"""
 
         if not PROTOBUF_AVAILABLE:
-            raise LoginError("Protobuf library is required for Steam authentication. Install it with: pip install protobuf")
-        
+            raise LoginError(
+                "Protobuf library is required for Steam authentication. Install it with: pip install protobuf"
+            )
+
         # Create poll request
         poll_req = auth_pb2.CAuthentication_PollAuthSessionStatus_Request()
         poll_req.client_id = client_id
@@ -340,10 +344,10 @@ class LoginMixin(SteamGuardMixin):
             poll_req.request_id = request_id
         else:
             poll_req.request_id = str(request_id).encode()
-        
+
         # Encode to protobuf and base64
-        encoded = base64.b64encode(poll_req.SerializeToString()).decode("utf-8")
-        
+        encoded = b64encode(poll_req.SerializeToString()).decode("utf-8")
+
         # Send request
         r = await self.session.post(
             STEAM_URL.API.IAuthService.PollAuthSessionStatus,
@@ -352,7 +356,7 @@ class LoginMixin(SteamGuardMixin):
             },
             headers=REFERER_HEADER,
         )
-        
+
         # Handle response
         if r.status == 200:
             if r.content_type == "application/json":
@@ -360,12 +364,12 @@ class LoginMixin(SteamGuardMixin):
                 if rj.get("response", {"had_remote_interaction": True})["had_remote_interaction"]:
                     raise LoginError("Error polling auth session status", rj)
                 return rj["response"]["access_token"], rj["response"]["refresh_token"]
-            elif r.content_type == 'application/x-protobuf' or r.content_type == 'application/octet-stream':
+            elif r.content_type == "application/x-protobuf" or r.content_type == "application/octet-stream":
                 binary_content = await r.read()
                 response = auth_pb2.CAuthentication_PollAuthSessionStatus_Response()
                 response.ParseFromString(binary_content)
                 return response.access_token, response.refresh_token
-        
+
         raise LoginError(f"Unexpected response during poll: {r.status} {r.content_type}")
 
     async def _finalize_login(self, nonce: str) -> dict:

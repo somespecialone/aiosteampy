@@ -7,43 +7,45 @@ on:
 
 concurrency:
   group: pages
-  cancel-in-progress: false
+  cancel-in-progress: true
 
 jobs:
   build:
     runs-on: ubuntu-latest
-    timeout-minutes: 10
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v5
         with:
           fetch-depth: 0
-      - uses: snok/install-poetry@v1
+      - uses: actions/setup-python@v6
+        with:
+          python-version: 3.x
+
+      - name: Install & setup Poetry
+        uses: snok/install-poetry@v1
         with:
           virtualenvs-create: true
           virtualenvs-in-project: true
-      - uses: actions/setup-python@v5
-        with:
-          python-version: '3.10'
-          cache: poetry
-      - run: poetry sync --only docs
+
+      - name: Install dependencies
+        run: poetry sync --only docs
 
       - name: Build docs
         run: poetry run mkdocs build
 
-      - uses: actions/upload-pages-artifact@v3
+      - uses: actions/upload-pages-artifact@v4
         with:
           path: site
 
   deploy:
     needs: build
     runs-on: ubuntu-latest
-    timeout-minutes: 10
     permissions:
       pages: write
       id-token: write
     environment:
       name: github-pages
       url: ${{ steps.deployment.outputs.page_url }}
+
     steps:
       - name: Deploy to GitHub Pages
         id: deployment

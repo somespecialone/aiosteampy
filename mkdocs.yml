@@ -1,6 +1,6 @@
 site_name: AIOSTEAMPY
 site_url: https://aiosteampy.somespecial.one
-site_author: Dmytro Tkachenko
+site_author: somespecialone
 site_description: Trade and interact with steam market, webapi, guard.
 
 repo_name: aiosteampy
@@ -49,10 +49,6 @@ extra:
       link: https://github.com/somespecialone
     - icon: fontawesome/solid/envelope
       link: mailto:itsme@somespecial.one
-    - icon: fontawesome/brands/linkedin
-      link: https://www.linkedin.com/in/somespecialone/
-#    - icon: fontawesome/solid/globe
-#      link: https://somespecial.one
 
 plugins:
   - search

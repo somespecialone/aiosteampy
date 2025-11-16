@@ -106,7 +106,7 @@ celerybeat.pid
 *.sage.py
 
 # Environments
-.env
+env/.env
 .venv
 env/
 venv/
@@ -137,3 +137,7 @@ dmypy.json
 
 # Cython debug symbols
 cython_debug/
+
+*.lock
+
+protobufs/generated/*

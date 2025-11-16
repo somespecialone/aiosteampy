@@ -2,22 +2,68 @@ name: Release
 
 on:
   push:
-    tags:
-      - v*
+    tags: [ v* ]
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref_name }}
+  cancel-in-progress: true
 
 jobs:
-  main:
+  build:
     runs-on: ubuntu-latest
-    timeout-minutes: 10
-    permissions:
-      contents: write
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v5
+      - uses: actions/setup-python@v6
+        with:
+          python-version: 3.x
 
-      # it would be nice to be able to generate changelogs there
+      - name: Install & setup Poetry
+        uses: snok/install-poetry@v1
+        with:
+          virtualenvs-create: false
 
-      - name: Create & publish release
+      - name: Build distribution package
+        run: poetry build
+
+      - name: Upload distribution package artifacts
+        uses: actions/upload-artifact@v5
+        with:
+          name: package-dist
+          path: dist
+
+  release:
+    runs-on: ubuntu-latest
+    needs: build
+    permissions:
+      id-token: write
+      contents: write
+      attestations: write
+    environment:
+      name: pypi
+      url: https://pypi.org/project/aiosteampy/
+
+    steps:
+      - uses: actions/download-artifact@v5
+        with:
+          name: package-dist
+          path: dist
+
+      - name: Generate attestation
+        uses: actions/attest-build-provenance@v3
+        with:
+          subject-path: dist/*
+
+#      TODO don't work! Check if files can be removed in github actions worker
+      - name: Remove attestation files
+        shell: bash
+        run: rm -f dist/*.publish.attestation
+
+      - name: Publish package distributions to PyPI
+        uses: pypa/gh-action-pypi-publish@release/v1
+
+      - name: Create GitHub Release
         uses: softprops/action-gh-release@v2
         with:
+          prerelease: ${{ contains(github.ref, 'a') || contains(github.ref, 'b') || contains(github.ref, 'rc') }}
           generate_release_notes: true
-# TODO add assets to releases. So, firstly build-publish and then release
+          files: dist/*

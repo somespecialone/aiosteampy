@@ -1,14 +1,12 @@
 [project]
 name = "aiosteampy"
-version = "0.7.19"
+version = "0.8.0a0"
 description = "Trade and interact with steam market, webapi, guard"
-license = "MIT"
-authors = [{ name = "Dmytro Tkachenko", email = "itsme@somespecial.one" }]
 readme = "README.md"
+license = "MIT"
+authors = [{ name = "somespecialone", email = "itsme@somespecial.one" }]
 keywords = ["steam", "trade", "steamguard", "asyncio", "steam-market"]
 classifiers = [
-    "Framework :: AsyncIO",
-    "Development Status :: 4 - Beta",
     "Intended Audience :: Developers",
     "Intended Audience :: Information Technology",
     "Topic :: Software Development",
@@ -18,23 +16,22 @@ classifiers = [
     "Programming Language :: Python",
     "Programming Language :: Python :: 3",
     "Programming Language :: Python :: 3 :: Only",
-    "Programming Language :: Python :: 3.10",
     "Programming Language :: Python :: 3.11",
     "Programming Language :: Python :: 3.12",
     "Programming Language :: Python :: 3.13",
+    "Programming Language :: Python :: 3.14",
     "Typing :: Typed",
+    "Framework :: AsyncIO",
 ]
-requires-python = ">=3.10"
+requires-python = ">=3.11"
 dependencies = [
     "aiohttp (>=3.11,<4.0)",
-    "rsa (>=4.8,<5.0) ; python_version >= '3.10' and python_version < '4'",
-    "aenum (>=3.1.2,<4.0.0)",
+    "rsa (>=4.8,<5.0) ; python_version >= '3.11' and python_version < '4'",
+    "betterproto2 (>=0.9.1,<1.0.0) ; python_version >= '3.11' and python_version < '4'"
 ]
 
 [project.optional-dependencies]
-converter = ["croniter>=2.0,<4.0"]
 socks = ["aiohttp-socks>=0.8.4,<1.0.0"]
-all = ["croniter>=2.0,<4.0", "aiohttp-socks>=0.8.4,<1.0.0"]
 
 [project.urls]
 Homepage = "https://github.com/somespecialone/aiosteampy"
@@ -42,27 +39,23 @@ Repository = "https://github.com/somespecialone/aiosteampy"
 Documentation = "https://aiosteampy.somespecial.one"
 "Bug Tracker" = "https://github.com/somespecialone/aiosteampy/issues"
 
+[dependency-groups]
+dev = [
+    "betterproto2-compiler (>=0.9.0,<1.0.0) ; python_version >= '3.11' and python_version < '4'",
+    "grpcio-tools (>=1.76.0,<2.0.0)",
+    "black",
+]
+docs = [
+    "mkdocs (>=1.6.1,<2.0.0)",
+    "mkdocs-material (>=9.6.22,<10.0.0)",
+    "mkdocs-git-revision-date-localized-plugin (>=1.4.7,<2.0.0)",
+    "mkdocs-include-markdown-plugin (>=7.2.0,<8.0.0)",
+    "mkdocs-open-in-new-tab (>=1.0.8,<2.0.0)",
+]
+
 [tool.poetry]
 requires-poetry = ">=2.0"
 packages = [{ include = "aiosteampy" }]
-include = [{ path = "LICENSE", format = "sdist" }]
-
-[tool.poetry.group.dev.dependencies]
-black = "^23.12.1"
-
-[tool.poetry.group.docs]
-optional = true
-[tool.poetry.group.docs.dependencies]
-mkdocs = "^1.5.3"
-mkdocs-material = "^9.4.7"
-mkdocs-git-revision-date-localized-plugin = "^1.2.1"
-mkdocs-include-markdown-plugin = "^6.0.3"
-mkdocs-open-in-new-tab = "^1.0.8"
-
-#[tool.poetry.group.test]
-#optional = true
-#[tool.poetry.group.test.dependencies]
-# deps for testing
 
 [tool.black]
 line-length = 120

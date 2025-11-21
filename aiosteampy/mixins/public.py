@@ -146,7 +146,7 @@ class SteamCommunityPublicMixin(SteamHTTPTransportMixin):
         properties_map: dict[str, tuple[AssetProperty, ...]] = {}
         for properties_data in data.get("asset_properties", ()):
             properties_list: list[AssetProperty] = []
-            for prop_data in properties_data["asset_properties"]:
+            for prop_data in (properties_data["asset_properties"] or {}):
                 prop_data: dict[str, int | str]
 
                 float_value = None

@@ -36,10 +36,28 @@ class ItemTag(NamedTuple):
     color: str | None  # hexadecimal
 
 
-class AssetProperty(NamedTuple):
+@dataclass(eq=True, frozen=True, slots=True)
+class AssetProperty:
     id: int
     name: str
     value: str | int | float | None
+    float_value: float | None = None
+    int_value: int | None = None
+
+    def __repr__(self) -> str:
+        parts = [f"id={self.id}"]
+        if self.name:
+            parts.append(f"name={self.name!r}")
+        if self.float_value is not None:
+            parts.append(f"float_value={self.float_value}")
+        elif self.int_value is not None:
+            parts.append(f"int_value={self.int_value}")
+        elif self.value is not None:
+            if isinstance(self.value, str) and len(self.value) > 20:
+                parts.append(f"value={self.value!r}")
+            else:
+                parts.append(f"value={self.value!r}")
+        return f"AssetProperty({', '.join(parts)})"
 
 
 @dataclass(eq=False, slots=True, frozen=True, kw_only=True)

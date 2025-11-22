@@ -146,17 +146,31 @@ class SteamCommunityPublicMixin(SteamHTTPTransportMixin):
         properties_map: dict[str, tuple[AssetProperty, ...]] = {}
         for properties_data in data.get("asset_properties", ()):
             properties_list: list[AssetProperty] = []
-            for prop_data in properties_data["asset_properties"]:
+            for prop_data in (properties_data["asset_properties"] or ()):
                 prop_data: dict[str, int | str]
 
+                float_value = None
+                int_value = None
+                value = None
+
                 if "float_value" in prop_data:
-                    value = float(prop_data["float_value"])
+                    float_value = float(prop_data["float_value"])
+                    value = float_value
                 elif "int_value" in prop_data:
-                    value = int(prop_data["int_value"])
+                    int_value = int(prop_data["int_value"])
+                    value = int_value
+                elif "string_value" in prop_data:
+                    value = prop_data["string_value"]
                 else:
                     value = None  # there is definitely a value, but we neglect it
 
-                properties_list.append(AssetProperty(prop_data["propertyid"], prop_data["name"], value))
+                properties_list.append(AssetProperty(
+                    prop_data["propertyid"],
+                    prop_data.get("name", ""),
+                    value,
+                    float_value=float_value,
+                    int_value=int_value
+                ))
 
             properties_map[properties_data["assetid"]] = tuple(properties_list)
 
@@ -797,6 +811,33 @@ class SteamCommunityPublicMixin(SteamHTTPTransportMixin):
                 for a_data in context_data.values():
                     key = create_ident_code(a_data["id"], context_id, app_id)
                     if key not in items_map:
+                        # Parse asset_properties if present
+                        properties_list: list[AssetProperty] = []
+                        if "asset_properties" in a_data:
+                            for prop_data in a_data["asset_properties"]:
+                                float_value = None
+                                int_value = None
+                                value = None
+
+                                if "float_value" in prop_data:
+                                    float_value = float(prop_data["float_value"])
+                                    value = float_value
+                                elif "int_value" in prop_data:
+                                    int_value = int(prop_data["int_value"])
+                                    value = int_value
+                                elif "string_value" in prop_data:
+                                    value = prop_data["string_value"]
+                                else:
+                                    value = None
+
+                                properties_list.append(AssetProperty(
+                                    prop_data["propertyid"],
+                                    prop_data.get("name", ""),
+                                    value,
+                                    float_value=float_value,
+                                    int_value=int_value
+                                ))
+
                         items_map[key] = MarketListingItem(
                             asset_id=int(a_data["id"]),
                             market_id=0,  # set in market listing post init
@@ -810,6 +851,7 @@ class SteamCommunityPublicMixin(SteamHTTPTransportMixin):
                                     app_id,
                                 )
                             ],
+                            properties=tuple(properties_list),
                         )
 
     # without async for proper type hinting in VsCode and PyCharm at least with `async for`

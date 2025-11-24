@@ -40,6 +40,8 @@ class AssetProperty(NamedTuple):
     id: int
     name: str
     value: str | int | float | None
+    float_value: float | None = None
+    int_value: int | None = None
 
 
 @dataclass(eq=False, slots=True, frozen=True, kw_only=True)

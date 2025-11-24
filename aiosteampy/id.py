@@ -91,80 +91,71 @@ class SteamID:
         if input_id is None:
             return
 
-        if isinstance(input_id, int) or input_id.isdigit():  # numeric formats
+        elif isinstance(input_id, int) or (isinstance(input_id, str) and input_id.isdigit()):  # numeric formats
             input_id = int(input_id)
 
             if input_id < 0:
                 raise ValueError("ID cannot be negative")
 
             elif input_id < 2**32:  # 32-bit account ID, public only
-                self._parse_32bit(input_id)
+                self.universe = Universe.PUBLIC
+                self.type = AccountType.INDIVIDUAL
+                self.instance = Instance.DESKTOP
+                self.account_id = input_id
 
             elif input_id < 2**64:  # and 64-bit
-                self._parse_64bit(input_id)
+                self.universe = Universe((input_id >> 56) & 0xFF)
+                self.type = AccountType((input_id >> 52) & 0xF)
+                self.instance = Instance((input_id >> 32) & ACCOUNT_INSTANCE_MASK)
+                self.account_id = input_id & ACCOUNT_ID_MASK
 
             else:
                 raise ValueError("ID is too large")
 
         elif isinstance(input_id, str):  # Steam2/3 formats
             # Handle Steam2 format: STEAM_X:Y:Z
-            if steam2_match := STEAM_2_FORMAT_RE.match(input_id):
-                self._parse_steam2(steam2_match)
+            if match := STEAM_2_FORMAT_RE.match(input_id):
+                universe_str, mod, account_id = match.groups()
+
+                universe = int(universe_str)
+                self.universe = Universe(universe or 1)  # 0 -> 1
+                self.type = AccountType.INDIVIDUAL
+                self.instance = Instance.DESKTOP
+                self.account_id = (int(account_id) * 2) + int(mod)
 
             # Handle Steam3 format: [T:U:A] or [T:U:A:I]
-            elif steam3_match := STEAM_3_FORMAT_RE.match(input_id):
-                self._parse_steam3(steam3_match)
+            elif match := STEAM_3_FORMAT_RE.match(input_id):
+                type_char, universe, account_id, instance = match.groups()
+
+                self.universe = Universe(int(universe))
+                self.account_id = int(account_id)
+
+                if instance:
+                    self.instance = Instance(int(instance))
+
+                # Handle special type characters
+                if type_char == "U":
+                    self.type = AccountType.INDIVIDUAL
+                    if instance is None:
+                        self.instance = Instance.DESKTOP
+                elif type_char == "c":
+                    self.instance |= CHAT_INSTANCE_FLAG_CLAN
+                    self.type = AccountType.CHAT
+                elif type_char == "L":
+                    self.instance |= CHAT_INSTANCE_FLAG_LOBBY
+                    self.type = AccountType.CHAT
+                else:
+                    for account_type, char in TYPE_CHARS.items():
+                        if char == type_char:
+                            self.type = account_type
+                    else:
+                        self.type = AccountType.INVALID
 
             else:
                 raise ValueError(f'Unknown SteamID input format: "{input_id}"')
 
-    def _parse_32bit(self, account_id: int):
-        self.universe = Universe.PUBLIC
-        self.type = AccountType.INDIVIDUAL
-        self.instance = Instance.DESKTOP
-        self.account_id = account_id
-
-    def _parse_64bit(self, id64: int):
-        self.universe = Universe((id64 >> 56) & 0xFF)
-        self.type = AccountType((id64 >> 52) & 0xF)
-        self.instance = Instance((id64 >> 32) & ACCOUNT_INSTANCE_MASK)
-        self.account_id = id64 & ACCOUNT_ID_MASK
-
-    def _parse_steam2(self, match: re.Match):
-        universe_str, mod, account_id = match.groups()
-
-        universe = int(universe_str)
-        self.universe = Universe(universe or 1)  # 0 -> 1
-        self.type = AccountType.INDIVIDUAL
-        self.instance = Instance.DESKTOP
-        self.account_id = (int(account_id) * 2) + int(mod)
-
-    def _parse_steam3(self, match: re.Match):
-        type_char, universe, account_id, instance = match.groups()
-
-        self.universe = Universe(int(universe))
-        self.account_id = int(account_id)
-
-        if instance:
-            self.instance = Instance(int(instance))
-
-        # Handle special type characters
-        if type_char == "U":
-            self.type = AccountType.INDIVIDUAL
-            if instance is None:
-                self.instance = Instance.DESKTOP
-        elif type_char == "c":
-            self.instance |= CHAT_INSTANCE_FLAG_CLAN
-            self.type = AccountType.CHAT
-        elif type_char == "L":
-            self.instance |= CHAT_INSTANCE_FLAG_LOBBY
-            self.type = AccountType.CHAT
         else:
-            for account_type, char in TYPE_CHARS.items():
-                if char == type_char:
-                    self.type = account_type
-            else:
-                self.type = AccountType.INVALID
+            raise ValueError(f'Unknown SteamID input type: "{type(input_id)}"')
 
     def is_valid(self) -> bool:
         """

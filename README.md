@@ -28,6 +28,17 @@ But now it _standalone_ project.
 
 [![Stand With Ukraine](https://raw.githubusercontent.com/vshymanskyy/StandWithUkraine/main/banner-direct-single.svg)](https://stand-with-ukraine.pp.ua)
 
+## 0.8
+
+The `0.7` line is now entering its sunset phase 🌇.
+`main` branch will receive only minor fixes as part of the final maintenance.
+
+All major development is now happening in the `0.8.0` branch.
+Expect significant changes that may break existing code, you can preview the **work-in-progress** 
+[here](https://github.com/somespecialone/aiosteampy/tree/0.8.0).
+
+Once the full migration to `0.8.0` is complete, the branch will be merged back into `main`.
+
 <!--header-end-->
 
 > [!IMPORTANT]

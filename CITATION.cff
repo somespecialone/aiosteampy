@@ -8,14 +8,12 @@ message: >-
   metadata from this file.
 type: software
 authors:
-  - given-names: Dmytro
-    family-names: Tkachenko
+  - given-names: Somespecialone
     email: itsme@somespecial.one
-repository-code: "https://github.com/somespecialone/aiosteampy"
-url: "https://aiosteampy.somespecial.one/"
-repository-artifact: "https://pypi.org/project/aiosteampy/"
-abstract: >-
-  Trade and interact with steam market, webapi, guard.
+repository-code: 'https://github.com/somespecialone/aiosteampy'
+url: 'https://aiosteampy.somespecial.one/'
+repository-artifact: 'https://pypi.org/project/aiosteampy/'
+abstract: 'Trade and interact with steam market, webapi, guard.'
 keywords:
   - python
   - asyncio

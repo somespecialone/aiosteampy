@@ -43,7 +43,7 @@ Documentation = "https://aiosteampy.somespecial.one"
 dev = [
     "betterproto2-compiler (>=0.9.0,<1.0.0) ; python_version >= '3.11' and python_version < '4'",
     "grpcio-tools (>=1.76.0,<2.0.0)",
-    "black",
+    "ruff",
 ]
 docs = [
     "mkdocs (>=1.6.1,<2.0.0)",
@@ -57,7 +57,7 @@ docs = [
 requires-poetry = ">=2.0"
 packages = [{ include = "aiosteampy" }]
 
-[tool.black]
+[tool.ruff]
 line-length = 120
 
 [build-system]

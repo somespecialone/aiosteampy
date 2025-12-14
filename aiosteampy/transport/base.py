@@ -1,132 +1,17 @@
-from typing import Literal, Any, Mapping, Self
-
-from dataclasses import dataclass, asdict, field
+from typing import Literal
 from abc import ABCMeta, abstractmethod
-from http.cookies import BaseCookie, Morsel
 
 from yarl import URL
+
+from .types import Headers, Payload, Params, HttpMethod
+from .exceptions import TransportError
+from .models import Cookie, TransportResponse
 
 from ..constants import CORO
 
 
-HttpMethod = Literal["GET", "POST", "PUT", "DELETE", "PATCH", "HEAD", "OPTIONS"]  # will be used first two, however
-Headers = Mapping[str, str]
-Params = Mapping[str, Any]
-Payload = Mapping[str, Any]
-
-
-_JSON_SAFE_COOKIE_DICT = dict[str, str | int | bool | dict[str, Any] | None]
-
-
-@dataclass(slots=True, eq=False)
-class Cookie:
-    """Universal cookie data model. RFC 6265"""
-
-    # https://www.rfc-editor.org/rfc/rfc6265#section-5.3
-
-    name: str
-    value: str
-
-    domain: str  # canonicalized host or domain attr
-    path: str = "/"  # safe default
-    host_only: bool = False  # if True cookie has been set with an empty domain, so it needs to be sent only to host
-
-    expires: str | None = None  # transport should convert it from max-age if that has precedence
-
-    # also safe defaults
-    http_only: bool = False
-    secure: bool = False
-    same_site: Literal["Lax", "Strict", "None"] | None = None
-
-    # https://developer.mozilla.org/en-US/docs/Web/HTTP/Reference/Headers/Set-Cookie#partitioned
-    partitioned: bool = False
-
-    # meta
-    comment: str = ""
-    created_at: int | None = None
-    last_accessed_at: int | None = None
-
-    # non‑standard attributes or future RFCs
-    extensions: dict[str, Any] = field(default_factory=dict)
-
-    def to_dict(self) -> _JSON_SAFE_COOKIE_DICT:
-        """Convert current model to a json-safe dict"""
-
-        return asdict(self)
-
-    @classmethod
-    def from_dict(cls, cookie: _JSON_SAFE_COOKIE_DICT) -> Self:
-        """Create `Cookie` from json-safe dict"""
-
-        cookie = cookie.copy()
-        inst = cls(
-            cookie.pop("name"),
-            cookie.pop("value"),
-            cookie.pop("domain"),
-            extensions=cookie.pop("extensions").copy(),
-        )
-
-        does_not_exist = ()  # :)
-        for name, value in cookie.items():
-            if getattr(inst, name, does_not_exist) is not does_not_exist:
-                setattr(inst, name, value)
-
-        return inst
-
-    @classmethod
-    def from_morsel(cls, m: Morsel, host_only: bool = False) -> Self:
-        """Create `Cookie` from Morsel"""
-
-        return Cookie(
-            m.key,
-            m.value,
-            m["domain"],
-            m["path"],
-            host_only=host_only,
-            expires=m["expires"],
-            http_only=m["httponly"],
-            secure=m["secure"],
-            same_site=m["samesite"],
-            comment=m["comment"],
-        )
-
-
 Cookies = list[Cookie]
-
-
-@dataclass(slots=True, eq=False)
-class TransportResponse:
-    """HTTP response model"""
-
-    status: int
-    """HTTP status code"""
-
-    headers: Headers
-    """Parsed HTTP headers of response"""
-
-    status_message: str | None = None
-    """HTTP status message, if any"""
-
-    content: str | bytes | Any | None = None  # decoded text, body bytes, parsed json, None
-    """Response content"""
-
-    @property
-    def ok(self) -> bool:
-        """If response status is successful (<400)"""
-        return self.status < 400
-
-    def raise_for_status(self):
-        """Raise exception if response status indicates error"""
-
-        if not self.ok:
-            raise TransportError(self)
-
-
-class TransportError(Exception):
-    """Raise when transport is unable to process request or response or get error status code"""
-
-    def __init__(self, response: TransportResponse | None = None):
-        self.response = response
+ResponseMode = Literal["bytes", "json", "text", "meta"]  # Enum is not worth it
 
 
 class BaseHTTPTransport(metaclass=ABCMeta):
@@ -156,8 +41,6 @@ class BaseHTTPTransport(metaclass=ABCMeta):
     """
 
     __slots__ = ()
-
-    SLOTS = ("_proxy",)
 
     def __init__(self, *, proxy: str | URL | None = None):
         self._proxy = URL(proxy) if proxy is not None else None
@@ -241,11 +124,8 @@ class BaseHTTPTransport(metaclass=ABCMeta):
         multipart: Payload | None,
         headers: Headers,
         follow_redirects: bool,
-        return_json: bool,
-        return_text: bool,
-        return_bytes: bool,
-        return_none: bool,
-    ) -> TransportResponse | None:
+        response_mode: ResponseMode,
+    ) -> TransportResponse:
         """
         Internal abstract method implementing actual HTTP request logic.
 
@@ -263,7 +143,7 @@ class BaseHTTPTransport(metaclass=ABCMeta):
             to transport's state by syncing them with the underlying client's cookie jar.
         4.  **Proxy Support**: Respect the `self.proxy` setting if configured.
         5.  **Response Formatting**: return filled `TransportResponse` object containing the processed response body
-            according to the `return_*` arguments.
+            according to the `response_mode*` argument.
         """
 
     async def request(
@@ -278,11 +158,8 @@ class BaseHTTPTransport(metaclass=ABCMeta):
         headers: Headers = None,
         follow_redirects: bool = True,
         raise_for_status: bool = True,
-        return_json: bool = False,
-        return_text: bool = False,
-        return_bytes: bool = False,
-        return_none: bool = False,
-    ) -> TransportResponse | None:
+        response_mode: ResponseMode = "bytes",
+    ) -> TransportResponse:
         """
         Perform HTTP request.
 
@@ -295,19 +172,13 @@ class BaseHTTPTransport(metaclass=ABCMeta):
         :param headers: specific HTTP headers for this request.
         :param follow_redirects: automatically follow redirects.
         :param raise_for_status: raise exception if response status indicates error.
-        :param return_json: return parsed JSON response body in `TransportResponse.content`.
-        :param return_text: return decoded text response body in `TransportResponse.content`.
-        :param return_bytes: return raw bytes response body in `TransportResponse.content`.
-        :param return_none: return None from method call.
+        :param response_mode: return response body (as `content` attribute) in specified format.
         :return: filled `TransportResponse` object.
         :raises TransportError: if unable to process response.
         """
 
         if sum(map(bool, [data, json, multipart])) > 1:
             raise ValueError("`data`, `json` and `multipart` args are mutually exclusive")
-
-        if sum([return_json, return_text, return_bytes, return_none]) > 1:
-            raise ValueError("Must be specified single return type")
 
         try:
             resp = await self._request(
@@ -319,10 +190,7 @@ class BaseHTTPTransport(metaclass=ABCMeta):
                 multipart=multipart,
                 headers=headers,
                 follow_redirects=follow_redirects,
-                return_json=return_json,
-                return_text=return_text,
-                return_bytes=return_bytes,
-                return_none=return_none,
+                response_mode=response_mode,
             )
 
         except TransportError:
@@ -330,7 +198,8 @@ class BaseHTTPTransport(metaclass=ABCMeta):
         except Exception as e:
             raise TransportError from e
 
-        raise_for_status and resp.raise_for_status()
+        if raise_for_status and not resp.ok:
+            raise TransportError(resp)
 
         return resp
 
@@ -342,10 +211,7 @@ class BaseHTTPTransport(metaclass=ABCMeta):
         headers: Headers | None = None,
         follow_redirects: bool = True,
         raise_for_status: bool = True,
-        return_json: bool = False,
-        return_text: bool = False,
-        return_bytes: bool = False,
-        return_none: bool = False,
+        response_mode: ResponseMode = "bytes",
     ) -> CORO[TransportResponse]:
         return self.request(
             "GET",
@@ -354,10 +220,7 @@ class BaseHTTPTransport(metaclass=ABCMeta):
             headers=headers,
             follow_redirects=follow_redirects,
             raise_for_status=raise_for_status,
-            return_json=return_json,
-            return_text=return_text,
-            return_bytes=return_bytes,
-            return_none=return_none,
+            response_mode=response_mode,
         )
 
     def post(
@@ -370,10 +233,7 @@ class BaseHTTPTransport(metaclass=ABCMeta):
         headers: Headers | None = None,
         follow_redirects: bool = True,
         raise_for_status: bool = True,
-        return_json: bool = False,
-        return_text: bool = False,
-        return_bytes: bool = False,
-        return_none: bool = False,
+        response_mode: ResponseMode = "bytes",
     ) -> CORO[TransportResponse]:
         return self.request(
             "POST",
@@ -384,10 +244,7 @@ class BaseHTTPTransport(metaclass=ABCMeta):
             headers=headers,
             follow_redirects=follow_redirects,
             raise_for_status=raise_for_status,
-            return_json=return_json,
-            return_text=return_text,
-            return_bytes=return_bytes,
-            return_none=return_none,
+            response_mode=response_mode,
         )
 
     async def close(self):

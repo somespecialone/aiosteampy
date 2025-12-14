@@ -5,9 +5,7 @@ _HEADER_TIME_FORMAT = "%a, %d %b %Y %H:%M:%S %Z"
 
 
 def parse_http_date(date: str) -> datetime:
-    """
-    Parse HTTP header/cookie time to a timezone naive datetime object
-    """
+    """Parse HTTP header/cookie time to a timezone naive datetime object"""
 
     return datetime.strptime(date, _HEADER_TIME_FORMAT)
 

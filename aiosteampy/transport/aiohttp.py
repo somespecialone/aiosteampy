@@ -1,4 +1,4 @@
-from http.cookies import BaseCookie
+from http.cookies import BaseCookie, Morsel
 
 from yarl import URL
 from aiohttp import ClientSession, JsonPayload, MultipartWriter
@@ -7,7 +7,7 @@ from .base import Cookie, TransportResponse, BaseHTTPTransport
 
 
 class AiohttpTransport(BaseHTTPTransport):
-    __slots__ = (*BaseHTTPTransport.SLOTS, "_session")
+    __slots__ = ("_proxy", "_session")
 
     def __init__(self, *, proxy=None):
         super().__init__(proxy=proxy)
@@ -46,13 +46,13 @@ class AiohttpTransport(BaseHTTPTransport):
         else:
             self._session.headers[name] = value
 
+    def _check_if_cookie_is_host_only(self, m: Morsel) -> bool:
+        return (m["domain"], m.key) in self._session.cookie_jar._host_only_cookies
+
     def get_cookie(self, url, name):
         for m in self._session.cookie_jar:
             if m.key == name and m["domain"] == url.host and m["path"] == url.path:
-                return Cookie.from_morsel(
-                    m,
-                    host_only=(m["domain"], m.key) in self._session.cookie_jar._host_only_cookies,
-                )
+                return Cookie.from_morsel(m, host_only=self._check_if_cookie_is_host_only(m))
 
     def add_cookie(self, cookie):
         c = BaseCookie({cookie.name: cookie.value})
@@ -78,8 +78,7 @@ class AiohttpTransport(BaseHTTPTransport):
 
     def get_cookies(self):
         return [
-            Cookie.from_morsel(m, host_only=(m["domain"], m.key) in self._session.cookie_jar._host_only_cookies)
-            for m in self._session.cookie_jar
+            Cookie.from_morsel(m, host_only=self._check_if_cookie_is_host_only(m)) for m in self._session.cookie_jar
         ]
 
     def close(self):
@@ -96,16 +95,13 @@ class AiohttpTransport(BaseHTTPTransport):
         multipart,
         headers,
         follow_redirects,
-        return_json,
-        return_text,
-        return_bytes,
-        return_none,
+        response_mode,
     ):
-        if multipart is not None:  # TODO this need to be tested/checked
+        if multipart is not None:
             data = MultipartWriter("form-data")
-            for line, line_val in multipart.items():
-                part = data.append(line_val)
-                part.set_content_disposition("form-data", name=line)
+            for k, val in multipart.items():
+                part = data.append(val)
+                part.set_content_disposition("form-data", name=k)
 
         aiohttp_resp = await self._session.request(
             method,
@@ -117,20 +113,20 @@ class AiohttpTransport(BaseHTTPTransport):
             allow_redirects=follow_redirects,
         )
 
-        if return_none:  # return value is not expected
-            return
+        if response_mode == "meta":  # body is not needed
+            content = None
+        elif response_mode == "text":
+            content = await aiohttp_resp.text()
+        elif response_mode == "json":
+            content = await aiohttp_resp.json()
+        else:  # bytes by default
+            content = await aiohttp_resp.read()
 
         resp = TransportResponse(
             status=aiohttp_resp.status,
-            status_message=aiohttp_resp.reason,
             headers={**aiohttp_resp.headers},  # hope there will be no problems with multi headers
+            content=content,
+            status_message=aiohttp_resp.reason,
         )
-
-        if return_bytes:
-            resp.content = await aiohttp_resp.read()
-        elif return_text:
-            resp.content = await aiohttp_resp.text()
-        elif return_json:
-            resp.content = await aiohttp_resp.json()
 
         return resp

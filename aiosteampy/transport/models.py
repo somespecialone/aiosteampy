@@ -7,7 +7,7 @@ from .types import JSON_SAFE_COOKIE_DICT, Headers
 
 @dataclass(slots=True, eq=False)
 class Cookie:
-    """Universal cookie data model. RFC 6265"""
+    """Universal cookie data model. **RFC 6265**."""
 
     # https://www.rfc-editor.org/rfc/rfc6265#section-5.3
 
@@ -37,13 +37,13 @@ class Cookie:
     extensions: dict[str, Any] = field(default_factory=dict)
 
     def to_dict(self) -> JSON_SAFE_COOKIE_DICT:
-        """Convert current model to a json-safe dict"""
+        """Convert current model to a json-safe dict."""
 
         return asdict(self)
 
     @classmethod
     def from_dict(cls, cookie: JSON_SAFE_COOKIE_DICT) -> Self:
-        """Create `Cookie` from json-safe dict"""
+        """Create ``Cookie`` from json-safe dict."""
 
         cookie = cookie.copy()
         inst = cls(
@@ -62,7 +62,7 @@ class Cookie:
 
     @classmethod
     def from_morsel(cls, m: Morsel, host_only: bool = True) -> Self:
-        """Create `Cookie` from Morsel"""
+        """Create ``Cookie`` from Morsel."""
 
         return Cookie(
             m.key,
@@ -80,20 +80,20 @@ class Cookie:
 
 @dataclass(slots=True, eq=False)
 class TransportResponse:
-    """HTTP response model"""
+    """HTTP response model."""
 
     status: int
-    """HTTP status code"""
+    """HTTP status code."""
     status_message: str | None = None
-    """HTTP status message, if any"""
+    """HTTP status message, if any."""
 
     headers: Headers = field(default_factory=dict)
-    """Parsed HTTP headers of response"""
+    """Parsed HTTP headers of response."""
 
     content: str | bytes | Any | None = None  # decoded text, body bytes, parsed json, None in case of no read
-    """Response content"""
+    """Response content."""
 
     @property
     def ok(self) -> bool:
-        """If response status is successful (<400)"""
+        """If response status is successful (<400)."""
         return self.status < 400

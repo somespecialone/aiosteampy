@@ -1,3 +1,5 @@
+"""Representation of `SteamIDs`."""
+
 import re
 
 from enum import IntEnum
@@ -18,7 +20,7 @@ CHAT_INSTANCE_FLAG_MMS_LOBBY = (ACCOUNT_INSTANCE_MASK + 1) >> 3
 
 
 class Universe(IntEnum):
-    """Steam universe types"""
+    """Steam universe types."""
 
     INVALID = 0
     PUBLIC = 1
@@ -28,7 +30,7 @@ class Universe(IntEnum):
 
 
 class AccountType(IntEnum):
-    """Steam account types"""
+    """Steam account types."""
 
     INVALID = 0
     INDIVIDUAL = 1
@@ -44,7 +46,7 @@ class AccountType(IntEnum):
 
 
 class Instance(IntEnum):
-    """Steam instance types"""
+    """Steam instance types."""
 
     ALL = 0
     DESKTOP = 1
@@ -70,17 +72,13 @@ TYPE_CHARS = {
 class SteamID:
     __slots__ = ("universe", "type", "instance", "account_id")
 
-    universe: Universe
-    type: AccountType
-    instance: Instance
-
     def __init__(self, input_id: str | int | None = None):
         """
-        Represents a Steam ID and provides methods for parsing and rendering
-        in various formats (Steam2, Steam3, 32-bit, 64-bit)
+        Represents a `Steam ID` and provides methods for parsing and rendering
+        in various formats (`Steam2`, `Steam3`, 32-bit, 64-bit).
 
-        :param input_id: Can be a 32/64-bit integer or string representation, a Steam2 format string (STEAM_X:Y:Z),
-            or a Steam3 format string ([U:X:Y]). If None, creates blank (invalid) ID
+        :param input_id: Can be a 32/64-bit integer or string representation, a `Steam2` format string ("STEAM_X:Y:Z"),
+            or a `Steam3` format string ("[U:X:Y]"). If None, creates blank (invalid) ID.
         """
 
         self.universe = Universe.INVALID
@@ -157,11 +155,12 @@ class SteamID:
         else:
             raise ValueError(f'Unknown SteamID input type: "{type(input_id)}"')
 
-    def is_valid(self) -> bool:
+    @property
+    def valid(self) -> bool:
         """
-        Check whether this SteamID is valid according to Steam's rules
+        Check whether this ``SteamID`` is valid according to `Steam's` rules.
 
-        .. note:: Does not check whether the account actually exists
+        .. note:: Does not check whether the account actually exists.
         """
 
         if self.type <= AccountType.INVALID or self.type > AccountType.ANON_USER:
@@ -183,49 +182,47 @@ class SteamID:
 
         return True
 
+    @property
     def is_individual(self) -> bool:
         """
         Check if this is a valid individual user ID in the public universe with a desktop instance.
-        This is what most people think of when they think of a SteamID
 
-        .. note:: Does not check whether the account actually exists
+        **This is what most people think of what is SteamID**.
+
+        .. note:: Does not check whether the account actually exists.
         """
 
         return (
             self.universe == Universe.PUBLIC
             and self.type == AccountType.INDIVIDUAL
             and self.instance == Instance.DESKTOP
-            and self.is_valid()
+            and self.valid
         )
 
+    @property
     def is_group_chat(self) -> bool:
-        """Check if this ID represents a legacy group chat"""
+        """If represents a legacy group chat."""
 
         return self.type == AccountType.CHAT and bool(self.instance & CHAT_INSTANCE_FLAG_CLAN)
 
+    @property
     def is_lobby(self) -> bool:
-        """Check if this ID represents a game lobby"""
+        """If represents a game lobby."""
 
         return self.type == AccountType.CHAT and bool(
             self.instance & (CHAT_INSTANCE_FLAG_LOBBY | CHAT_INSTANCE_FLAG_MMS_LOBBY)
         )
 
     @property
-    def steam2(self) -> str:
-        """
-        ID in the newer Steam2 format (e.g., "STEAM_1:0:23071901")
+    def steam2(self) -> str | None:
+        """`Steam2` format representation (e.g., "STEAM_1:0:23071901"). ``None`` for non-individual `IDs`."""
 
-        .. note:: Available only for individual ID
-        """
-
-        if self.type != AccountType.INDIVIDUAL:
-            raise ValueError("Can't get Steam2 rendered ID for non-individual Steam ID")
-
-        return f"STEAM_{self.universe}:{self.account_id & 1}:{self.account_id // 2}"
+        if self.type == AccountType.INDIVIDUAL:
+            return f"STEAM_{self.universe}:{self.account_id & 1}:{self.account_id // 2}"
 
     @property
     def steam3(self) -> str:
-        """ID in Steam3 format (e.g., "[U:1:46143802]")"""
+        """`Steam3` format representation (e.g., "[U:1:46143802]")."""
 
         type_char = TYPE_CHARS.get(self.type, "i")
 
@@ -245,12 +242,12 @@ class SteamID:
 
     @property
     def id32(self) -> int:
-        """32-bit representation of this Steam ID. Alias to `account_id`"""
+        """32-bit representation. Alias to ``account_id``."""
         return self.account_id
 
     @property
     def id64(self) -> int:
-        """64-bit representation of this Steam ID"""
+        """64-bit representation."""
         return (self.universe << 56) | (self.type << 52) | (self.instance << 32) | self.account_id
 
     def __str__(self):
@@ -263,10 +260,10 @@ class SteamID:
         return (
             f"{self.__class__.__name__}"
             f"(id64={self.id64}, "
+            f"id32={self.account_id}, "
             f"universe={self.universe!r}, "
             f"type={self.type!r}, "
-            f"instance={self.instance!r}, "
-            f"account_id={self.account_id})"
+            f"instance={self.instance!r})"
         )
 
     def __eq__(self, other):
@@ -275,4 +272,5 @@ class SteamID:
     def __hash__(self):
         return hash(self.id64)
 
-    __bool__ = is_valid
+    def __bool__(self):
+        return self.valid

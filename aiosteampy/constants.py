@@ -5,7 +5,8 @@ from typing import TypeAlias, Any, TypeVar, Coroutine, Mapping
 from enum import Enum, IntEnum
 
 from yarl import URL
-from aenum import extend_enum
+
+# from aenum import extend_enum
 
 _T = TypeVar("_T")
 
@@ -251,11 +252,13 @@ _v = "v1"
 
 
 class STEAM_URL:
-    COMMUNITY = URL("https://steamcommunity.com")  # use this domain in methods
+    COMMUNITY = URL("https://steamcommunity.com")
     STORE = URL("https://store.steampowered.com")
     LOGIN = URL("https://login.steampowered.com")
     HELP = URL("https://help.steampowered.com")
     STATIC = URL("https://community.akamai.steamstatic.com")
+    CHECKOUT = URL("https://checkout.steampowered.com")
+    TV = URL("https://steam.tv/")
     # specific
     MARKET = COMMUNITY / "market/"
     TRADE = COMMUNITY / "tradeoffer"
@@ -278,10 +281,13 @@ class STEAM_URL:
             _Base = _API_BASE / "IAuthenticationService"
 
             BeginAuthSessionViaCredentials = _Base / "BeginAuthSessionViaCredentials" / _v
+            BeginAuthSessionViaQR = _Base / "BeginAuthSessionViaQR" / _v
             GetPasswordRSAPublicKey = _Base / "GetPasswordRSAPublicKey" / _v
             UpdateAuthSessionWithSteamGuardCode = _Base / "UpdateAuthSessionWithSteamGuardCode" / _v
             PollAuthSessionStatus = _Base / "PollAuthSessionStatus" / _v
             GenerateAccessTokenForApp = _Base / "GenerateAccessTokenForApp" / _v
+            GetAuthSessionInfo = _Base / "GetAuthSessionInfo" / _v
+            UpdateAuthSessionWithMobileConfirmation = _Base / "UpdateAuthSessionWithMobileConfirmation" / _v
 
 
 T_PARAMS: TypeAlias = Mapping[str, int | str | float]
@@ -309,18 +315,20 @@ class EnumWithMultipleValues(Enum):
         return cls._alt_map.get(value, super()._missing_(value))
 
 
-# https://github.com/DoctorMcKay/node-steamcommunity/blob/master/resources/EResult.js
-class EResult(EnumWithMultipleValues):
+class EResult(Enum):
     """
-    `success` field in response data from Steam.
+    All possible/known Steam result codes.
 
-    .. seealso:: https://steamerrors.com
+    .. seealso::
+        * https://steamerrors.com
+        * https://github.com/DoctorMcKay/node-steam-session/blob/master/src/enums-steam/EResult.ts
+        * https://github.com/DoctorMcKay/node-steamcommunity/blob/master/resources/EResult.js
     """
 
-    UNKNOWN = None  # special case
+    # UNKNOWN = None  # special case
 
     INVALID = 0
-    OK = 1, True  # due to Steam
+    OK = 1
     FAIL = 2
     NO_CONNECTION = 3
     INVALID_PASSWORD = 5

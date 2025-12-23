@@ -1,24 +1,30 @@
-from typing import Literal
+from typing import Literal, Any
 from abc import ABCMeta, abstractmethod
+from datetime import datetime
 
 from yarl import URL
 
-from .types import Headers, Payload, Params, HttpMethod
+from .types import Headers, Payload, Params, HttpMethod, ResponseMode, WebAPIInterface, WebAPIMethod, WebAPIVersion
 from .exceptions import TransportError
+from .utils import format_http_date
 from .models import Cookie, TransportResponse
 
-from ..constants import CORO
-
+from ..constants import CORO, EResult, STEAM_URL
+from ..exceptions import EResultError, SessionExpired
 
 Cookies = list[Cookie]
-ResponseMode = Literal["bytes", "json", "text", "meta"]  # Enum is not worth it
+
+SESSION_ID_COOKIE = "sessionid"
+
+BASE_WEB_API_URL = URL("https://api.steampowered.com")
 
 
-class BaseHTTPTransport(metaclass=ABCMeta):
+class BaseSteamTransport(metaclass=ABCMeta):
     """
-    Agnostic and abstract wrapper around a concrete *HTTP client*.
+    Wrapper around a concrete `HTTP client`.
+    Intended to use only to make request to `Steam` within library.
 
-    This class defines the contract for *HTTP transports*, standardizing how requests are sent
+    This class defines the contract for `HTTP transports`, standardizing how requests are sent
     and how session state (cookies and headers) is managed.
 
     **Responsibilities for Subclasses:**
@@ -108,6 +114,35 @@ class BaseHTTPTransport(metaclass=ABCMeta):
         for cookie in cookies:
             self.add_cookie(cookie)
 
+    @property
+    def session_id(self) -> str | None:
+        """`sessionid` cookie value for `Community` domain."""
+        return self.get_session_id(STEAM_URL.COMMUNITY)
+
+    # can't have domain literals (community, store, etc.) as url cannot be literal value :(
+    # https://github.com/DoctorMcKay/node-steamcommunity/blob/d3e90f6fd3bea65b1ebc1bdaec754f99dcc8ddb3/index.js#L181
+    def get_session_id(self, domain: URL) -> str | None:
+        """Get `sessionid` cookie value for `Steam` ``domain``."""
+        return self.get_cookie_value(domain, SESSION_ID_COOKIE)
+
+    def set_session_id(self, value: str | None, domain: URL):
+        """Set `sessionid` cookie value for `Steam` ``domain``."""
+
+        if value is None:
+            self.remove_cookie(domain, SESSION_ID_COOKIE)
+        else:
+            cookie = Cookie(
+                SESSION_ID_COOKIE,
+                value,
+                domain.host,
+                host_only=True,
+                secure=True,
+                same_site="None",
+                created_at=format_http_date(datetime.now()),
+            )
+
+            self.add_cookie(cookie)
+
     @abstractmethod
     async def _request(
         self,
@@ -126,7 +161,7 @@ class BaseHTTPTransport(metaclass=ABCMeta):
         Internal abstract method implementing actual HTTP request logic.
 
         This method is the core of the transport layer. When creating a custom transport,
-        you must implement this method to bridge the abstract ``BaseHTTPTransport`` interface
+        you must implement this method to bridge the abstract ``BaseSteamTransport`` interface
         with a concrete HTTP client library (like `aiohttp`, `httpx`, etc.).
 
         **Responsibilities for Subclasses:**
@@ -152,25 +187,28 @@ class BaseHTTPTransport(metaclass=ABCMeta):
         json: Payload | None = None,
         multipart: Payload | None = None,
         headers: Headers = None,
-        follow_redirects: bool = True,
+        follow_redirects: bool = False,
         raise_for_status: bool = True,
-        response_mode: ResponseMode = "bytes",
+        response_mode: ResponseMode = "text",
     ) -> TransportResponse:
         """
         Perform HTTP request.
 
+        .. note:: This method along with transport intended to use only to make request to `Steam`.
+
         :param method: HTTP method verb.
         :param url: target URL.
         :param params: query string parameters.
-        :param data: *application/x-www-form-urlencoded* payload
+        :param data: `application/x-www-form-urlencoded` payload
         :param json: JSON serializable payload.
         :param multipart: multipart form data payload.
         :param headers: specific HTTP headers for this request.
         :param follow_redirects: automatically follow redirects.
         :param raise_for_status: raise exception if response status indicates error.
         :param response_mode: return response body (as ``TransportResponse.content`` attribute) in specified format.
-        :return: filled *TransportResponse* object.
+        :return: filled ``TransportResponse`` object.
         :raises TransportError: if unable to process response.
+        :raises SessionExpired: if current login session is expired.
         """
 
         if sum(map(bool, [data, json, multipart])) > 1:
@@ -194,54 +232,75 @@ class BaseHTTPTransport(metaclass=ABCMeta):
         except Exception as e:
             raise TransportError from e
 
-        if raise_for_status and not resp.ok:
+        if raise_for_status and not resp.ok:  # handle >=400 codes
             raise TransportError(resp)
+
+        if not follow_redirects and 300 <= resp.status < 400 and "/login" in (resp.headers.get("Location") or ()):
+            raise SessionExpired from TransportError(resp)
 
         return resp
 
-    def get(
+    async def call_web_api(
         self,
-        url: URL,
+        http_method: HttpMethod,
+        interface: WebAPIInterface | str,
+        method: WebAPIMethod | str,
+        version: WebAPIVersion = "v1",
         *,
         params: Params | None = None,
-        headers: Headers | None = None,
-        follow_redirects: bool = True,
-        raise_for_status: bool = True,
-        response_mode: ResponseMode = "bytes",
-    ) -> CORO[TransportResponse]:
-        return self.request(
-            "GET",
-            url,
-            params=params,
-            headers=headers,
-            follow_redirects=follow_redirects,
-            raise_for_status=raise_for_status,
-            response_mode=response_mode,
-        )
-
-    def post(
-        self,
-        url: URL,
-        *,
         data: Payload | None = None,
         json: Payload | None = None,
         multipart: Payload | None = None,
         headers: Headers | None = None,
-        follow_redirects: bool = True,
-        raise_for_status: bool = True,
-        response_mode: ResponseMode = "bytes",
-    ) -> CORO[TransportResponse]:
-        return self.request(
-            "POST",
-            url,
-            data=data,
-            json=json,
-            multipart=multipart,
-            headers=headers,
-            follow_redirects=follow_redirects,
-            raise_for_status=raise_for_status,
-            response_mode=response_mode,
-        )
+        response_mode: ResponseMode = "json",
+    ) -> bytes | str | Any | None:
+        """
+        Perform `Steam Web API` request.
+
+        :param http_method: HTTP method verb.
+        :param interface: API interface name.
+        :param method: API method name.
+        :param version: API version. Currently only `v1` version is supported by `Steam`.
+        :param params: query string parameters.
+        :param data: `application/x-www-form-urlencoded` payload
+        :param json: JSON serializable payload.
+        :param multipart: multipart form data payload.
+        :param headers: specific HTTP headers for this request.
+        :param response_mode: return response body in specified format.
+        :return: response body in specified format.
+        :raises TransportError: if unable to process response.
+        :raises SessionExpired: if current login session is expired.
+        """
+
+        try:
+            r = await self.request(
+                http_method,
+                BASE_WEB_API_URL / interface / method / version,
+                params=params,
+                data=data,
+                json=json,
+                multipart=multipart,
+                headers=headers,
+                follow_redirects=False,
+                raise_for_status=True,
+                response_mode=response_mode,
+            )
+        except TransportError as e:
+            if e.response and e.response.status == 403:
+                raise SessionExpired from e  # also will be raised if api key or access token invalid which sad
+
+            raise
+
+        if r.status < 200 or r.status >= 300:
+            raise TransportError(r)
+
+        eresult = EResult(int(r.headers.get("X-eresult", 0)))
+
+        if eresult is not EResult.OK:
+            eresult_err_msg = r.headers.get("X-error_message", "Error calling Steam Web Api")
+            raise EResultError(eresult, eresult_err_msg)
+
+        return r.content
 
     async def close(self) -> None:
         """Close transport session and free resources."""

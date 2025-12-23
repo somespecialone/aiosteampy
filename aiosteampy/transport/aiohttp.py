@@ -1,12 +1,14 @@
+"""AioHTTP implementation of HTTP transport."""
+
 from http.cookies import BaseCookie, Morsel
 
 from yarl import URL
 from aiohttp import ClientSession, JsonPayload, MultipartWriter
 
-from .base import Cookie, TransportResponse, BaseHTTPTransport
+from .base import Cookie, TransportResponse, BaseSteamTransport
 
 
-class AiohttpTransport(BaseHTTPTransport):
+class AiohttpSteamTransport(BaseSteamTransport):
     __slots__ = ("_proxy", "_session")
 
     def __init__(self, *, proxy=None):
@@ -111,13 +113,14 @@ class AiohttpTransport(BaseHTTPTransport):
             json=json,
             headers=headers,
             allow_redirects=follow_redirects,
+            raise_for_status=False,
         )
 
         if response_mode == "meta":  # body is not needed
             content = None
         elif response_mode == "text":
             content = await aiohttp_resp.text()
-        elif response_mode == "json":
+        elif response_mode == "json" and "json" in aiohttp_resp.content_type:  # bytes if content-type doesn't match
             content = await aiohttp_resp.json()
         else:  # bytes by default
             content = await aiohttp_resp.read()

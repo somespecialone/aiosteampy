@@ -267,10 +267,10 @@ class SteamID:
         )
 
     def __eq__(self, other):
-        return isinstance(other, type(self)) and self.id64 == other.id64
+        return isinstance(other, SteamID) and self.id64 == other.id64
 
     def __hash__(self):
-        return hash(self.id64)
+        return self.id64
 
     def __bool__(self):
         return self.valid

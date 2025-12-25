@@ -1,16 +1,16 @@
-from typing import Literal, Any
+from typing import Literal, Any, overload
 from abc import ABCMeta, abstractmethod
 from datetime import datetime
 
 from yarl import URL
 
-from .types import Headers, Payload, Params, HttpMethod, ResponseMode, WebAPIInterface, WebAPIMethod, WebAPIVersion
-from .exceptions import TransportError
-from .utils import format_http_date
-from .models import Cookie, TransportResponse
-
 from ..constants import CORO, EResult, STEAM_URL
 from ..exceptions import EResultError, SessionExpired
+
+from .types import Headers, Payload, Params, HttpMethod, ResponseMode, WebAPIInterface, WebAPIMethod, WebAPIVersion
+from .exceptions import TransportError, ResourceNotModified, RateLimitExceeded
+from .utils import format_http_date, parse_http_date
+from .models import Cookie, TransportResponse
 
 Cookies = list[Cookie]
 
@@ -177,6 +177,48 @@ class BaseSteamTransport(metaclass=ABCMeta):
             according to the ``response_mode`` argument.
         """
 
+    @overload
+    async def request(
+        self,
+        method: HttpMethod,
+        url: URL,
+        *,
+        params: Params | None = ...,
+        data: Payload | None = ...,
+        headers: Headers = ...,
+        follow_redirects: bool = ...,
+        raise_for_status: bool = ...,
+        response_mode: ResponseMode = ...,
+    ) -> TransportResponse: ...
+
+    @overload
+    async def request(
+        self,
+        method: HttpMethod,
+        url: URL,
+        *,
+        params: Params | None = ...,
+        json: Payload | None = ...,
+        headers: Headers = ...,
+        follow_redirects: bool = ...,
+        raise_for_status: bool = ...,
+        response_mode: ResponseMode = ...,
+    ) -> TransportResponse: ...
+
+    @overload
+    async def request(
+        self,
+        method: HttpMethod,
+        url: URL,
+        *,
+        params: Params | None = ...,
+        multipart: Payload | None = ...,
+        headers: Headers = ...,
+        follow_redirects: bool = ...,
+        raise_for_status: bool = ...,
+        response_mode: ResponseMode = ...,
+    ) -> TransportResponse: ...
+
     async def request(
         self,
         method: HttpMethod,
@@ -211,7 +253,7 @@ class BaseSteamTransport(metaclass=ABCMeta):
         :raises SessionExpired: if current login session is expired.
         """
 
-        if sum(map(bool, [data, json, multipart])) > 1:
+        if sum(map(bool, (data, json, multipart))) > 1:
             raise ValueError("`data`, `json` and `multipart` args are mutually exclusive")
 
         try:
@@ -232,11 +274,21 @@ class BaseSteamTransport(metaclass=ABCMeta):
         except Exception as e:
             raise TransportError from e
 
-        if raise_for_status and not resp.ok:  # handle >=400 codes
-            raise TransportError(resp)
+        # resource not modified. We would get this when "If-Modified-Since" header is provided
+        if resp.status == 304 and "If-Modified-Since" in (headers or {}):
+            last_modified = parse_http_date(resp.headers["Last-Modified"])
+            expires = parse_http_date(resp.headers["Expires"])
+
+            raise ResourceNotModified(last_modified, expires)
 
         if not follow_redirects and 300 <= resp.status < 400 and "/login" in (resp.headers.get("Location") or ()):
             raise SessionExpired from TransportError(resp)
+
+        if resp.status == 429:
+            raise RateLimitExceeded(resp)
+
+        if raise_for_status and not resp.ok:  # handle other >=400 codes
+            raise TransportError(resp)
 
         return resp
 
@@ -256,6 +308,8 @@ class BaseSteamTransport(metaclass=ABCMeta):
     ) -> bytes | str | Any | None:
         """
         Perform `Steam Web API` request.
+
+        .. seealso:: https://steamapi.xpaw.me.
 
         :param http_method: HTTP method verb.
         :param interface: API interface name.

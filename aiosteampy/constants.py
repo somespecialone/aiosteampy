@@ -10,6 +10,7 @@ from yarl import URL
 
 _T = TypeVar("_T")
 
+# TODO separate constants to models, types
 CORO: TypeAlias = Coroutine[Any, Any, _T]
 
 
@@ -41,23 +42,24 @@ class App(IntEnum):
 
     STEAM = 753
 
-    @classmethod
-    def extend(cls, name: str, value: int) -> "App":
-        return extend_enum(cls, name, value)
+    # @classmethod
+    # def extend(cls, name: str, value: int) -> "App":
+    #     return extend_enum(cls, name, value)
 
     @classmethod
     def _generate_name(cls, value) -> str:
         return f"{cls.__name__}_{value}"
 
-    @classmethod
-    def _missing_(cls, value: int):
-        return cls.extend(cls._generate_name(value), value)  # add new member when missing
+    # @classmethod
+    # def _missing_(cls, value: int):
+    #     return cls.extend(cls._generate_name(value), value)  # add new member when missing
 
     @property
     def app_id(self) -> int:
         return self.value
 
 
+# TODO need rework. namedtuple and similar is better option
 class AppContext(Enum):
     """
     Combination of `App` and context (sub-inventory of the app)
@@ -80,20 +82,20 @@ class AppContext(Enum):
     STEAM_COMMUNITY = App.STEAM, 6
     STEAM_REWARDS = App.STEAM, 7  # item rewards
 
-    @classmethod
-    def extend(cls, name: str, value: tuple[App | int, int]) -> "AppContext":
-        # for case when passed app id instead of an App enum, e.g. AppContext((730, 2))
-        with_enum = (App(value[0]), value[1])
-        return extend_enum(cls, name, with_enum)
+    # @classmethod
+    # def extend(cls, name: str, value: tuple[App | int, int]) -> "AppContext":
+    #     # for case when passed app id instead of an App enum, e.g. AppContext((730, 2))
+    #     with_enum = (App(value[0]), value[1])
+    #     return extend_enum(cls, name, with_enum)
 
     @classmethod
     def _generate_name(cls, value: tuple[App, int]) -> str:
         return f"{cls.__name__}_{value[0]}_{value[1]}"
 
-    @classmethod
-    def _missing_(cls, value: tuple[App | int, int]):
-        with_enum = (App(value[0]), value[1])
-        return cls.extend(cls._generate_name(with_enum), with_enum)
+    # @classmethod
+    # def _missing_(cls, value: tuple[App | int, int]):
+    #     with_enum = (App(value[0]), value[1])
+    #     return cls.extend(cls._generate_name(with_enum), with_enum)
 
     @property
     def app(self) -> App:
@@ -218,39 +220,11 @@ class TradeOfferStatus(Enum):
     TRADE_REVERSED = 12
 
 
-# https://github.com/DoctorMcKay/node-steamcommunity/blob/master/resources/EConfirmationType.js
-class ConfirmationType(Enum):
-    UNKNOWN = 1
-    TRADE = 2
-    LISTING = 3
-    API_KEY = 4  # TODO find api key value
-    PURCHASE = 12
-
-    @classmethod
-    def get(cls, v: int) -> "ConfirmationType":
-        try:
-            return cls(v)
-        except ValueError:
-            return cls.UNKNOWN
-
-
-class MarketListingStatus(Enum):
-    NEED_CONFIRMATION = 17
-    ACTIVE = 1
-
-
-class MarketHistoryEventType(Enum):
-    LISTING_CREATED = 1
-    LISTING_CANCELED = 2
-    LISTING_SOLD = 3
-    LISTING_PURCHASED = 4
-
-
-# TODO Maybe I can create class with __getattribute__ and then build url trough magic method calls
 _API_BASE = URL("https://api.steampowered.com")  # nah
 _v = "v1"
 
 
+# TODO need rework
 class STEAM_URL:
     COMMUNITY = URL("https://steamcommunity.com")
     STORE = URL("https://store.steampowered.com")
@@ -263,6 +237,7 @@ class STEAM_URL:
     MARKET = COMMUNITY / "market/"
     TRADE = COMMUNITY / "tradeoffer"
 
+    # TODO can be removed
     class API:
         BASE = _API_BASE
 
@@ -315,20 +290,20 @@ class EnumWithMultipleValues(Enum):
         return cls._alt_map.get(value, super()._missing_(value))
 
 
-class EResult(Enum):
+class EResult(IntEnum):
     """
     All possible/known Steam result codes.
 
     .. seealso::
-        * https://steamerrors.com
-        * https://github.com/DoctorMcKay/node-steam-session/blob/master/src/enums-steam/EResult.ts
-        * https://github.com/DoctorMcKay/node-steamcommunity/blob/master/resources/EResult.js
+        * https://steamerrors.com.
+        * https://github.com/DoctorMcKay/node-steam-session/blob/master/src/enums-steam/EResult.ts.
+        * https://github.com/DoctorMcKay/node-steamcommunity/blob/master/resources/EResult.js.
     """
 
     # UNKNOWN = None  # special case
 
     INVALID = 0
-    OK = 1
+    OK = 1  # also be return when EResult(True
     FAIL = 2
     NO_CONNECTION = 3
     INVALID_PASSWORD = 5

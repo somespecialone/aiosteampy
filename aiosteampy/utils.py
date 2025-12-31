@@ -16,20 +16,16 @@ from secrets import token_hex
 from re import search as re_search, compile as re_compile
 from json import loads as j_loads
 
-from aiohttp import ClientSession, ClientResponse, MultipartWriter
 from yarl import URL
 
 from .typed import JWTToken
 
 
 __all__ = (
-    "gen_two_factor_code",
+    "gen_auth_code",
     "generate_confirmation_key",
     "generate_device_id",
     "extract_openid_payload",
-    "do_session_steam_auth",
-    "get_cookie_value_from_session",
-    "remove_cookie_from_session",
     "async_throttle",
     "create_ident_code",
     "account_id_to_steam_id",
@@ -37,25 +33,20 @@ __all__ = (
     "id64_to_id32",
     "id32_to_id64",
     "to_int_boolean",
-    "get_jsonable_cookies",
-    "update_session_cookies",
     "buyer_pays_to_receive",
     "receive_to_buyer_pays",
     "generate_session_id",
     "decode_jwt",
-    "find_item_nameid_in_text",
-    "patch_session_with_http_proxy",
+    "find_item_name_id_in_text",
     "parse_time",
     "format_time",
-    "attribute_required",
-    "make_inspect_url",
-    "add_cookie_to_session",
+    "make_inspect_link",
     "calc_market_listing_fee",
 )
 
 
-def gen_two_factor_code(shared_secret: str, timestamp: int = None) -> str:
-    """Generate twofactor (onetime/TOTP) code."""
+def gen_auth_code(shared_secret: str, timestamp: int = None) -> str:
+    """Generate two-factor (one-time/TOTP) auth code."""
 
     if timestamp is None:
         timestamp = int(time_time())
@@ -73,18 +64,22 @@ def gen_two_factor_code(shared_secret: str, timestamp: int = None) -> str:
     return code
 
 
-def generate_confirmation_key(identity_secret: str, tag: str, timestamp: int = None) -> str:
-    if timestamp is None:
-        timestamp = int(time_time())
+def generate_confirmation_key(identity_secret: str, tag: str, timestamp: int | None = None) -> str:
+    """Generate confirmation key."""
+
+    timestamp = int(time_time()) if timestamp is None else timestamp
     buff = pack(">Q", timestamp) + tag.encode("ascii")
     return b64encode(hmac_new(b64decode(identity_secret), buff, digestmod=sha1).digest()).decode()
 
 
 # It works, however it's different that one generated from mobile app
-def generate_device_id(steam_id: int) -> str:
-    """Generate mobile android device id. Confirmation endpoints requires this."""
+def generate_device_id(steam_id64: int) -> str:
+    """
+    Generate mobile android device id.
+    :param steam_id64: 64bit representation of `Steam ID`
+    """
 
-    hexed_steam_id = sha1(str(steam_id).encode("ascii")).hexdigest()
+    hexed_steam_id = sha1(str(steam_id64).encode("ascii")).hexdigest()
     return "android:" + "-".join(
         [hexed_steam_id[:8], hexed_steam_id[8:12], hexed_steam_id[12:16], hexed_steam_id[16:20], hexed_steam_id[20:32]]
     )
@@ -92,11 +87,11 @@ def generate_device_id(steam_id: int) -> str:
 
 def extract_openid_payload(page_text: str) -> dict[str, str]:
     """
-    Extract steam openid payload (specs) from page html raw text.
+    Extract steam openid urlencoded (specs) from page html raw text.
     Use it if 3rd party websites have extra or non-cookie auth (JWT via service API call, for ex.).
 
     :param page_text:
-    :return: dict with payload data
+    :return: dict with urlencoded data
     """
 
     # not so beautiful as with bs4 but dependency free
@@ -108,81 +103,31 @@ def extract_openid_payload(page_text: str) -> dict[str, str]:
     }
 
 
-async def do_session_steam_auth(session: ClientSession, auth_url: str | URL) -> ClientResponse:
-    """
-    Request auth page, find specs of steam openid and log in through steam with passed session.
-    Use it when you need to log in 3rd party site trough Steam using only cookies.
-
-    .. seealso:: https://aiosteampy.somespecial.one/examples/auth_3rd_party_site/
-
-    :param session: just session.
-    :param auth_url: url to site, which redirect you to steam login page.
-    :return: response with history, headers and data
-    """
-
-    r = await session.get(auth_url, allow_redirects=True)
-    rt = await r.text()
-
-    data = extract_openid_payload(rt)
-
-    mpwriter = MultipartWriter("form-data")
-    for field, field_value in data.items():
-        part = mpwriter.append(field_value)
-        part.set_content_disposition("form-data", name=field)
-
-    return await session.post("https://steamcommunity.com/openid/login", data=mpwriter, allow_redirects=True)
-
-
-def get_cookie_value_from_session(session: ClientSession, url: URL | str, field: str) -> str | None:
-    """Get value from session cookies. Passed `url` must include scheme (for ex. `https://url.com`)."""
-
-    c = session.cookie_jar.filter_cookies(URL(url))
-    return c[field].value if field in c else None
-
-
-def remove_cookie_from_session(session: ClientSession, url: URL | str, field: str) -> bool:
-    """Remove cookie from session cookies. Return `True` if cookie was present and removed."""
-
-    raw = str(url)
-    if "//" in raw:
-        host = raw.split("//")[1]
-    else:
-        host = raw
-    return bool(session.cookie_jar._cookies[(host, "/")].pop(field, None))
-
-
 _R = TypeVar("_R")
 
 
-@overload
-def async_throttle(seconds: float, *, arg_index: int) -> Callable[[Callable[..., _R]], Callable[..., _R]]:
-    ...
-
-
-@overload
-def async_throttle(seconds: float, *, arg_name: str) -> Callable[[Callable[..., _R]], Callable[..., _R]]:
-    ...
-
-
-@overload
-def async_throttle(seconds: float) -> Callable[[Callable[..., _R]], Callable[..., _R]]:
-    ...
-
-
-def async_throttle(seconds, *, arg_index=None, arg_name=None):
+def async_throttle(
+    seconds: float,
+    *,
+    arg_index: int | None = None,
+    arg_name: str | None = None,
+) -> Callable[[Callable[..., _R]], Callable[..., _R]]:
     """
-    Prevents the decorated function from being called more than once per `seconds`.
+    Prevents the decorated function from being called more than once per ``seconds``.
     Throttle (`await asyncio.sleep`) before call wrapped async func,
     when related arg was equal (same hash value) to related arg passed in previous func call
-    if time between previous and current call lower than `seconds`.
-    Related arg must be hashable (can be dict key).
-    Wrapped func must be async (return `Coroutine`).
+    if time between previous and current call lower than ``seconds``.
+    Related arg must be *hashable* (can be dict key).
+    Wrapped func must be *async* (return ``Coroutine``).
     Throttle every func call time if related arg has been not specified.
 
     :param seconds: seconds during which call frequency has been limited.
-    :param arg_index: index of related arg in *args tuple.
-    :param arg_name: keyname of related arg in **kwargs.
+    :param arg_index: index of related arg in ``*args`` tuple.
+    :param arg_name: keyname of related arg in ``**kwargs`` dict.
     """
+
+    if arg_index is not None and arg_name is not None:
+        raise ValueError("You can't specify both `arg_index` and `arg_name`")
 
     # mega optimization, prevent arg checks in wrapped func call
     # I know about PEP8: E731, but this way is much shorter and readable
@@ -214,19 +159,18 @@ def async_throttle(seconds, *, arg_index=None, arg_name=None):
     return decorator
 
 
+# TODO remove overloading and write examples in docstring: args should be from most narrow to wide (inst, class, app)
 @overload
-def create_ident_code(asset_id: int | str, context_id: int | str, app_id: int | str, *, sep: str = ...) -> str:
-    ...
+def create_ident_code(asset_id: int | str, context_id: int | str, app_id: int | str, *, sep: str = ...) -> str: ...
 
 
 @overload
-def create_ident_code(instance_id: int | str, class_id: int | str, app_id: int | str, *, sep: str = ...) -> str:
-    ...
+def create_ident_code(instance_id: int | str, class_id: int | str, app_id: int | str, *, sep: str = ...) -> str: ...
 
 
 def create_ident_code(*args, sep=":"):
     """
-    Create unique ident code for `EconItem` asset or `ItemDescription` within whole `Steam Economy`.
+    Create unique ident code for ``EconItem`` or ``ItemDescription`` within whole `Steam Economy`.
 
     .. seealso:: https://dev.doctormckay.com/topic/332-identifying-steam-items/
     """
@@ -246,6 +190,7 @@ def account_id_to_steam_id(account_id: int) -> int:
     return 1 << 56 | 1 << 52 | 1 << 32 | account_id
 
 
+# aliases
 id64_to_id32 = steam_id_to_account_id
 id32_to_id64 = account_id_to_steam_id
 
@@ -256,7 +201,11 @@ def to_int_boolean(s):
     return 1 if s else 0
 
 
-JSONABLE_COOKIE_JAR: TypeAlias = list[dict[str, dict[str, str, None, bool]]]
+JSONABLE_COOKIE_JAR = list[dict[str, dict[str, str | None | bool]]]
+
+
+# TODO this
+from aiohttp import ClientSession
 
 
 def update_session_cookies(session: ClientSession, cookies: JSONABLE_COOKIE_JAR):
@@ -276,45 +225,49 @@ def update_session_cookies(session: ClientSession, cookies: JSONABLE_COOKIE_JAR)
         session.cookie_jar.update_cookies(c)
 
 
-def get_jsonable_cookies(session: ClientSession) -> JSONABLE_COOKIE_JAR:
-    """Extract and convert cookies to dict object."""
-
-    return [
-        {
-            field_key: {
-                "coded_value": morsel.coded_value,
-                "key": morsel.key,
-                "value": morsel.value,
-                "expires": morsel["expires"],
-                "path": morsel["path"],
-                "comment": morsel["comment"],
-                "domain": morsel["domain"],
-                "max-age": morsel["max-age"],
-                "secure": morsel["secure"],
-                "httponly": morsel["httponly"],
-                "version": morsel["version"],
-                "samesite": morsel["samesite"],
-            }
-            for field_key, morsel in cookie.items()
-        }
-        for cookie in session.cookie_jar._cookies.values()
-        if cookie  # skip empty cookies
-    ]
+# def get_jsonable_cookies(session: ClientSession) -> JSONABLE_COOKIE_JAR:
+#     """Extract and convert cookies to dict object."""
+#
+#     return [
+#         {
+#             field_key: {
+#                 "coded_value": morsel.coded_value,
+#                 "key": morsel.key,
+#                 "value": morsel.value,
+#                 "expires": morsel["expires"],
+#                 "path": morsel["path"],
+#                 "comment": morsel["comment"],
+#                 "domain": morsel["domain"],
+#                 "max-age": morsel["max-age"],
+#                 "secure": morsel["secure"],
+#                 "httponly": morsel["httponly"],
+#                 "version": morsel["version"],
+#                 "samesite": morsel["samesite"],
+#             }
+#             for field_key, morsel in cookie.items()
+#         }
+#         for cookie in session.cookie_jar._cookies.values()
+#         if cookie  # skip empty cookies
+#     ]
 
 
 def receive_to_buyer_pays(
     amount: int,
     *,
-    publisher_fee=0.10,
-    steam_fee=0.05,
-    wallet_fee_min=1,
-    wallet_fee_base=0,
+    publisher_fee: float = 0.10,
+    steam_fee: float = 0.05,
+    wallet_fee_min: float = 1,
+    wallet_fee_base: float = 0,
 ) -> tuple[int, int, int]:
     """
     Convert `to_receive` amount to `buyer_pays`. Mostly needed for placing sell listing.
     Works just like function from sell listing window on `Steam`.
 
     :param amount: desired to receive amount in cents
+    :param publisher_fee: publisher fee value, in percents
+    :param steam_fee: steam fee value, in percents
+    :param wallet_fee_min: minimum wallet fee value, in cents
+    :param wallet_fee_base: wallet fee base value, in cents
     :return: `Steam` fee value, publisher fee value, buyer pays amount
     """
 
@@ -326,16 +279,20 @@ def receive_to_buyer_pays(
 def buyer_pays_to_receive(
     amount: int,
     *,
-    publisher_fee=0.10,
-    steam_fee=0.05,
-    wallet_fee_min=1,
-    wallet_fee_base=0,
+    publisher_fee: float = 0.10,
+    steam_fee: float = 0.05,
+    wallet_fee_min: float = 1,
+    wallet_fee_base: float = 0,
 ) -> tuple[int, int, int]:
     """
     Convert `buyer_pays` amount to `to_receive`. Mostly needed for placing sell listing.
     Works just like function from sell listing window on `Steam`.
 
     :param amount: desired amount, that buyer must pay, in cents
+    :param publisher_fee: publisher fee value, in percents
+    :param steam_fee: steam fee value, in percents
+    :param wallet_fee_min: minimum wallet fee value, in cents
+    :param wallet_fee_base: wallet fee base value, in cents
     :return: `Steam` fee value, publisher fee value, amount to receive
     """
 
@@ -382,11 +339,10 @@ def buyer_pays_to_receive(
     return s_fee, p_fee, int(v - s_fee - p_fee)
 
 
-# https://github.com/DoctorMcKay/node-steam-session/blob/698469cdbad3e555dda10c81f580f1ee3960156f/src/LoginSession.ts#L801C19-L801C50
+# https://github.com/DoctorMcKay/node-steam-session/blob/a13bdf1e9c9a42c17a13db2b6be269e0c740fb07/src/LoginSession.ts#L807
 def generate_session_id() -> str:
     """Generate steam like session id."""
 
-    # Hope ChatGPT knows what she is doing
     return token_hex(12)
 
 
@@ -398,29 +354,11 @@ def decode_jwt(token: str) -> JWTToken:
     return j_loads(b64decode(parts[1] + "==", altchars="-_"))
 
 
-_ITEM_NAMEID_RE = re_compile(r"Market_LoadOrderSpread\(\s?(?P<nameid>\d+)\s?\)")
+def find_item_name_id_in_text(text: str) -> int | None:
+    """Find and return`item name id` in HTML text response from `Steam Community Market` item page."""
 
-
-def find_item_nameid_in_text(text: str) -> int | None:
-    """Find and return`item_nameid` in HTML text response from `Steam Community Market` page"""
-
-    res = _ITEM_NAMEID_RE.search(text)
+    res = re_search(r"Market_LoadOrderSpread\(\s?(?P<nameid>\d+)\s?\)", text)  # no need to precompile
     return int(res["nameid"]) if res is not None else res
-
-
-def patch_session_with_http_proxy(session: ClientSession, proxy: str | URL) -> ClientSession:
-    """Patch `aiohttp.ClientSession` to make all requests go through web proxy"""
-
-    import warnings
-
-    warnings.warn(
-        """This function is deprecated and will be removed later. 
-        Consider creating `aiohttp.ClientSession` with `proxy` argument instead.""",
-        DeprecationWarning,
-    )
-
-    session._request = partial(session._request, proxy=proxy)
-    return session
 
 
 _HEADER_TIME_FORMAT = "%a, %d %b %Y %H:%M:%S %Z"
@@ -443,70 +381,24 @@ def format_time(d: datetime) -> str:
 
 # generic, but less performant due to getattr
 # without typing, PyCharm complains about return type while VsCode not
-def attribute_required(attr: str, msg: str = None):
-    """Generate a decorator that check required `attr` on instance before call a wrapped method"""
-
-    def decorator(func):
-        @wraps(func)
-        def wrapper(self, *args, **kwargs):
-            if getattr(self, attr, None) is None:
-                raise AttributeError(msg or f"You must provide a value for '{attr}' before using this method")
-            return func(self, *args, **kwargs)
-
-        return wrapper
-
-    return decorator
 
 
 @overload
-def make_inspect_url(*, owner_id: int, asset_id: int, d_id: int) -> str:
-    ...
+def make_inspect_link(*, owner_id: int, asset_id: int, d_id: int) -> str: ...
 
 
 @overload
-def make_inspect_url(*, market_id: int, asset_id: int, d_id: int) -> str:
-    ...
+def make_inspect_link(*, market_id: int, asset_id: int, d_id: int) -> str: ...
 
 
-def make_inspect_url(*, market_id: int = None, owner_id: int = None, asset_id: int, d_id: int) -> str:
+def make_inspect_link(*, market_id: int = None, owner_id: int = None, asset_id: int, d_id: int) -> str:
+    """Create `Inspect in game` link for `CS2` item."""
+
+    base = "steam://rungame/730/76561202255233023/+csgo_econ_action_preview%20"
     if market_id:
-        return f"steam://rungame/730/76561202255233023/+csgo_econ_action_preview%20M{market_id}A{asset_id}D{d_id}"
+        return f"{base}M{market_id}A{asset_id}D{d_id}"
     else:
-        return f"steam://rungame/730/76561202255233023/+csgo_econ_action_preview%20S{owner_id}A{asset_id}D{d_id}"
-
-
-def add_cookie_to_session(
-    session: ClientSession,
-    url: URL | str,
-    name: str,
-    value: str,
-    *,
-    path="/",
-    expires: datetime | str = None,
-    samesite: str | Literal[True] = None,
-    secure: bool = False,
-    httponly: bool = False,
-):
-    if isinstance(url, str):
-        url = URL(url)
-
-    c = SimpleCookie()
-    c[name] = value
-    c[name]["path"] = path
-    c[name]["domain"] = url.host
-    if expires is not None:
-        if isinstance(expires, datetime):
-            c[name]["expires"] = format_time(expires)
-        else:  # str
-            c[name]["expires"] = expires
-    if samesite is not None:
-        c[name]["samesite"] = samesite
-    if secure:
-        c[name]["secure"] = secure
-    if httponly:
-        c[name]["httponly"] = httponly
-
-    session.cookie_jar.update_cookies(cookies=c, response_url=url)
+        return f"{base}S{owner_id}A{asset_id}D{d_id}"
 
 
 def calc_market_listing_fee(price: int, *, wallet_fee=0.05, publisher_fee=0.10, minimal_fee=1) -> int:
@@ -523,3 +415,53 @@ def calc_market_listing_fee(price: int, *, wallet_fee=0.05, publisher_fee=0.10, 
     """
 
     return (floor(price * wallet_fee) or minimal_fee) + (floor(price * publisher_fee) or minimal_fee)
+
+
+# TODO how about merge this with transport.add_cookie?
+def create_cookie(
+    domain: str,
+    name: str,
+    value: str,
+    *,
+    path="/",
+    expires: datetime | str = None,
+    samesite: str | Literal[True] = None,
+    secure: bool = False,
+    httponly: bool = False,
+) -> SimpleCookie:
+    c = SimpleCookie()
+    c[name] = value
+    c[name]["path"] = path
+    c[name]["domain"] = domain
+    if expires is not None:
+        if isinstance(expires, datetime):
+            c[name]["expires"] = format_time(expires)
+        else:  # str
+            c[name]["expires"] = expires
+    if samesite is not None:
+        c[name]["samesite"] = samesite
+    if secure:
+        c[name]["secure"] = secure
+    if httponly:
+        c[name]["httponly"] = httponly
+
+    return c
+
+
+# def create_morsel():
+#     c[name] = value
+#     c[name]["path"] = path
+#     c[name]["domain"] = domain
+#     if expires is not None:
+#         if isinstance(expires, datetime):
+#             c[name]["expires"] = format_time(expires)
+#         else:  # str
+#             c[name]["expires"] = expires
+#     if samesite is not None:
+#         c[name]["samesite"] = samesite
+#     if secure:
+#         c[name]["secure"] = secure
+#     if httponly:
+#         c[name]["httponly"] = httponly
+#
+#     return c

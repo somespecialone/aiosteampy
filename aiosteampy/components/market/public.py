@@ -1,0 +1,895 @@
+import re
+
+from collections.abc import AsyncGenerator
+from typing import Literal, overload, Sequence, Mapping
+from datetime import datetime
+
+from ...constants import Currency, EResult, STEAM_URL, App, AppContext
+from ...utils import create_ident_code, find_item_name_id_in_text
+from ...exceptions import EResultError
+from ...models import ItemAction, ItemDescriptionEntry, ItemTag, AssetPropertyId, AssetProperty, ItemDescription
+from ...transport import BaseSteamTransport, TransportError, format_http_date, parse_http_date
+
+from .models import (
+    SellOrderTableEntry,
+    BuyOrderTableEntry,
+    OrderGraphEntry,
+    ItemOrdersHistogram,
+    ActivityType,
+    ActivityEntry,
+    ItemOrdersActivity,
+    PriceOverview,
+    MarketListingStatus,
+    MarketListingItem,
+    MarketListing,
+    ListingValues,
+    MarketSearchItem,
+)
+
+ITEM_ORDER_HIST_PRICE_RE = re.compile(r"[^\d\s]*([\d,]+(?:\.\d+)?)[^\d\s]*")  # Author: ChatGPT
+
+# listings, total count, last modified
+MarketItemListingData = tuple[list[MarketListing], int, datetime]
+
+ItemDescriptionsMap = dict[str, ItemDescription]  # ident code : descr
+
+# Steam current limit
+LISTING_COUNT = 10
+
+SortColumn = Literal["price", "name", "quantity", "popular", "default"]
+SortDir = Literal["asc", "desc"]
+
+SEARCH_URL = STEAM_URL.MARKET / "search"
+SEARCH_RENDER_URL = SEARCH_URL / "render/"
+
+
+class MarketPublicComponent:
+    """Component with public `Steam Market` methods."""
+
+    __slots__ = (
+        "_transport",
+        "_country",
+        "_currency",
+    )
+
+    def __init__(self, transport: BaseSteamTransport, country: str, currency: Currency):
+        self._transport = transport
+        self._country = country
+        self._currency = currency
+
+    @property
+    def transport(self) -> BaseSteamTransport:
+        return self._transport
+
+    @property
+    def country(self) -> str:
+        return self._country
+
+    @property
+    def currency(self) -> Currency:
+        return self._currency
+
+    @staticmethod
+    def _parse_quantity(text: str | int) -> int:
+        if type(text) is int:
+            return text
+        elif "." in text:
+            count_raw = text.replace(".", "")
+        elif "," in text:  # to be sure
+            count_raw = text.replace(",", "")
+        else:
+            count_raw = text
+
+        return int(count_raw)
+
+    @staticmethod
+    def _parse_price_with_currency(text: str | None) -> int | None:
+        if text is None:  # to make caller code cleaner
+            return None
+
+        raw_price = ITEM_ORDER_HIST_PRICE_RE.search(text.replace(" ", "")).group(1)
+
+        if "." not in raw_price and "," not in raw_price:
+            price = int(raw_price) * 100  # add cents
+        else:  # 163,46₴ £2.69 $1,000.00
+            price = raw_price.replace(",", "").replace(".", "")
+
+        return int(price)
+
+    # @currency_required
+    async def get_item_orders_histogram(
+        self,
+        item_name_id: int,
+        *,
+        if_modified_since: datetime | str | None = None,
+    ) -> tuple[ItemOrdersHistogram, datetime]:
+        """
+        Do what described in method name.
+
+        .. seealso::
+            * https://github.com/Revadike/InternalSteamWebAPI/wiki/Get-Market-Item-Orders-Histogram.
+            * https://github.com/somespecialone/steam-item-name-ids - open source list of known item name ids.
+
+        .. note:: This request is rate limited by `Steam`. It is **strongly advised** to use ``if_modified_since``.
+
+        :param item_name_id: special id of item class. Can be found only on listings page.
+        :param if_modified_since: `If-Modified-Since` header value.
+        :return: ``ItemOrdersHistogram`` model, datetime object when resource was last modified.
+        :raises EResultError: ordinary reasons.
+        :raises TransportError: arbitrary reasons.
+        :raises RateLimitExceeded: rate limit has been hit.
+        :raises ResourceNotModified: 304 status code.
+        """
+
+        params = {
+            "norender": 1,
+            # TODO language dilemma
+            # "language": self.language,
+            "language": "english",
+            "country": self._country,
+            "currency": self._currency,
+            "item_nameid": item_name_id,
+        }
+        # TODO also better to be moved to func
+        headers = {}
+        if if_modified_since:
+            if isinstance(if_modified_since, datetime):
+                headers["If-Modified-Since"] = format_http_date(if_modified_since)
+            else:  # str
+                headers["If-Modified-Since"] = if_modified_since
+
+        r = await self._transport.request(
+            "GET",
+            STEAM_URL.MARKET / "itemordershistogram",
+            params=params,
+            headers=headers,
+            response_mode="json",
+        )
+        rj: dict = r.content
+
+        # TODO how about move EResult check into util func?
+        #  or it can be moved to transport.request?
+        if (eresult := EResult(rj.get("success", 0))) is not EResult.OK:
+            raise EResultError(eresult, rj.get("message", ""))
+
+        return ItemOrdersHistogram(
+            sell_order_count=self._parse_quantity(rj["sell_order_count"]),
+            sell_order_price=self._parse_price_with_currency(rj["sell_order_price"]),
+            sell_order_table=[
+                SellOrderTableEntry(
+                    self._parse_price_with_currency(d["price"]),
+                    self._parse_price_with_currency(d["price_with_fee"]),
+                    self._parse_quantity(d["quantity"]),
+                )
+                for d in rj["sell_order_table"] or ()
+            ],
+            buy_order_count=self._parse_quantity(rj["buy_order_count"]),
+            buy_order_price=self._parse_price_with_currency(rj["buy_order_price"]),
+            buy_order_table=[
+                BuyOrderTableEntry(
+                    self._parse_price_with_currency(d["price"]),
+                    self._parse_quantity(d["quantity"]),
+                )
+                for d in rj["buy_order_table"] or ()
+            ],
+            highest_buy_order=int(rj["highest_buy_order"]) if rj["highest_buy_order"] is not None else None,
+            lowest_sell_order=int(rj["lowest_sell_order"]) if rj["lowest_sell_order"] is not None else None,
+            buy_order_graph=[OrderGraphEntry(int(d[0] * 100), d[1], d[2]) for d in rj["buy_order_graph"]],
+            sell_order_graph=[OrderGraphEntry(int(d[0] * 100), d[1], d[2]) for d in rj["sell_order_graph"]],
+            graph_max_y=rj["graph_max_y"],
+            graph_min_x=int(rj["graph_min_x"] * 100),
+            graph_max_x=int(rj["graph_max_x"] * 100),
+        ), parse_http_date(r.headers["Last-Modified"])
+
+    # @currency_required
+    async def get_item_orders_activity(
+        self,
+        item_name_id: int,
+        *,
+        if_modified_since: datetime | str | None = None,
+    ) -> tuple[ItemOrdersActivity, datetime]:
+        """
+        Do what described in method name.
+
+        .. seealso::
+            * https://github.com/Revadike/InternalSteamWebAPI/wiki/Get-Market-Item-Orders-Activity.
+            * https://github.com/somespecialone/steam-item-name-ids - open source list of known item name ids.
+
+        .. note:: This request is rate limited by `Steam`. It is **strongly advised** to use ``if_modified_since``.
+
+        :param item_name_id: special id of item class. Can be found only on listings page.
+        :param if_modified_since: `If-Modified-Since` header value.
+        :return: ``ItemOrdersActivity`` model, datetime object when resource was last modified.
+        :raises TransportError: arbitrary reasons.
+        :raises EResultError: ordinary reasons.
+        :raises ResourceNotModified: 304 status code.
+        """
+
+        params = {
+            "norender": 1,
+            # "language": self.language,
+            "language": "english",
+            "country": self._country,
+            "currency": self._currency,
+            "item_nameid": item_name_id,
+        }
+        headers = {}
+        if if_modified_since:
+            if isinstance(if_modified_since, datetime):
+                headers["If-Modified-Since"] = format_http_date(if_modified_since)
+            else:  # str
+                headers["If-Modified-Since"] = if_modified_since
+
+        # Can we hit a rate limit there?
+        r = await self._transport.request(
+            "GET",
+            STEAM_URL.MARKET / "itemordersactivity",
+            params=params,
+            headers=headers,
+            response_mode="json",
+        )
+        rj: dict = r.content
+
+        if (eresult := EResult(rj.get("success", 0))) is not EResult.OK:
+            raise EResultError(eresult, rj.get("message", ""))
+
+        return ItemOrdersActivity(
+            activity=[
+                ActivityEntry(
+                    type=ActivityType(a["type"]),
+                    quantity=self._parse_quantity(a["quantity"]),
+                    price=self._parse_price_with_currency(a["price"]),
+                    time=datetime.fromtimestamp(a["time"]),
+                    avatar_buyer=a.get("avatar_buyer"),
+                    avatar_medium_buyer=a.get("avatar_medium_buyer"),
+                    persona_buyer=a.get("persona_buyer"),
+                    avatar_seller=a.get("avatar_seller"),
+                    avatar_medium_seller=a.get("avatar_medium_seller"),
+                    persona_seller=a.get("persona_seller"),
+                )
+                for a in rj["activity"]
+            ],
+            timestamp=rj["timestamp"],
+        ), parse_http_date(r.headers["Last-Modified"])
+
+    @overload
+    async def get_price_overview(
+        self,
+        obj: ItemDescription,
+        *,
+        if_modified_since: datetime | str | None = ...,
+    ) -> tuple[PriceOverview, datetime]: ...
+
+    @overload
+    async def get_price_overview(
+        self,
+        obj: str,
+        app: App,
+        *,
+        if_modified_since: datetime | str | None = ...,
+    ) -> tuple[PriceOverview, datetime]: ...
+
+    # @currency_required
+    async def get_price_overview(
+        self,
+        obj: str | ItemDescription,
+        app: App = None,
+        *,
+        if_modified_since: datetime | str | None = None,
+    ) -> tuple[PriceOverview, datetime]:
+        """
+        Get price data of particular item.
+
+        .. note:: This request is rate limited by `Steam`. It is **strongly advised** to use ``if_modified_since``.
+
+        :param obj: `market hash name` of the item or ``ItemDescription``.
+        :param app: `Steam` app.
+        :param if_modified_since: `If-Modified-Since` header value.
+        :return: ``PriceOverview`` model, datetime object when resource was last modified.
+        :raises EResultError: ordinary reasons.
+        :raises TransportError: arbitrary reasons.
+        :raises ResourceNotModified: 304 status code.
+        """
+
+        if isinstance(obj, ItemDescription):
+            name = obj.market_hash_name
+            app = obj.app
+        else:  # str
+            name = obj
+
+        params = {
+            "country": self._country,
+            "currency": self._currency,
+            "market_hash_name": name,
+            "appid": app.value,
+        }
+        # referer header is profile alias / inventory, good that it is not mandatory
+        headers = {}
+        if if_modified_since:
+            if isinstance(if_modified_since, datetime):
+                headers["If-Modified-Since"] = format_http_date(if_modified_since)
+            else:  # str
+                headers["If-Modified-Since"] = if_modified_since
+
+        r = await self._transport.request(
+            "GET",
+            STEAM_URL.MARKET / "priceoverview",
+            params=params,
+            headers=headers,
+            response_mode="json",
+        )
+        rj: dict = r.content
+
+        if (eresult := EResult(rj.get("success", 0))) is not EResult.OK:
+            raise EResultError(eresult, rj.get("message", ""))
+
+        return PriceOverview(
+            lowest_price=self._parse_price_with_currency(rj["lowest_price"]),
+            volume=self._parse_quantity(rj["volume"]),
+            median_price=self._parse_price_with_currency(rj["lowest_price"]),
+        ), parse_http_date(r.headers["Last-Modified"])
+
+    @classmethod
+    def _create_market_listings(cls, data: dict, items_map: dict[str, MarketListingItem]) -> list[MarketListing]:
+        # casting to integers just to make sure that Steam didn't give us a surprise
+        return [
+            MarketListing(
+                id=int(l_data["listingid"]),
+                item=items_map[
+                    create_ident_code(
+                        l_data["asset"]["id"],
+                        l_data["asset"]["contextid"],
+                        l_data["asset"]["appid"],
+                    )
+                ],
+                original=ListingValues(
+                    currency=Currency(int(l_data["currencyid"]) - 2000),
+                    price=int(l_data["price"]),
+                    fee=int(l_data["fee"]),
+                    steam_fee=int(l_data.get("steam_fee", 0)),
+                    publisher_fee=int(l_data.get("publisher_fee", 0)),
+                ),
+                converted=ListingValues(
+                    currency=Currency(int(l_data["converted_currencyid"]) - 2000),
+                    price=int(l_data.get("converted_price", 0)),
+                    fee=int(l_data.get("converted_fee", 0)),
+                    steam_fee=int(l_data.get("converted_steam_fee", 0)),
+                    publisher_fee=int(l_data.get("converted_publisher_fee", 0)),
+                )
+                if "converted_currencyid" in l_data
+                else None,
+            )
+            for l_data in data["listinginfo"].values()
+        ]
+
+    @staticmethod
+    def _parse_item_actions(actions: list[dict]) -> list[ItemAction]:
+        return [ItemAction(a_data["link"], a_data["name"]) for a_data in actions]
+
+    @staticmethod
+    def _parse_item_tags(tags: list[dict]) -> list[ItemTag]:
+        return [
+            ItemTag(
+                t_data["category"],
+                t_data["internal_name"],
+                t_data["localized_category_name"],
+                t_data["localized_tag_name"],
+                t_data.get("color"),
+            )
+            for t_data in tags
+        ]
+
+    @staticmethod
+    def _parse_item_descr_entries(descriptions: list[dict]) -> list[ItemDescriptionEntry]:
+        return [
+            ItemDescriptionEntry(
+                d_data["type"],
+                d_data["value"],
+                d_data.get("name"),
+                d_data.get("color"),
+            )
+            for d_data in descriptions
+            if d_data["value"] != " "  # let's omit "blank" descriptions
+        ]
+
+    @classmethod
+    def _create_item_descr(cls, data: dict) -> ItemDescription:
+        return ItemDescription(
+            class_id=int(data["classid"]),
+            instance_id=int(data["instanceid"]),
+            app=App(data["appid"]),
+            name=data["name"],
+            market_name=data["market_name"],
+            market_hash_name=data["market_hash_name"],
+            name_color=data.get("name_color") or None,
+            background_color=data.get("name_color") or None,
+            type=data["type"] or None,
+            icon=data["icon_url"],
+            icon_large=data.get("icon_url_large"),
+            commodity=bool(data["commodity"]),
+            tradable=bool(data["tradable"]),
+            # market search page descriptions may miss this so True by default
+            marketable=bool(data.get("marketable", True)),
+            market_tradable_restriction=data.get("market_tradable_restriction", 0),
+            market_buy_country_restriction=data.get("market_buy_country_restriction"),
+            market_fee_app=data.get("market_fee_app"),
+            market_marketable_restriction=data.get("market_marketable_restriction", 0),
+            actions=cls._parse_item_actions(data["actions"]) if "actions" in data else [],
+            market_actions=cls._parse_item_actions(data["market_actions"]) if "market_actions" in data else [],
+            owner_actions=cls._parse_item_actions(data["owner_actions"]) if "owner_actions" in data else [],
+            tags=cls._parse_item_tags(data["tags"]) if "tags" in data else [],
+            descriptions=cls._parse_item_descr_entries(data["descriptions"]) if "descriptions" in data else [],
+            owner_descriptions=(
+                cls._parse_item_descr_entries(data["owner_descriptions"]) if "owner_descriptions" in data else []
+            ),
+            fraud_warnings=data.get("fraudwarnings", []),
+            sealed=bool(data["sealed"]),
+        )
+
+    @classmethod
+    def _parse_descriptions_from_market_assets(
+        cls,
+        assets: dict[str, dict[str, dict[str, dict]]],
+        item_descriptions_map: dict[str, ItemDescription],
+    ):
+        """Extract item descriptions from market assets data to ``item_descriptions_map`` dict."""
+
+        for app_id, app_data in assets.items():
+            for context_id, context_data in app_data.items():
+                for asset_id, mixed_data in context_data.items():  # asset+descr data
+                    key = create_ident_code(mixed_data["instanceid"], mixed_data["classid"], app_id)
+                    if key not in item_descriptions_map:
+                        item_descriptions_map[key] = cls._create_item_descr(mixed_data)
+
+    @staticmethod
+    def _parse_market_listing_items(
+        data: dict[str, dict[str, dict[str, dict]]],
+        item_descriptions_map: dict[str, ItemDescription],
+        items_map: dict[str, MarketListingItem],
+    ):
+        """Extract ``MarketListingItem`` from market assets data to ``items_map`` dict."""
+
+        for app_id, app_data in data.items():
+            for context_id, context_data in app_data.items():
+                for a_data in context_data.values():
+                    key = create_ident_code(a_data["id"], context_id, app_id)
+                    if key not in items_map:
+                        properties_list = []
+                        for prop_data in a_data.get("asset_properties", ()) or ():
+                            prop_data: dict
+
+                            value = None
+
+                            property_id = AssetPropertyId(prop_data["propertyid"])
+                            match property_id:
+                                case AssetPropertyId.PATTERN_TEMPLATE:
+                                    value = int(prop_data["int_value"])
+                                case AssetPropertyId.WEAR_RATING:
+                                    # trunc to 16 digits so python can handle such precision
+                                    value = float(prop_data["float_value"][:18])
+                                case AssetPropertyId.UNKNOWN:
+                                    value = prop_data["string_value"]  # ?
+
+                            properties_list.append(AssetProperty(property_id, value, prop_data.get("name")))
+
+                        descr_key = create_ident_code(a_data["instanceid"], a_data["classid"], app_id)
+                        items_map[key] = MarketListingItem(
+                            asset_id=int(a_data["id"]),
+                            market_id=0,  # will be set in MarketListing.__post_init__
+                            unowned_id=int(a_data["unowned_id"]),
+                            unowned_context_id=int(a_data["unowned_contextid"]),
+                            app_context=AppContext((App(int(a_data["appid"])), int(a_data["contextid"]))),
+                            description=item_descriptions_map[descr_key],
+                            properties=properties_list,
+                        )
+
+    @overload
+    async def get_item_listings(
+        self,
+        obj: ItemDescription,
+        *,
+        query: str = ...,
+        start: int = ...,
+        count: int = ...,
+        if_modified_since: datetime | str | None = ...,
+    ) -> MarketItemListingData: ...
+
+    @overload
+    async def get_item_listings(
+        self,
+        obj: str,
+        app: App,
+        *,
+        query: str = ...,
+        start: int = ...,
+        count: int = ...,
+        if_modified_since: datetime | str | None = ...,
+    ) -> MarketItemListingData: ...
+
+    # @currency_required
+    async def get_item_listings(
+        self,
+        obj: str | ItemDescription,
+        app: App | None = None,
+        *,
+        query: str = "",
+        start: int = 0,
+        count: int = LISTING_COUNT,
+        if_modified_since: datetime | str | None = None,
+        _item_descriptions_map: ItemDescriptionsMap | None = None,
+        _market_econ_items_map: dict[str, MarketListingItem] | None = None,
+    ) -> MarketItemListingData:
+        """
+        Get page of item listings from `Steam Market`.
+
+        .. note::
+            * Pagination can be achieved by passing ``start`` arg.
+            * This request is rate limited by `Steam`. It is **strongly advised** to use ``if_modified_since``.
+
+        :param obj: `market hash name` of item or ``ItemDescription``.
+        :param app: `Steam` app.
+        :param count: page size.
+        :param start: offset position.
+        :param query: raw search query.
+        :param if_modified_since: `If-Modified-Since` header value.
+        :return: list of ``MarketListing`` as response page, total listings count,
+            datetime object when resource was last modified.
+        :raises EResultError: ordinary reasons.
+        :raises TransportError: arbitrary reasons.
+        :raises RateLimitExceeded: rate limit has been hit.
+        :raises ResourceNotModified: 304 status code.
+        """
+
+        if isinstance(obj, ItemDescription):
+            if obj.commodity:
+                raise ValueError("Commodity items does not have listings on Steam Market")
+
+            name = obj.market_hash_name
+            app = obj.app
+        else:  # str
+            name = obj
+
+        base_url = STEAM_URL.MARKET / f"listings/{app.value}/{name}"
+        params = {
+            "filter": query,
+            "query": "",  # as web browser
+            "country": self._country,
+            "currency": self._currency.value,
+            "start": start,
+            "count": count,
+            # "language": self.language,
+            "language": "english",
+        }
+        # TODO non-mandatory headers
+        headers = {"Referer": str(base_url), "X-Prototype-Version": "1.7", "X-Requested-With": "XMLHttpRequest"}
+        if if_modified_since:
+            if isinstance(if_modified_since, datetime):
+                headers["If-Modified-Since"] = format_http_date(if_modified_since)
+            else:  # str
+                headers["If-Modified-Since"] = if_modified_since
+
+        r = await self._transport.request(
+            "GET",
+            base_url / "render/",
+            params=params,
+            headers=headers,
+            response_mode="json",
+        )
+        rj: dict[str, int | dict[str, dict]] = r.content
+
+        if (eresult := EResult(rj.get("success", 0))) is not EResult.OK:
+            raise EResultError(eresult, rj.get("message", ""))
+
+        last_modified = parse_http_date(r.headers["Last-Modified"])
+
+        if not rj["total_count"] or not rj["assets"]:
+            return [], 0, last_modified
+
+        _item_descriptions_map = {} if _item_descriptions_map is None else _item_descriptions_map
+        _market_econ_items_map = {} if _market_econ_items_map is None else _market_econ_items_map
+
+        self._parse_descriptions_from_market_assets(rj["assets"], _item_descriptions_map)
+        # Do we need to share items?
+        self._parse_market_listing_items(rj["assets"], _item_descriptions_map, _market_econ_items_map)
+
+        return self._create_market_listings(rj, _market_econ_items_map), rj["total_count"], last_modified
+
+    # without "async" for proper type hinting in VsCode and PyCharm
+    @overload
+    def item_listings(
+        self,
+        obj: ItemDescription,
+        *,
+        query: str = ...,
+        start: int = ...,
+        count: int = ...,
+        if_modified_since: datetime | str | None = ...,
+    ) -> AsyncGenerator[MarketItemListingData, None]: ...
+
+    @overload
+    def item_listings(
+        self,
+        obj: str,
+        app: App,
+        *,
+        query: str = ...,
+        start: int = ...,
+        count: int = ...,
+        if_modified_since: datetime | str | None = ...,
+    ) -> AsyncGenerator[MarketItemListingData, None]: ...
+
+    async def item_listings(
+        self,
+        obj: str | ItemDescription,
+        app: App | None = None,
+        *,
+        query: str = "",
+        start: int = 0,
+        count: int = LISTING_COUNT,
+        if_modified_since: datetime | str | None = None,
+        _item_descriptions_map: ItemDescriptionsMap | None = None,
+        _market_econ_items_map: dict[str, MarketListingItem] | None = None,
+    ) -> AsyncGenerator[MarketItemListingData, None]:
+        """
+        Get iterator of item listings pages from `Steam Market`.
+
+        .. note:: This request is rate limited by `Steam`. It is **strongly advised** to use ``if_modified_since``.
+
+        :param obj: `market hash name` of item or ``ItemDescription``.
+        :param app: `Steam` app.
+        :param count: page size.
+        :param start: offset position.
+        :param query: raw search query.
+        :param if_modified_since: `If-Modified-Since` header value.
+        :return: ``AsyncGenerator`` that yields list of ``MarketListing`` as page, total listings count,
+            datetime object when resource was last modified.
+        :raises EResultError: ordinary reasons.
+        :raises TransportError: arbitrary reasons.
+        :raises RateLimitExceeded: rate limit has been hit.
+        :raises ResourceNotModified: 304 status code.
+        """
+
+        _item_descriptions_map = {} if _item_descriptions_map is None else _item_descriptions_map
+        _market_econ_items_map = {} if _market_econ_items_map is None else _market_econ_items_map
+
+        total_count: int = 10000000  # simplify logic for initial iteration
+        while total_count > start:
+            # browser loads first batch from document request and not json api point, but anyway
+            # avoid excess destructuring
+            listings_data = await self.get_item_listings(
+                obj,
+                app,
+                query=query,
+                count=count,
+                if_modified_since=if_modified_since,
+                _item_descriptions_map=_item_descriptions_map,
+                _market_econ_items_map=_market_econ_items_map,
+                start=start,
+            )
+            total_count = listings_data[1]
+            start += count
+
+            yield listings_data
+
+    async def get_item_name_id(self, obj: str | ItemDescription, app: App | None = None) -> int:
+        """
+        Get `item name id`, a special market of *item class*.
+
+        .. seealso:: https://github.com/somespecialone/steam-item-name-ids.
+
+        :param obj: `market hash name` of item or ``ItemDescription``.
+        :param app: `Steam` app.
+        :return: `item name id`.
+        :raises RateLimitExceeded: rate limit has been hit.
+        :raises ValueError: failed to find `item name id` on page.
+        :raises TransportError: arbitrary reasons.
+        """
+
+        if isinstance(obj, ItemDescription):
+            url = obj.market_url
+        else:  # str
+            url = STEAM_URL.MARKET / f"listings/{app.value}/{obj}"
+
+        r = await self._transport.request("GET", url, response_mode="text")
+
+        res = find_item_name_id_in_text(r.content)
+        if not res:
+            raise ValueError(
+                "Couldn't find item name id in page. Are you sure that item exists and you pass full market name?"
+            )
+
+        return res
+
+    # TODO models, FilterSequence constructor or something
+    async def get_market_search_app_filters(self, app: App) -> dict[str, ...]:
+        """
+        Get `Steam App` filter facets for `Steam Market` search.
+
+        .. note::
+            You can see filter facets structure when you click on `Show advanced options...`
+            button under search input field on `Steam` market page.
+        """
+
+        r = await self._transport.request(
+            "GET",
+            STEAM_URL.MARKET / f"appfilters/{app.value}",
+            headers={"Referer": str(STEAM_URL.MARKET)},
+            response_mode="json",
+        )
+        rj: dict[str, dict | int] = r.content
+
+        if (eresult := EResult(rj.get("success", 0))) is not EResult.OK:
+            raise EResultError(eresult, rj.get("message", ""))
+
+        return rj["facets"]
+
+    async def get_market_search_results(
+        self,
+        query="",
+        app: App | None = None,
+        *,
+        start=0,
+        count=10,
+        descriptions=False,
+        sort_column: SortColumn = "default",
+        sort_dir: SortDir = "desc",
+        filters: str | Mapping[str, str | Sequence[str]] = "",
+        _item_descriptions_map: ItemDescriptionsMap | None = None,
+    ) -> tuple[list[MarketSearchItem], int]:
+        """
+        Get search results from `Steam Market`.
+
+        .. note::
+            You can find how to write filters by investigating how browser sends requests to a
+            https://steamcommunity.com/market/search/render/ endpoint with enabled at least one option from
+            `advanced options` window.
+
+            Example for `CS2`, with `Collection` as `The Anubis Collection` will look like:
+                * `get_market_search_results(app=App.CS2, filters={"category_730_ItemSet[]": "tag_set_anubis"})`.
+
+        .. note:: This request is rate limited by `Steam`.
+
+        :param query: raw search query.
+        :param app: `Steam` app.
+        :param start: start result position.
+        :param count: total count of results on page.
+        :param descriptions: to search in descriptions.
+        :param sort_column: column to sort by.
+        :param sort_dir: direction to sort by.
+        :param filters: app search filters.
+        :return: list of ``MarketSearchItem``, total results count.
+        :raises EResultError: ordinary reasons.
+        :raises TransportError: arbitrary reasons.
+        :raises RateLimitExceeded: rate limit has been hit.
+        """
+
+        req_params = {
+            "norender": 1,
+            "query": query,  # empty, like in browser's request
+            "start": start,
+            "count": count,
+            "sort_column": sort_column,
+            "sort_dir": sort_dir,
+            "search_descriptions": int(descriptions),
+        }
+
+        referer_params = {
+            "q": query,
+            "sort_column": sort_column,
+            "sort_dir": sort_dir,
+        }
+
+        if app is not None:
+            req_params["appid"] = referer_params["appid"] = app.value
+        if descriptions:
+            referer_params["descriptions"] = 1
+
+        referer = SEARCH_URL % referer_params % filters
+
+        r = await self._transport.request(
+            "GET",
+            SEARCH_RENDER_URL % req_params % filters,
+            headers={"Referer": str(referer)},
+            response_mode="json",
+        )
+        rj: dict[str, int | list[dict[str, str | int | dict[str, str | int]]]] = r.content
+
+        if (eresult := EResult(rj.get("success", 0))) is not EResult.OK:
+            raise EResultError(eresult, rj.get("message", ""))
+
+        if not rj["total_count"] or not rj["results"]:
+            return [], 0
+
+        _item_descriptions_map = {} if _item_descriptions_map is None else _item_descriptions_map
+
+        items = []
+        for item_data in rj["results"]:
+            descr_ident_code = create_ident_code(
+                item_data["asset_description"]["instanceid"],
+                item_data["asset_description"]["classid"],
+                item_data["asset_description"]["appid"],
+            )
+
+            if descr_ident_code in _item_descriptions_map:
+                description = _item_descriptions_map[descr_ident_code]
+            else:
+                description = self._create_item_descr(item_data["asset_description"])
+                _item_descriptions_map[descr_ident_code] = description
+
+            item = MarketSearchItem(
+                sell_listings=item_data["sell_listings"],
+                sell_price=item_data["sell_price"],
+                sell_price_text=item_data["sell_price_text"],
+                sale_price_text=item_data["sale_price_text"],
+                app_icon=item_data["app_icon"],
+                app_name=item_data["app_name"],
+                description=description,
+            )
+            items.append(item)
+
+        return items, rj["total_count"]
+
+    async def market_search_results(
+        self,
+        query="",
+        app: App = None,
+        *,
+        start=0,
+        count=10,
+        descriptions=False,
+        sort_column: SortColumn = "default",
+        sort_dir: SortDir = "desc",
+        filters: str | Mapping[str, str | Sequence[str]] = "",
+        _item_descriptions_map: ItemDescriptionsMap | None = None,
+    ) -> AsyncGenerator[tuple[list[MarketSearchItem], int], None]:
+        """
+        Get search results from `Steam Market`.
+        Return async iterator to paginate over market search result pages.
+
+        .. note::
+            You can find how to write filters by investigating how browser sends requests to a
+            https://steamcommunity.com/market/search/render/ endpoint with enabled at least one option from
+            `advanced options` window.
+
+            Example for `CS2`, with `Collection` as `The Anubis Collection` will look like:
+                * `get_market_search_results(app=App.CS2, filters={"category_730_ItemSet[]": "tag_set_anubis"})`.
+
+        .. note:: This request is rate limited by `Steam`.
+
+        :param query: raw search query.
+        :param app: `Steam` app.
+        :param start: start result position.
+        :param count: total count of results on page.
+        :param descriptions: to search in descriptions.
+        :param sort_column: column to sort by.
+        :param sort_dir: direction to sort by.
+        :param filters: app search filters.
+        :return: ``AsyncGenerator`` that yields list of ``MarketSearchItem``, total results count.
+        :raises EResultError: ordinary reasons.
+        :raises TransportError: arbitrary reasons.
+        :raises RateLimitExceeded: rate limit has been hit.
+        """
+
+        _item_descriptions_map = {} if _item_descriptions_map is None else _item_descriptions_map
+
+        total_count: int = 10000000  # simplify logic for initial iteration
+        while total_count > start:
+            # browser loads first batch from document request and not json api point, but anyway
+            # avoid excess destructuring
+            search_results = await self.get_market_search_results(
+                query,
+                app,
+                count=count,
+                descriptions=descriptions,
+                sort_column=sort_column,
+                sort_dir=sort_dir,
+                _item_descriptions_map=_item_descriptions_map,
+                start=start,
+                filters=filters,
+            )
+            total_count = search_results[1]
+            start += count
+
+            yield search_results
+
+    # TODO popular items, newly listed, recently sold

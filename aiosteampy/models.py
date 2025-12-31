@@ -1,5 +1,6 @@
 from dataclasses import dataclass, field
-from typing import NamedTuple
+from enum import IntEnum
+from typing import NamedTuple, Literal
 from datetime import datetime
 
 from yarl import URL
@@ -15,7 +16,9 @@ from .constants import (
     MarketListingStatus,
     TradeOfferStatus,
 )
-from .utils import create_ident_code, account_id_to_steam_id, make_inspect_url
+from .utils import create_ident_code, account_id_to_steam_id, make_inspect_link
+
+from .id import SteamID
 
 
 class ItemAction(NamedTuple):
@@ -24,7 +27,9 @@ class ItemAction(NamedTuple):
 
 
 class ItemDescriptionEntry(NamedTuple):
+    type: Literal["html"]
     value: str
+    name: str | None
     color: str | None  # hexadecimal
 
 
@@ -36,28 +41,57 @@ class ItemTag(NamedTuple):
     color: str | None  # hexadecimal
 
 
+class AssetPropertyId(IntEnum):
+    PATTERN_TEMPLATE = 1  # pattern
+    WEAR_RATING = 2  # float value
+    UNKNOWN = 6  # ?
+
+
 class AssetProperty(NamedTuple):
-    id: int
-    name: str
+    id: AssetPropertyId
     value: str | int | float | None
-    float_value: float | None = None
-    int_value: int | None = None
+    name: str | None
 
 
-@dataclass(eq=False, slots=True, frozen=True, kw_only=True)
-class ItemDescription:
+@dataclass(eq=False, slots=True, kw_only=True)
+class BaseEntityWithIdentCode:
+    id: str = field(init=False, default="")
+    """Unique identifier within whole `Steam Economy`."""
+
+    def __post_init__(self):
+        self._set_ident_code()
+
+    # optimization 🚀
+    def _set_ident_code(self):
+        raise NotImplementedError
+
+    @property
+    def ident_code(self) -> str:
+        """Alias for ``id``"""
+        return self.id
+
+    def __eq__(self, other):
+        return isinstance(other, BaseEntityWithIdentCode) and self.id == other.id
+
+    def __hash__(self):
+        return hash(self.id)
+
+
+@dataclass(eq=False, slots=True, kw_only=True)
+class ItemDescription(BaseEntityWithIdentCode):
     """
-    `EconItem` description representation.
-    `id` or `ident_code` field is guaranteed unique within whole Steam Economy.
+    ``EconItem`` `description` representation embodies item *class* merged with *instance*.
+    Items can share same `description`.
+
+    .. note:: ``id`` or (``ident_code``) field is guaranteed unique within whole `Steam Economy`.
     """
 
-    id: str = field(init=False, default="")  # optimization 🚀
-    """Unique identifier of the `ItemDescription` within `Steam Economy`"""
+    # As even Steam does not separate class from instance in response data, so we
 
     class_id: int
+    """Unique identifier within item `App`."""
     instance_id: int
-
-    d_id: int | None = field(init=False, default=None)  # optional CSGO inspect id
+    """Unique identifier within item `Class+App`."""
 
     app: App
 
@@ -73,39 +107,80 @@ class ItemDescription:
     icon: str
     icon_large: str | None = None
 
-    actions: tuple[ItemAction, ...] = ()
-    market_actions: tuple[ItemAction, ...] = ()
-    owner_actions: tuple[ItemAction, ...] = ()
-    tags: tuple[ItemTag, ...] = ()
-    descriptions: tuple[ItemDescriptionEntry, ...] = ()
-    owner_descriptions: tuple[ItemDescriptionEntry, ...] = ()
+    # TODO do I need defaults here? Wait for trade, inventory methods
 
-    fraud_warnings: tuple[str, ...] = ()
+    tags: list[ItemTag] = field(default_factory=list)  # listing item does not show tags
+    descriptions: list[ItemDescriptionEntry] = field(default_factory=list)
 
-    commodity: bool  # item use buy orders on market
-    tradable: bool  # item can be traded
-    marketable: bool
-    # days for which the item will be untradable after being sold on the market.
-    market_tradable_restriction: int | None = None
+    fraud_warnings: list[str] = field(default_factory=list)  # ?
+
+    commodity: bool
+    """Item use sell and buy orders on market and does not have listings."""
+    market_tradable_restriction: int = 0
+    """Period **in days** when item will be *untradable* after being purchased on the market."""
     market_buy_country_restriction: str | None = None
     market_fee_app: int | None = None
-    market_marketable_restriction: int | None = None  # same as `market_tradable_restriction` but for market
+    market_marketable_restriction: int = 0
+    """Period **in days** when item will be *unmarketable* after being purchased on the market."""
+
+    # class instance fields
+    owner_descriptions: list[ItemDescriptionEntry] = field(default_factory=list)
+    actions: list[ItemAction] = field(default_factory=list)
+    market_actions: list[ItemAction] = field(default_factory=list)
+    owner_actions: list[ItemAction] = field(default_factory=list)
+    tradable: bool
+    """If item available for trade at the current moment."""
+    marketable: bool
+    """If item can be sold on market at the current moment."""
+
+    # helper fields
+    hold_until: datetime | None = field(init=False, default=None)
+    """`Steam Market` hold end time."""
+    protected_until: datetime | None = field(init=False, default=None)
+    """`Trade Protection` protection end time."""
+
+    # currency: int  # ?
+    sealed: bool
+    """If item under `Trade Protection` at the current moment."""
+
+    # CS2
+    d_id: int | None = field(init=False, default=None)  # also belongs to class instance
+    """Optional **CS2** special `inspect id`."""
+
+    # TODO stickers, keychains (charm) info from "descriptions"
 
     def __post_init__(self):
-        self._set_ident_code()
+        super(ItemDescription, self).__post_init__()
+        # self._set_ident_code()
         self._set_d_id()
+        self._set_restrictions_end_time()
 
     def _set_ident_code(self):
-        object.__setattr__(self, "id", create_ident_code(self.instance_id, self.class_id, self.app.value))
+        self.id = create_ident_code(self.instance_id, self.class_id, self.app.value)
 
     def _set_d_id(self):
         if self.app is App.CS2:
-            if (i_action := next(filter(lambda a: "Inspect" in a.name, self.actions), None)) is not None:
-                object.__setattr__(self, "d_id", int(i_action.link.split("%D")[1]))
+            # find inspect action, language agnostic (safe) option
+            if (i_action := next(filter(lambda a: "action_preview" in a.link, self.actions), None)) is not None:
+                self.d_id = int(i_action.link.split("%D")[1])
+
+    def _set_restrictions_end_time(self):
+        if self.market_tradable_restriction or self.market_marketable_restriction:
+            # find tradable after description
+            sep = "Tradable/Marketable After "
+            if (t_a_descr := next(filter(lambda d: sep in d.value, self.owner_descriptions), None)) is not None:
+                date_string = t_a_descr.value.split(sep)[1]
+                self.hold_until = datetime.strptime(date_string, TRADABLE_AFTER_DATE_FORMAT)
+
+        elif self.sealed:
+            sep = "This item is trade-protected and cannot be consumed, modified, or transferred until "
+            if (t_a_descr := next(filter(lambda d: sep in d.value, self.owner_descriptions), None)) is not None:
+                date_string = t_a_descr.value.split(sep)[1]
+                self.protected_until = datetime.strptime(date_string, TRADABLE_AFTER_DATE_FORMAT)
 
     @property
     def ident_code(self) -> str:
-        """Alias for `id`"""
+        """Alias for ``id``."""
         return self.id
 
     @property
@@ -118,105 +193,50 @@ class ItemDescription:
 
     @property
     def market_url(self) -> URL:
+        """URL of item page on `Steam Market`."""
         return STEAM_URL.MARKET / f"listings/{self.app.value}/{self.market_hash_name}"
-
-    def __eq__(self, other):
-        if isinstance(other, ItemDescription):
-            return self.id == other.id
-        return False
-
-    def __hash__(self):
-        return hash(self.id)
 
 
 @dataclass(eq=False, slots=True, kw_only=True)
-class EconItem:
+class EconItem(BaseEntityWithIdentCode):
     """
-    Represents unique copy of a `Steam Economy` item, ala `Asset`.
-    `id` or `ident_code` field is guaranteed unique within whole Steam Economy.
-    """
+    Represents unique copy of `Steam Economy` item, ala `Asset`.
 
-    id: str = field(init=False, default="")  # optimization 🚀
-    """Unique identifier of the `EconItem` within `Steam Economy`"""
+    .. note:: ``id`` or (``ident_code``) field is guaranteed unique within whole `Steam Economy`.
+    """
 
     asset_id: int  # The item's unique ID within its app+context
-    owner_id: int
+    """Unique identifier within item `App+Context`."""
+    owner_id: SteamID  # absent in data, will be set in methods
+    """The item's owner's ``SteamID``."""
 
     app_context: AppContext
 
-    amount: int  # if stackable
+    amount: int  # if stackable, otherwise always 1
+    """Amount of items in the stack."""
 
     description: ItemDescription
-    tradable_after: datetime | None = field(init=False, default=None)
 
-    properties: tuple[AssetProperty, ...] = ()
+    properties: list[AssetProperty] = field(default_factory=list)
 
+    # optimization 🚀
     def __post_init__(self):
-        self._set_ident_code()
-        self._set_tradable_after()
+        super(EconItem, self).__post_init__()
+        # self._set_ident_code()
 
     def _set_ident_code(self):
         self.id = create_ident_code(self.asset_id, self.app_context.context, self.app_context.app.value)
 
-    # TODO this. Also, protected_until, hold_until properties in 0.8.0
-    def _set_tradable_after(self):
-        if self.description.market_tradable_restriction:
-            sep = "Tradable/Marketable After "
-            t_a_descr = next(filter(lambda d: sep in d.value, self.description.owner_descriptions or ()), None)
-            if t_a_descr is not None:
-                date_string = t_a_descr.value.split(sep)[1]
-                self.tradable_after = datetime.strptime(date_string, TRADABLE_AFTER_DATE_FORMAT)
-                return
-
-            sep = "This item is trade-protected and cannot be consumed, modified, or transferred until "
-            t_a_descr = next(filter(lambda d: sep in d.value, self.description.owner_descriptions or ()), None)
-            if t_a_descr is not None:
-                date_string = t_a_descr.value.split(sep)[1]
-                self.tradable_after = datetime.strptime(date_string, TRADABLE_AFTER_DATE_FORMAT)
-                return
-
     @property
     def ident_code(self) -> str:
-        """Alias for `id`"""
+        """Alias for ``id``"""
         return self.id
 
     @property
-    def inspect_url(self) -> str | None:
+    def inspect_link(self) -> str | None:
+        """`Inspect in game` link for `CS2` item, if available."""
         if self.description.d_id:
-            return make_inspect_url(owner_id=self.owner_id, asset_id=self.asset_id, d_id=self.description.d_id)
-
-    def __eq__(self, other):
-        if isinstance(other, EconItem):
-            return self.id == other.id
-        return False
-
-    def __hash__(self):
-        return hash(self.id)
-
-
-# https://github.com/DoctorMcKay/node-steamcommunity/wiki/CConfirmation
-@dataclass(eq=False, slots=True)
-class Confirmation:
-    id: int
-    nonce: str  # conf key
-    creator_id: int  # trade/listing id
-    creation_time: datetime
-
-    type: ConfirmationType
-
-    icon: str
-    multi: bool  # ?
-    headline: str
-    summary: str
-    warn: str | None  # ?
-
-    details: dict[str, ...] | None = None  # TODO need typing
-
-    @property
-    def listing_item_ident_code(self) -> str | None:
-        """`MarketListingItem` ident code if `details` is present"""
-        if self.details is not None:
-            return create_ident_code(self.details["id"], self.details["contextid"], self.details["appid"])
+            return make_inspect_link(owner_id=self.owner_id.id64, asset_id=self.asset_id, d_id=self.description.d_id)
 
 
 class Notifications(NamedTuple):
@@ -233,181 +253,8 @@ class Notifications(NamedTuple):
     account_alerts: int  # 11
 
 
-@dataclass(eq=False, slots=True, kw_only=True)
-class MarketListingItem(EconItem):
-    """Presented only on active listing."""
-
-    market_id: int  # listing id
-
-    unowned_id: int | None
-    unowned_context_id: int | None
-
-    amount: int = 1  # item on listing always have amount eq 1
-    owner_id: int = 0
-
-    @property
-    def inspect_url(self) -> str | None:
-        if self.description.d_id:
-            return make_inspect_url(market_id=self.market_id, asset_id=self.asset_id, d_id=self.description.d_id)
-
-
-@dataclass(eq=False, slots=True)
-class BaseOrder:
-    id: int  # listing/buy order id
-
-    price: int
-
-    def __hash__(self):
-        return self.id
-
-
-@dataclass(eq=False, slots=True)
-class MyMarketListing(BaseOrder):
-    lister_steam_id: int
-    time_created: datetime
-
-    item: MarketListingItem
-
-    status: MarketListingStatus
-    active: bool  # ?
-
-    # fields that can be useful
-    item_expired: int
-    cancel_reason: int
-    time_finish_hold: int
-
-    @property
-    def listing_id(self) -> int:
-        return self.id
-
-
-@dataclass(eq=False, slots=True)
-class BuyOrder(BaseOrder):
-    item_description: ItemDescription
-
-    quantity: int
-    quantity_remaining: int
-
-    @property
-    def buy_order_id(self) -> int:
-        return self.id
-
-
-@dataclass(eq=False, slots=True, kw_only=True)
-class MarketHistoryListingItem(MarketListingItem):
-    market_id: None = None
-
-    # purchase fields
-    new_asset_id: int | None = None
-    new_context_id: int | None = None
-    rollback_new_asset_id: int | None = None
-    rollback_new_context_id: int | None = None
-
-    @property
-    def inspect_link(self) -> None:
-        """Always `None`, because we can't be sure that asset id has not been changed."""
-        return None
-
-
-@dataclass(eq=False, slots=True, kw_only=True)
-class MarketHistoryListing(BaseOrder):
-    item: MarketHistoryListingItem
-
-    currency: Currency
-
-    # purchase fields
-    purchase_id: int | None = None
-    steamid_purchaser: int | None = None
-    received_amount: int | None = None
-    received_currency: Currency | None = None
-    time_sold: datetime | None = None
-    paid_amount: int | None = None
-    paid_fee: int | None = None
-    steam_fee: int | None = None
-    publisher_fee: int | None = None
-
-    # unknown fields
-    # failed
-    # needs_rollback
-    # funds_held
-    # time_funds_held_until
-    # funds_revoked
-    # funds_returned
-
-    # listing fields
-    price: int | None = None
-    fee: int | None = None
-    original_price: int | None = None
-    cancel_reason: str | None = None
-
-    @property
-    def listing_id(self) -> int:
-        return self.id
-
-
-@dataclass(eq=False, slots=True)
-class MarketHistoryEvent:
-    """
-    Event entity in market history. Represents event linked with related listing.
-    Note that this is just a snapshot of listing, asset data for event fire moment time
-    and `asset id`, `context id` of asset may change already.
-    """
-
-    listing: MarketHistoryListing
-    time_event: datetime
-    type: MarketHistoryEventType
-
-
-@dataclass(eq=False, slots=True)
-class PriceHistoryEntry:
-    date: datetime
-    price: float  # float from steam
-    daily_volume: int
-
-
-@dataclass(eq=False, slots=True)
-class MarketListing(BaseOrder):
-    item: MarketListingItem
-
-    currency: Currency  # original currency
-    fee: int
-    steam_fee: int
-    publisher_fee: int
-
-    # converted values are not presented in data if listing is sold
-    converted_currency: Currency | None
-    converted_price: int
-    converted_fee: int
-    converted_steam_fee: int
-    converted_publisher_fee: int
-
-    converted_price_per_unit: int
-    converted_fee_per_unit: int
-    converted_steam_fee_per_unit: int
-    converted_publisher_fee_per_unit: int
-
-    def __post_init__(self):
-        if not self.item.market_id:
-            self.item.market_id = self.id
-
-    @property
-    def listing_id(self) -> int:
-        return self.id
-
-    @property
-    def total_cost(self) -> int:
-        return self.price + self.fee
-
-    @property
-    def total_converted_cost(self) -> int:
-        return self.converted_price + self.converted_fee
-
-    @property
-    def is_sold(self) -> bool:
-        """If listing is sold and unavailable for purchase"""
-        return self.steam_fee == 0 and self.converted_fee == 0
-
-
+# TODO how about composition instead of inheritance?
+#  Item from trade not inherit econ item but contain field with it and new values?
 @dataclass(eq=False, slots=True, kw_only=True)
 class BaseTradeOfferItem(EconItem):
     description: ItemDescription | None  # not active trade offers have no description on items
@@ -425,9 +272,9 @@ class BaseTradeOfferItem(EconItem):
                 self.tradable_after = datetime.strptime(date_string, TRADABLE_AFTER_DATE_FORMAT)
 
     @property
-    def inspect_url(self) -> str | None:
+    def inspect_link(self) -> str | None:
         if self.description is not None and self.description.d_id:  # can't do super().inspect_url due to an error
-            return make_inspect_url(owner_id=self.owner_id, asset_id=self.asset_id, d_id=self.description.d_id)
+            return make_inspect_link(owner_id=self.owner_id, asset_id=self.asset_id, d_id=self.description.d_id)
 
 
 @dataclass(eq=False, slots=True, kw_only=True)
@@ -556,55 +403,3 @@ class HistoryTradeOffer(BaseTradeOffer):
     def id(self) -> int:
         """Alias for `trade_id`"""
         return self.trade_id
-
-
-class SellOrderTableEntry(NamedTuple):
-    price: int
-    price_with_fee: int
-    quantity: int
-
-
-class BuyOrderTableEntry(NamedTuple):
-    price: int
-    quantity: int
-
-
-class OrderGraphEntry(NamedTuple):
-    price: int
-    quantity: int
-    repr: str
-
-
-@dataclass(eq=False, slots=True)
-class ItemOrdersHistogram:
-    sell_order_count: int
-    sell_order_price: int | None
-    sell_order_table: list[SellOrderTableEntry]
-    buy_order_count: int
-    buy_order_price: int | None
-    buy_order_table: list[BuyOrderTableEntry]
-    highest_buy_order: int | None
-    lowest_sell_order: int | None
-
-    # prices in integers (cents)!
-    buy_order_graph: list[OrderGraphEntry]
-    sell_order_graph: list[OrderGraphEntry]
-
-    graph_max_y: int
-    graph_min_x: int  # in cents
-    graph_max_x: int  # in cents
-    # price_prefix: str | None
-    # price_suffix: str | None
-
-
-@dataclass(eq=False, slots=True)
-class MarketSearchItem:
-    sell_listings: int
-    sell_price: int
-    sell_price_text: str
-    sale_price_text: str
-
-    app_icon: str
-    app_name: str
-
-    description: ItemDescription

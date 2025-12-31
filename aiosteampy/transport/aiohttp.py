@@ -96,7 +96,7 @@ class AiohttpSteamTransport(BaseSteamTransport):
         json,
         multipart,
         headers,
-        follow_redirects,
+        redirects,
         response_mode,
     ):
         if multipart is not None:
@@ -112,7 +112,7 @@ class AiohttpSteamTransport(BaseSteamTransport):
             data=data,
             json=json,
             headers=headers,
-            allow_redirects=follow_redirects,
+            allow_redirects=redirects,
             raise_for_status=False,
         )
 

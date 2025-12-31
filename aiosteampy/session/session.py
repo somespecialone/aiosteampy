@@ -777,7 +777,7 @@ class SteamLoginSession:
         r = await self._transport.request(
             "GET",
             STEAM_URL.COMMUNITY / "my",
-            follow_redirects=False,
+            redirects=False,
             raise_for_status=False,
             response_mode="meta",
         )

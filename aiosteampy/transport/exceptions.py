@@ -14,9 +14,9 @@ class TransportError(Exception):
 
 
 class RateLimitExceeded(SteamError):
-    """Raised when `Steam` decides you were in need of a bit of a rest."""
+    """`Steam` decides you were in need of a bit of a rest."""
 
-    # In hope that Steam will response with Retry-After or custom header sometime
+    # In hope that Steam will response with Retry-After or custom header sometime in future
     def __init__(self, response: TransportResponse):
         self.response = response
 

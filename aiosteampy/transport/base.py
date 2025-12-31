@@ -154,7 +154,7 @@ class BaseSteamTransport(metaclass=ABCMeta):
         json: Payload | None,
         multipart: Payload | None,
         headers: Headers,
-        follow_redirects: bool,
+        redirects: bool,
         response_mode: ResponseMode,
     ) -> TransportResponse:
         """
@@ -186,7 +186,7 @@ class BaseSteamTransport(metaclass=ABCMeta):
         params: Params | None = ...,
         data: Payload | None = ...,
         headers: Headers = ...,
-        follow_redirects: bool = ...,
+        redirects: bool = ...,
         raise_for_status: bool = ...,
         response_mode: ResponseMode = ...,
     ) -> TransportResponse: ...
@@ -200,7 +200,7 @@ class BaseSteamTransport(metaclass=ABCMeta):
         params: Params | None = ...,
         json: Payload | None = ...,
         headers: Headers = ...,
-        follow_redirects: bool = ...,
+        redirects: bool = ...,
         raise_for_status: bool = ...,
         response_mode: ResponseMode = ...,
     ) -> TransportResponse: ...
@@ -214,7 +214,7 @@ class BaseSteamTransport(metaclass=ABCMeta):
         params: Params | None = ...,
         multipart: Payload | None = ...,
         headers: Headers = ...,
-        follow_redirects: bool = ...,
+        redirects: bool = ...,
         raise_for_status: bool = ...,
         response_mode: ResponseMode = ...,
     ) -> TransportResponse: ...
@@ -229,7 +229,7 @@ class BaseSteamTransport(metaclass=ABCMeta):
         json: Payload | None = None,
         multipart: Payload | None = None,
         headers: Headers = None,
-        follow_redirects: bool = False,
+        redirects: bool = False,
         raise_for_status: bool = True,
         response_mode: ResponseMode = "text",
     ) -> TransportResponse:
@@ -245,12 +245,12 @@ class BaseSteamTransport(metaclass=ABCMeta):
         :param json: JSON serializable payload.
         :param multipart: multipart form data payload.
         :param headers: specific HTTP headers for this request.
-        :param follow_redirects: automatically follow redirects.
+        :param redirects: automatically follow redirects.
         :param raise_for_status: raise exception if response status indicates error.
         :param response_mode: return response body (as ``TransportResponse.content`` attribute) in specified format.
         :return: filled ``TransportResponse`` object.
-        :raises TransportError: if unable to process response.
-        :raises SessionExpired: if current login session is expired.
+        :raises TransportError: unable to process response.
+        :raises SessionExpired: current login session is expired.
         """
 
         if sum(map(bool, (data, json, multipart))) > 1:
@@ -265,7 +265,7 @@ class BaseSteamTransport(metaclass=ABCMeta):
                 json=json,
                 multipart=multipart,
                 headers=headers,
-                follow_redirects=follow_redirects,
+                redirects=redirects,
                 response_mode=response_mode,
             )
 
@@ -281,7 +281,7 @@ class BaseSteamTransport(metaclass=ABCMeta):
 
             raise ResourceNotModified(last_modified, expires)
 
-        if not follow_redirects and 300 <= resp.status < 400 and "/login" in (resp.headers.get("Location") or ()):
+        if not redirects and 300 <= resp.status < 400 and "/login" in (resp.headers.get("Location") or ()):
             raise SessionExpired from TransportError(resp)
 
         if resp.status == 429:
@@ -322,8 +322,8 @@ class BaseSteamTransport(metaclass=ABCMeta):
         :param headers: specific HTTP headers for this request.
         :param response_mode: return response body in specified format.
         :return: response body in specified format.
-        :raises TransportError: if unable to process response.
-        :raises SessionExpired: if current login session is expired.
+        :raises TransportError: unable to process response.
+        :raises SessionExpired: current login session is expired.
         """
 
         try:
@@ -335,7 +335,7 @@ class BaseSteamTransport(metaclass=ABCMeta):
                 json=json,
                 multipart=multipart,
                 headers=headers,
-                follow_redirects=False,
+                redirects=False,
                 raise_for_status=True,
                 response_mode=response_mode,
             )

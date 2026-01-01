@@ -5,7 +5,7 @@ from typing import Literal, overload, Sequence, Mapping
 from datetime import datetime
 
 from ...constants import Currency, EResult, STEAM_URL, App, AppContext
-from ...utils import create_ident_code, find_item_name_id_in_text
+from ...utils import create_ident_code
 from ...exceptions import EResultError
 from ...models import ItemAction, ItemDescriptionEntry, ItemTag, AssetPropertyId, AssetProperty, ItemDescription
 from ...transport import BaseSteamTransport, TransportError, format_http_date, parse_http_date
@@ -27,6 +27,7 @@ from .models import (
 )
 
 ITEM_ORDER_HIST_PRICE_RE = re.compile(r"[^\d\s]*([\d,]+(?:\.\d+)?)[^\d\s]*")  # Author: ChatGPT
+ITEM_NAME_ID_RE = re.compile(r"Market_LoadOrderSpread\(\s?(\d+)\s?\)")
 
 # listings, total count, last modified
 MarketItemListingData = tuple[list[MarketListing], int, datetime]
@@ -39,12 +40,13 @@ LISTING_COUNT = 10
 SortColumn = Literal["price", "name", "quantity", "popular", "default"]
 SortDir = Literal["asc", "desc"]
 
-SEARCH_URL = STEAM_URL.MARKET / "search"
+MARKET_URL = STEAM_URL.COMMUNITY / "market/"
+SEARCH_URL = MARKET_URL / "search"
 SEARCH_RENDER_URL = SEARCH_URL / "render/"
 
 
 class MarketPublicComponent:
-    """Component with public `Steam Market` methods."""
+    """Component with public `Steam Market` methods. Available without authentication."""
 
     __slots__ = (
         "_transport",
@@ -140,7 +142,7 @@ class MarketPublicComponent:
 
         r = await self._transport.request(
             "GET",
-            STEAM_URL.MARKET / "itemordershistogram",
+            MARKET_URL / "itemordershistogram",
             params=params,
             headers=headers,
             response_mode="json",
@@ -223,7 +225,7 @@ class MarketPublicComponent:
         # Can we hit a rate limit there?
         r = await self._transport.request(
             "GET",
-            STEAM_URL.MARKET / "itemordersactivity",
+            MARKET_URL / "itemordersactivity",
             params=params,
             headers=headers,
             response_mode="json",
@@ -313,7 +315,7 @@ class MarketPublicComponent:
 
         r = await self._transport.request(
             "GET",
-            STEAM_URL.MARKET / "priceoverview",
+            MARKET_URL / "priceoverview",
             params=params,
             headers=headers,
             response_mode="json",
@@ -549,7 +551,7 @@ class MarketPublicComponent:
         else:  # str
             name = obj
 
-        base_url = STEAM_URL.MARKET / f"listings/{app.value}/{name}"
+        base_url = MARKET_URL / f"listings/{app.value}/{name}"
         params = {
             "filter": query,
             "query": "",  # as web browser
@@ -560,7 +562,6 @@ class MarketPublicComponent:
             # "language": self.language,
             "language": "english",
         }
-        # TODO non-mandatory headers
         headers = {"Referer": str(base_url), "X-Prototype-Version": "1.7", "X-Requested-With": "XMLHttpRequest"}
         if if_modified_since:
             if isinstance(if_modified_since, datetime):
@@ -688,15 +689,14 @@ class MarketPublicComponent:
         if isinstance(obj, ItemDescription):
             url = obj.market_url
         else:  # str
-            url = STEAM_URL.MARKET / f"listings/{app.value}/{obj}"
+            url = MARKET_URL / f"listings/{app.value}/{obj}"
 
         r = await self._transport.request("GET", url, response_mode="text")
 
-        res = find_item_name_id_in_text(r.content)
+        search = ITEM_NAME_ID_RE.search(r.content)  # lang safe
+        res = int(search.group(1)) if search is not None else search
         if not res:
-            raise ValueError(
-                "Couldn't find item name id in page. Are you sure that item exists and you pass full market name?"
-            )
+            raise ValueError(f"Failed to find item name id")
 
         return res
 
@@ -712,8 +712,8 @@ class MarketPublicComponent:
 
         r = await self._transport.request(
             "GET",
-            STEAM_URL.MARKET / f"appfilters/{app.value}",
-            headers={"Referer": str(STEAM_URL.MARKET)},
+            MARKET_URL / f"appfilters/{app.value}",
+            headers={"Referer": str(MARKET_URL)},
             response_mode="json",
         )
         rj: dict[str, dict | int] = r.content

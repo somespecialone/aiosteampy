@@ -15,7 +15,7 @@ from .guard import SteamGuardComponent
 
 
 CONF_URL = STEAM_URL.COMMUNITY / "mobileconf"
-ITEM_INFO_RE = re.compile(r"'confiteminfo', (.+), UserYou")
+ITEM_INFO_RE = re.compile(r"'confiteminfo', (.+), UserYou")  # lang safe
 ConfirmationTags = Literal["allow", "cancel"]
 
 
@@ -92,7 +92,7 @@ class ConfirmationComponent:
 
     async def get_confirmation_details(self, obj: Confirmation | int) -> dict[str, ...]:
         """
-        Get details for listing type confirmation.
+        Get details for **listing type confirmation**.
         If ``obj`` is ``Confirmation`` then details will be updated.
 
         :param obj: ``Confirmation`` or confirmation id.
@@ -106,7 +106,7 @@ class ConfirmationComponent:
             conf_id = obj.id
             if obj.type is not ConfirmationType.LISTING:
                 # in future we can get details for other conf types
-                raise ValueError("Confirmation details are available only for listing confirmations!")
+                raise ValueError("Confirmation details are available only for listing confirmations")
         else:
             conf_id = obj
 

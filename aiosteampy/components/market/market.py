@@ -1,7 +1,7 @@
 import re
 
 from contextlib import suppress
-from typing import overload, Literal, Callable, AsyncGenerator
+from typing import overload, Literal, Callable, AsyncGenerator, TYPE_CHECKING
 from datetime import datetime
 
 from ...constants import Currency, AppContext, STEAM_URL, EResult, App, CORO
@@ -11,13 +11,15 @@ from ...exceptions import (
     NeedMobileConfirmation,
     NeedEmailConfirmation,
 )
-from ...utils import create_ident_code, buyer_pays_to_receive, calc_market_listing_fee
+from ...utils import create_ident_code
 from ...models import ItemDescription, EconItem
 from ...id import SteamID
 from ...transport import BaseSteamTransport, TransportError, TransportResponse
 
-from ..confirmation import ConfirmationComponent, Confirmation
+if TYPE_CHECKING:  # make market component independent from confirmation component
+    from ..confirmation import ConfirmationComponent, Confirmation
 
+from .utils import buyer_pays_to_receive, calc_market_listing_fee
 from .exceptions import InsufficientBalance, ListingRemoved
 from .models import (
     MarketListingStatus,
@@ -34,7 +36,7 @@ from .models import (
     MarketHistoryEvent,
     PriceHistoryEntry,
 )
-from .public import MarketPublicComponent, ItemDescriptionsMap
+from .public import MARKET_URL, ItemDescriptionsMap, MarketPublicComponent
 
 
 UserListingData = tuple[list[MyMarketListing], list[MyMarketListing], list[BuyOrder], int]
@@ -53,7 +55,7 @@ class MarketComponent(MarketPublicComponent):
         steam_id: SteamID,
         country: str,
         currency: Currency,
-        confirmation: ConfirmationComponent | None = None,
+        confirmation: "ConfirmationComponent | None" = None,
     ):
         """"""
 
@@ -68,16 +70,16 @@ class MarketComponent(MarketPublicComponent):
         return self._steam_id
 
     @overload
-    async def confirm_sell_listing(self, obj: int, app_context: AppContext) -> Confirmation: ...
+    async def confirm_sell_listing(self, obj: int, app_context: AppContext) -> "Confirmation": ...
 
     @overload
-    async def confirm_sell_listing(self, obj: MyMarketListing | EconItem | int) -> Confirmation: ...
+    async def confirm_sell_listing(self, obj: MyMarketListing | EconItem | int) -> "Confirmation": ...
 
     async def confirm_sell_listing(
         self,
         obj: MyMarketListing | EconItem | int,
         app_context: AppContext | None = None,
-    ) -> Confirmation:
+    ) -> "Confirmation":
         """
         Perform sell listing confirmation.
 
@@ -237,7 +239,7 @@ class MarketComponent(MarketPublicComponent):
         try:
             r = await self._transport.request(
                 "GET",
-                STEAM_URL.MARKET / "mylistings",
+                MARKET_URL / "mylistings",
                 params=params,
                 response_mode="json",
             )
@@ -479,7 +481,7 @@ class MarketComponent(MarketPublicComponent):
         headers = {"Referer": str(STEAM_URL.COMMUNITY / f"profiles/{self._steam_id.id64}/inventory")}
         r = await self._transport.request(
             "POST",
-            STEAM_URL.MARKET / "sellitem/",
+            MARKET_URL / "sellitem/",
             data=data,
             headers=headers,
             response_mode="json",
@@ -509,10 +511,10 @@ class MarketComponent(MarketPublicComponent):
 
         listing_id = obj.id if isinstance(obj, MyMarketListing) else obj
         data = {"sessionid": self._transport.session_id}
-        headers = {"Referer": str(STEAM_URL.MARKET)}
+        headers = {"Referer": str(MARKET_URL)}
         return self._transport.request(
             "POST",
-            STEAM_URL.MARKET / f"removelisting/{listing_id}",
+            MARKET_URL / f"removelisting/{listing_id}",
             data=data,
             headers=headers,
             response_mode="meta",
@@ -586,11 +588,11 @@ class MarketComponent(MarketPublicComponent):
             "confirmation": confirmation_id,
         }
 
-        headers = {"Referer": str(STEAM_URL.MARKET / f"listings/{app.value}/{name}")}
+        headers = {"Referer": str(MARKET_URL / f"listings/{app.value}/{name}")}
         try:
             r = await self._transport.request(
                 "POST",
-                STEAM_URL.MARKET / "createbuyorder/",
+                MARKET_URL / "createbuyorder/",
                 data=data,
                 headers=headers,
                 response_mode="json",
@@ -646,7 +648,7 @@ class MarketComponent(MarketPublicComponent):
         try:
             r = await self._transport.request(
                 "GET",
-                STEAM_URL.MARKET / "getbuyorderstatus/",
+                MARKET_URL / "getbuyorderstatus/",
                 params=params,
                 headers=headers,
                 response_mode="json",
@@ -686,10 +688,10 @@ class MarketComponent(MarketPublicComponent):
             order_id = order
 
         data = {"sessionid": self._transport.session_id, "buy_orderid": order_id}
-        headers = {"Referer": str(STEAM_URL.MARKET)}
+        headers = {"Referer": str(MARKET_URL)}
         return self._transport.request(
             "POST",
-            STEAM_URL.MARKET / "cancelbuyorder/",
+            MARKET_URL / "cancelbuyorder/",
             data=data,
             headers=headers,
             response_mode="meta",
@@ -780,11 +782,11 @@ class MarketComponent(MarketPublicComponent):
             "quantity": 1,
             "confirmation": confirmation_id,
         }
-        headers = {"Referer": str(STEAM_URL.MARKET / f"listings/{app.value}/{market_hash_name}")}  # mandatory
+        headers = {"Referer": str(MARKET_URL / f"listings/{app.value}/{market_hash_name}")}  # mandatory
         try:
             r = await self.transport.request(
                 "POST",
-                STEAM_URL.MARKET / f"buylisting/{listing_id}",
+                MARKET_URL / f"buylisting/{listing_id}",
                 data=data,
                 headers=headers,
                 response_mode="json",
@@ -987,11 +989,11 @@ class MarketComponent(MarketPublicComponent):
         """
 
         params = {"norender": 1, "start": start, "count": count}
-        headers = {"Referer": str(STEAM_URL.MARKET)}
+        headers = {"Referer": str(MARKET_URL)}
         # empty lists if session is expired
         r = await self.transport.request(
             "GET",
-            STEAM_URL.MARKET / "myhistory",
+            MARKET_URL / "myhistory",
             params=params,
             headers=headers,
             response_mode="json",
@@ -1089,7 +1091,7 @@ class MarketComponent(MarketPublicComponent):
         try:
             r = await self.transport.request(
                 "GET",
-                STEAM_URL.MARKET / "pricehistory",
+                MARKET_URL / "pricehistory",
                 params=params,
                 response_mode="json",
             )
@@ -1115,17 +1117,17 @@ class MarketComponent(MarketPublicComponent):
         ]
 
     # need rework
-    # TODO make method in profile get_account_history
     async def get_market_availability_info(self) -> tuple[bool, datetime | None]:
         """
-        Return market status of whether it is available or not and, if possible "when" the market will be available
+        Return market status of whether it is available or not.
+        If possible "when"  market will be available will be returned also.
 
-        .. seealso:: https://help.steampowered.com/en/faqs/view/451E-96B3-D194-50FC
+        .. seealso:: https://help.steampowered.com/en/faqs/view/451E-96B3-D194-50FC.
         """
 
-        r = await self.transport.request(
+        r = await self._transport.request(
             "GET",
-            STEAM_URL.MARKET,
+            MARKET_URL,
             headers={"Referer": str(STEAM_URL.STORE)},
             response_mode="text",
         )
@@ -1134,7 +1136,7 @@ class MarketComponent(MarketPublicComponent):
         available = True
         when: datetime | None = None
 
-        if "The Market is unavailable for the following reason" in rt:
+        if "The Market is unavailable for the following reason" in rt:  # language unsafe
             available = False
 
             if "dateCanUseMarket" in rt:

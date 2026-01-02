@@ -17,6 +17,13 @@ class EResultError(SteamError):
     def __str__(self):
         return f"{self.result}: {self.msg}"
 
+    @classmethod
+    def check_data(cls, data: dict, def_msg: str = ""):
+        """Check if ``data`` contains error response from `Steam` API and raise ``EResultError`` if needed."""
+
+        if (eresult := EResult(data.get("success", 0))) is not EResult.OK:
+            raise cls(eresult, data.get("message", def_msg))
+
 
 # https://github.com/DoctorMcKay/node-steamcommunity/blob/d3e90f6fd3bea65b1ebc1bdaec754f99dcc8ddb3/components/http.js#L100
 class SessionExpired(SteamError):

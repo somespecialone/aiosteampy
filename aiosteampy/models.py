@@ -1,6 +1,6 @@
 from dataclasses import dataclass, field
 from enum import IntEnum
-from typing import NamedTuple, Literal
+from typing import NamedTuple
 from datetime import datetime
 
 from yarl import URL
@@ -11,12 +11,9 @@ from .constants import (
     App,
     AppContext,
     Currency,
-    ConfirmationType,
-    MarketHistoryEventType,
-    MarketListingStatus,
     TradeOfferStatus,
 )
-from .utils import create_ident_code, account_id_to_steam_id, make_inspect_link
+from .utils import create_ident_code, make_inspect_link
 
 from .id import SteamID
 
@@ -27,8 +24,8 @@ class ItemAction(NamedTuple):
 
 
 class ItemDescriptionEntry(NamedTuple):
-    type: Literal["html"]
     value: str
+    type: str | None
     name: str | None
     color: str | None  # hexadecimal
 

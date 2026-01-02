@@ -1,3 +1,5 @@
+"""Utils, models and component to work with confirmations."""
+
 import re
 import json
 
@@ -70,6 +72,8 @@ class Confirmation:
 
 
 class ConfirmationComponent:
+    """Component for working with confirmations."""
+
     __slots__ = (
         "_transport",
         "_guard",
@@ -114,8 +118,7 @@ class ConfirmationComponent:
         r = await self._transport.request("GET", CONF_URL / f"details/{conf_id}", params=params, response_mode="json")
         rj: dict = r.content
 
-        if (eresult := EResult(rj.get("success", 0))) is not EResult.OK:
-            raise EResultError(eresult, rj.get("message", ""))
+        EResultError.check_data(rj)
 
         details = json.loads(ITEM_INFO_RE.search(rj["html"]).group(1))
         if isinstance(obj, Confirmation):
@@ -145,8 +148,7 @@ class ConfirmationComponent:
         if rj.get("needauth"):
             raise SessionExpired
 
-        if (success := EResult(rj.get("success"))) is not EResult.OK:
-            raise EResultError(success, rj.get("message", ""))
+        EResultError.check_data(rj)
 
         confs = []
         if "conf" in rj:
@@ -203,8 +205,7 @@ class ConfirmationComponent:
         r = await self._transport.request("GET", CONF_URL / "ajaxop", params=params, response_mode="json")
         rj: dict = r.content
 
-        if (success := EResult(rj.get("success"))) is not EResult.OK:
-            raise EResultError(success, rj.get("message", ""))
+        EResultError.check_data(rj)
 
     def allow_confirmation(self, conf: Confirmation) -> CORO[None]:
         """Allow single confirmation."""
@@ -231,8 +232,7 @@ class ConfirmationComponent:
         r = await self._transport.request("POST", CONF_URL / "multiajaxop", data=data, response_mode="json")
         rj: dict = r.content
 
-        if (success := EResult(rj.get("success"))) is not EResult.OK:
-            raise EResultError(success, rj.get("message", ""))
+        EResultError.check_data(rj)
 
     def allow_multiple_confirmations(self, confs: Iterable[Confirmation]) -> CORO[None]:
         """Allow multiple confirmations."""

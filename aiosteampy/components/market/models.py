@@ -122,20 +122,25 @@ class BaseOrder:
         return isinstance(other, BaseOrder) and self.id == other.id
 
 
-class ListingValues(NamedTuple):
-    """Representation of market listing values, like a price, fee, etc."""
-
+@dataclass(eq=False, slots=True)
+class BaseValues:
     currency: Currency
     """Values currency."""
+
+    steam_fee: int
+    """`Steam` part of combined ``fee``."""
+    publisher_fee: int
+    """`Publisher` part of combined ``fee``."""
+
+
+@dataclass(eq=False, slots=True)
+class ListingValues(BaseValues):
+    """Representation of market listing values, like a price, fee, etc."""
 
     price: int
     """Price of listing without fee. This is what lister will receive when someone buys listing."""
     fee: int
     """Combined final fee of listing."""
-    steam_fee: int
-    """`Steam` part of combined ``fee``."""
-    publisher_fee: int
-    """`Publisher` part of combined ``fee``."""
 
     # absent in market listing data
     # price_per_unit: int | None = None
@@ -334,3 +339,25 @@ class PriceHistoryEntry:
 
     date: datetime
     daily_volume: int
+
+
+@dataclass(eq=False, slots=True)
+class PurchaseInfoValues(BaseValues):
+    paid_amount: int
+    """How much buyer paid for listing without fees."""
+    paid_fee: int
+    """Combined paid final fee of listing."""
+
+    @property
+    def total_paid(self) -> int:
+        """Full amount of money paid for listing."""
+        return self.paid_amount + self.paid_fee
+
+
+@dataclass(eq=False, slots=True)
+class PurchaseInfo(BaseOrder):
+    listing_id: int  # listing is empty so no need to store it
+    item: MarketListingItem
+
+    original: PurchaseInfoValues
+    converted: PurchaseInfoValues

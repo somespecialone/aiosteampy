@@ -1,24 +1,11 @@
 """Abstract utils within `Steam` context and not"""
 
 import asyncio
+import time
+import re
 
-from base64 import b64decode, b64encode
-from datetime import datetime
-from struct import pack, unpack
-from time import time as time_time
-from hmac import new as hmac_new
-from hashlib import sha1
-from functools import wraps, partial
-from typing import Callable, overload, TypeVar, TypeAlias, Literal
-from http.cookies import SimpleCookie, Morsel
-from math import floor
-from secrets import token_hex
-from re import search as re_search, compile as re_compile
-from json import loads as j_loads
-
-from yarl import URL
-
-from .typed import JWTToken
+from functools import wraps
+from typing import Callable, overload, TypeVar
 
 
 __all__ = (
@@ -40,10 +27,10 @@ def extract_openid_payload(page_text: str) -> dict[str, str]:
 
     # not so beautiful as with bs4 but dependency free
     return {
-        "action": re_search(r"id=\"actionInput\"[\w=\"\s]+value=\"(?P<action>\w+)\"", page_text)["action"],
-        "openid.mode": re_search(r"name=\"openid\.mode\"[\w=\"\s]+value=\"(?P<mode>\w+)\"", page_text)["mode"],
-        "openidparams": re_search(r"name=\"openidparams\"[\w=\"\s]+value=\"(?P<params>[\w=/]+)\"", page_text)["params"],
-        "nonce": re_search(r"name=\"nonce\"[\w=\"\s]+value=\"(?P<nonce>\w+)\"", page_text)["nonce"],
+        "action": re.search(r"id=\"actionInput\"[\w=\"\s]+value=\"(?P<action>\w+)\"", page_text)["action"],
+        "openid.mode": re.search(r"name=\"openid\.mode\"[\w=\"\s]+value=\"(?P<mode>\w+)\"", page_text)["mode"],
+        "openidparams": re.search(r"name=\"openidparams\"[\w=\"\s]+value=\"(?P<params>[\w=/]+)\"", page_text)["params"],
+        "nonce": re.search(r"name=\"nonce\"[\w=\"\s]+value=\"(?P<nonce>\w+)\"", page_text)["nonce"],
     }
 
 
@@ -88,11 +75,11 @@ def async_throttle(
         @wraps(f)
         async def wrapper(*args, **kwargs) -> _R:
             key = get_key(args, kwargs)
-            ts = time_time()
+            ts = time.time()
             diff = ts - ts_map.get(key, 0)
             if diff < seconds:
                 await asyncio.sleep(diff + 0.01)  # +10ms to ensure that second passed since last call
-                ts_map[key] = time_time()
+                ts_map[key] = time.time()
             else:
                 ts_map[key] = ts
 

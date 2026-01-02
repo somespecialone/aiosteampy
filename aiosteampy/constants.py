@@ -47,12 +47,8 @@ class App(IntEnum):
     #     return extend_enum(cls, name, value)
 
     @classmethod
-    def _generate_name(cls, value) -> str:
-        return f"{cls.__name__}_{value}"
-
-    # @classmethod
-    # def _missing_(cls, value: int):
-    #     return cls.extend(cls._generate_name(value), value)  # add new member when missing
+    def _missing_(cls, value: int):
+        return value
 
     @property
     def app_id(self) -> int:
@@ -82,20 +78,9 @@ class AppContext(Enum):
     STEAM_COMMUNITY = App.STEAM, 6
     STEAM_REWARDS = App.STEAM, 7  # item rewards
 
-    # @classmethod
-    # def extend(cls, name: str, value: tuple[App | int, int]) -> "AppContext":
-    #     # for case when passed app id instead of an App enum, e.g. AppContext((730, 2))
-    #     with_enum = (App(value[0]), value[1])
-    #     return extend_enum(cls, name, with_enum)
-
     @classmethod
-    def _generate_name(cls, value: tuple[App, int]) -> str:
-        return f"{cls.__name__}_{value[0]}_{value[1]}"
-
-    # @classmethod
-    # def _missing_(cls, value: tuple[App | int, int]):
-    #     with_enum = (App(value[0]), value[1])
-    #     return cls.extend(cls._generate_name(with_enum), with_enum)
+    def _missing_(cls, value: tuple[App | int, int]):
+        return (App(value[0]), value[1])
 
     @property
     def app(self) -> App:
@@ -220,11 +205,8 @@ class TradeOfferStatus(Enum):
     TRADE_REVERSED = 12
 
 
-_API_BASE = URL("https://api.steampowered.com")  # nah
-_v = "v1"
-
-
 # TODO need rework
+# Steam domains
 class STEAM_URL:
     COMMUNITY = URL("https://steamcommunity.com")
     STORE = URL("https://store.steampowered.com")
@@ -234,35 +216,7 @@ class STEAM_URL:
     CHECKOUT = URL("https://checkout.steampowered.com")
     TV = URL("https://steam.tv/")
     # specific
-    MARKET = COMMUNITY / "market/"
-    TRADE = COMMUNITY / "tradeoffer"
-
-    # TODO can be removed
-    class API:
-        BASE = _API_BASE
-
-        # interfaces
-        class IEconService:
-            _Base = _API_BASE / "IEconService"
-
-            GetTradeHistory = _Base / "GetTradeHistory" / _v
-            GetTradeHoldDurations = _Base / "GetTradeHoldDurations" / _v
-            GetTradeOffer = _Base / "GetTradeOffer" / _v
-            GetTradeOffers = _Base / "GetTradeOffers" / _v
-            GetTradeOffersSummary = _Base / "GetTradeOffersSummary" / _v
-            GetTradeStatus = _Base / "GetTradeStatus" / _v
-
-        class IAuthService:
-            _Base = _API_BASE / "IAuthenticationService"
-
-            BeginAuthSessionViaCredentials = _Base / "BeginAuthSessionViaCredentials" / _v
-            BeginAuthSessionViaQR = _Base / "BeginAuthSessionViaQR" / _v
-            GetPasswordRSAPublicKey = _Base / "GetPasswordRSAPublicKey" / _v
-            UpdateAuthSessionWithSteamGuardCode = _Base / "UpdateAuthSessionWithSteamGuardCode" / _v
-            PollAuthSessionStatus = _Base / "PollAuthSessionStatus" / _v
-            GenerateAccessTokenForApp = _Base / "GenerateAccessTokenForApp" / _v
-            GetAuthSessionInfo = _Base / "GetAuthSessionInfo" / _v
-            UpdateAuthSessionWithMobileConfirmation = _Base / "UpdateAuthSessionWithMobileConfirmation" / _v
+    TRADE = COMMUNITY / "tradeoffer"  # TODO remove after trade comp
 
 
 T_PARAMS: TypeAlias = Mapping[str, int | str | float]

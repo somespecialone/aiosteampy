@@ -1,3 +1,5 @@
+"""All available things and functionality related to `Steam Guard`."""
+
 import time
 import hmac
 import hashlib

@@ -4,7 +4,7 @@ from contextlib import suppress
 from typing import overload, Literal, Callable, AsyncGenerator, TYPE_CHECKING
 from datetime import datetime
 
-from ...constants import Currency, AppContext, STEAM_URL, EResult, App, CORO
+from ...constants import Currency, AppContext, STEAM_URL, EResult, App, CORO, Language
 from ...exceptions import (
     EResultError,
     SessionExpired,
@@ -44,6 +44,8 @@ UserMarketHistoryData = tuple[list[MarketHistoryEvent], int]
 
 
 class MarketComponent(MarketPublicComponent):
+    """Component for working with `Steam Market`. Requires authentication."""
+
     __slots__ = (
         "_steam_id",
         "_conf",
@@ -53,13 +55,12 @@ class MarketComponent(MarketPublicComponent):
         self,
         transport: BaseSteamTransport,
         steam_id: SteamID,
-        country: str,
-        currency: Currency,
+        country: str = "UA",
+        currency: Currency = Currency.UAH,
+        language: Language = Language.ENGLISH,
         confirmation: "ConfirmationComponent | None" = None,
     ):
-        """"""
-
-        super().__init__(transport, country, currency)
+        super().__init__(transport, country, currency, language)
 
         self._steam_id = steam_id
 
@@ -251,8 +252,7 @@ class MarketComponent(MarketPublicComponent):
 
         rj: dict = r.content
 
-        if (eresult := EResult(rj.get("success", 0))) is not EResult.OK:
-            raise EResultError(eresult, rj.get("message", ""))
+        EResultError.check_data(rj)
 
         # no need to check `assets` or `total_count`
 
@@ -499,8 +499,7 @@ class MarketComponent(MarketPublicComponent):
         elif rj.get("needs_email_confirmation"):
             raise NeedEmailConfirmation
 
-        if (eresult := EResult(rj.get("success", 0))) is not EResult.OK:
-            raise EResultError(eresult, rj.get("message", ""))
+        EResultError.check_data(rj)
 
     async def cancel_sell_listing(self, obj: MyMarketListing | int) -> CORO[TransportResponse]:
         """
@@ -622,8 +621,7 @@ class MarketComponent(MarketPublicComponent):
                 confirmation_id=confirmation_id,
             )
 
-        if (eresult := EResult(rj.get("success", 0))) is not EResult.OK:
-            raise EResultError(eresult, rj.get("message", ""))
+        EResultError.check_data(rj)
 
         return int(rj["buy_orderid"])
 
@@ -664,8 +662,7 @@ class MarketComponent(MarketPublicComponent):
         if rj.get("need_confirmation"):
             return BuyOrderStatus(need_confirmation=True)
 
-        if (eresult := EResult(rj.get("success", 0))) is not EResult.OK:
-            raise EResultError(eresult, rj.get("message", ""))
+        EResultError.check_data(rj)
 
         return BuyOrderStatus(
             active=bool(rj["active"]),
@@ -831,8 +828,7 @@ class MarketComponent(MarketPublicComponent):
 
         rj: dict = rj["wallet_info"]
 
-        if (eresult := EResult(rj.get("success", 0))) is not EResult.OK:
-            raise EResultError(eresult, rj.get("message", ""))
+        EResultError.check_data(rj)
 
         return WalletInfo(
             balance=int(rj["wallet_balance"]),
@@ -1000,8 +996,7 @@ class MarketComponent(MarketPublicComponent):
         )
         rj: dict = r.content
 
-        if (eresult := EResult(rj.get("success", 0))) is not EResult.OK:
-            raise EResultError(eresult, rj.get("message", ""))
+        EResultError.check_data(rj)
 
         if not rj["total_count"] or not rj["assets"]:  # safe
             return [], 0
@@ -1103,8 +1098,7 @@ class MarketComponent(MarketPublicComponent):
 
         rj: dict = r.content
 
-        if (eresult := EResult(rj.get("success", 0))) is not EResult.OK:
-            raise EResultError(eresult, rj.get("message", ""))
+        EResultError.check_data(rj)
 
         return [
             PriceHistoryEntry(

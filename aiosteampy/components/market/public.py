@@ -4,7 +4,7 @@ from collections.abc import AsyncGenerator
 from typing import Literal, overload, Sequence, Mapping
 from datetime import datetime
 
-from ...constants import Currency, EResult, STEAM_URL, App, AppContext
+from ...constants import Currency, EResult, STEAM_URL, App, AppContext, Language
 from ...utils import create_ident_code
 from ...exceptions import EResultError
 from ...models import ItemAction, ItemDescriptionEntry, ItemTag, AssetPropertyId, AssetProperty, ItemDescription
@@ -24,6 +24,8 @@ from .models import (
     MarketListing,
     ListingValues,
     MarketSearchItem,
+    PurchaseInfoValues,
+    PurchaseInfo,
 )
 
 ITEM_ORDER_HIST_PRICE_RE = re.compile(r"[^\d\s]*([\d,]+(?:\.\d+)?)[^\d\s]*")  # Author: ChatGPT
@@ -45,6 +47,9 @@ SEARCH_URL = MARKET_URL / "search"
 SEARCH_RENDER_URL = SEARCH_URL / "render/"
 
 
+CUSTOM_API_HEADERS = {"X-Prototype-Version": "1.7", "X-Requested-With": "XMLHttpRequest"}
+
+
 class MarketPublicComponent:
     """Component with public `Steam Market` methods. Available without authentication."""
 
@@ -52,12 +57,20 @@ class MarketPublicComponent:
         "_transport",
         "_country",
         "_currency",
+        "_language",
     )
 
-    def __init__(self, transport: BaseSteamTransport, country: str, currency: Currency):
+    def __init__(
+        self,
+        transport: BaseSteamTransport,
+        country: str = "UA",
+        currency: Currency = Currency.UAH,
+        language: Language = Language.ENGLISH,
+    ):
         self._transport = transport
         self._country = country
         self._currency = currency
+        self._language = language
 
     @property
     def transport(self) -> BaseSteamTransport:
@@ -70,6 +83,10 @@ class MarketPublicComponent:
     @property
     def currency(self) -> Currency:
         return self._currency
+
+    @property
+    def language(self) -> Language:
+        return self._language
 
     @staticmethod
     def _parse_quantity(text: str | int) -> int:
@@ -98,6 +115,14 @@ class MarketPublicComponent:
 
         return int(price)
 
+    @staticmethod
+    def _prepare_if_modified_since(headers: dict[str, str], if_modified_since: datetime | str | None):
+        if if_modified_since is not None:
+            if isinstance(if_modified_since, datetime):
+                headers["If-Modified-Since"] = format_http_date(if_modified_since)
+            else:  # str
+                headers["If-Modified-Since"] = if_modified_since
+
     # @currency_required
     async def get_item_orders_histogram(
         self,
@@ -125,20 +150,12 @@ class MarketPublicComponent:
 
         params = {
             "norender": 1,
-            # TODO language dilemma
-            # "language": self.language,
-            "language": "english",
-            "country": self._country,
-            "currency": self._currency,
+            "language": self.language.value,
+            "currency": self._currency.value,
             "item_nameid": item_name_id,
         }
-        # TODO also better to be moved to func
         headers = {}
-        if if_modified_since:
-            if isinstance(if_modified_since, datetime):
-                headers["If-Modified-Since"] = format_http_date(if_modified_since)
-            else:  # str
-                headers["If-Modified-Since"] = if_modified_since
+        self._prepare_if_modified_since(headers, if_modified_since)
 
         r = await self._transport.request(
             "GET",
@@ -149,10 +166,7 @@ class MarketPublicComponent:
         )
         rj: dict = r.content
 
-        # TODO how about move EResult check into util func?
-        #  or it can be moved to transport.request?
-        if (eresult := EResult(rj.get("success", 0))) is not EResult.OK:
-            raise EResultError(eresult, rj.get("message", ""))
+        EResultError.check_data(rj)
 
         return ItemOrdersHistogram(
             sell_order_count=self._parse_quantity(rj["sell_order_count"]),
@@ -209,18 +223,13 @@ class MarketPublicComponent:
 
         params = {
             "norender": 1,
-            # "language": self.language,
-            "language": "english",
+            "language": self.language.value,
             "country": self._country,
-            "currency": self._currency,
+            "currency": self._currency.value,
             "item_nameid": item_name_id,
         }
         headers = {}
-        if if_modified_since:
-            if isinstance(if_modified_since, datetime):
-                headers["If-Modified-Since"] = format_http_date(if_modified_since)
-            else:  # str
-                headers["If-Modified-Since"] = if_modified_since
+        self._prepare_if_modified_since(headers, if_modified_since)
 
         # Can we hit a rate limit there?
         r = await self._transport.request(
@@ -232,8 +241,7 @@ class MarketPublicComponent:
         )
         rj: dict = r.content
 
-        if (eresult := EResult(rj.get("success", 0))) is not EResult.OK:
-            raise EResultError(eresult, rj.get("message", ""))
+        EResultError.check_data(rj)
 
         return ItemOrdersActivity(
             activity=[
@@ -307,11 +315,7 @@ class MarketPublicComponent:
         }
         # referer header is profile alias / inventory, good that it is not mandatory
         headers = {}
-        if if_modified_since:
-            if isinstance(if_modified_since, datetime):
-                headers["If-Modified-Since"] = format_http_date(if_modified_since)
-            else:  # str
-                headers["If-Modified-Since"] = if_modified_since
+        self._prepare_if_modified_since(headers, if_modified_since)
 
         r = await self._transport.request(
             "GET",
@@ -322,8 +326,7 @@ class MarketPublicComponent:
         )
         rj: dict = r.content
 
-        if (eresult := EResult(rj.get("success", 0))) is not EResult.OK:
-            raise EResultError(eresult, rj.get("message", ""))
+        EResultError.check_data(rj)
 
         return PriceOverview(
             lowest_price=self._parse_price_with_currency(rj["lowest_price"]),
@@ -331,19 +334,26 @@ class MarketPublicComponent:
             median_price=self._parse_price_with_currency(rj["lowest_price"]),
         ), parse_http_date(r.headers["Last-Modified"])
 
+    @staticmethod
+    def _get_market_item_from_map_by_ident_code(
+        data: dict,
+        items_map: dict[str, MarketListingItem],
+    ) -> MarketListingItem:
+        return items_map[
+            create_ident_code(
+                data["asset"]["id"],
+                data["asset"]["contextid"],
+                data["asset"]["appid"],
+            )
+        ]
+
     @classmethod
     def _create_market_listings(cls, data: dict, items_map: dict[str, MarketListingItem]) -> list[MarketListing]:
         # casting to integers just to make sure that Steam didn't give us a surprise
         return [
             MarketListing(
                 id=int(l_data["listingid"]),
-                item=items_map[
-                    create_ident_code(
-                        l_data["asset"]["id"],
-                        l_data["asset"]["contextid"],
-                        l_data["asset"]["appid"],
-                    )
-                ],
+                item=cls._get_market_item_from_map_by_ident_code(l_data, items_map),
                 original=ListingValues(
                     currency=Currency(int(l_data["currencyid"]) - 2000),
                     price=int(l_data["price"]),
@@ -385,13 +395,13 @@ class MarketPublicComponent:
     def _parse_item_descr_entries(descriptions: list[dict]) -> list[ItemDescriptionEntry]:
         return [
             ItemDescriptionEntry(
-                d_data["type"],
                 d_data["value"],
+                d_data.get("type"),
                 d_data.get("name"),
                 d_data.get("color"),
             )
             for d_data in descriptions
-            if d_data["value"] != " "  # let's omit "blank" descriptions
+            if (d_data["value"] != " " and d_data["value"])  # let's omit "blank" descriptions
         ]
 
     @classmethod
@@ -559,15 +569,10 @@ class MarketPublicComponent:
             "currency": self._currency.value,
             "start": start,
             "count": count,
-            # "language": self.language,
-            "language": "english",
+            "language": self.language.value,
         }
-        headers = {"Referer": str(base_url), "X-Prototype-Version": "1.7", "X-Requested-With": "XMLHttpRequest"}
-        if if_modified_since:
-            if isinstance(if_modified_since, datetime):
-                headers["If-Modified-Since"] = format_http_date(if_modified_since)
-            else:  # str
-                headers["If-Modified-Since"] = if_modified_since
+        headers = {"Referer": str(base_url), **CUSTOM_API_HEADERS}
+        self._prepare_if_modified_since(headers, if_modified_since)
 
         r = await self._transport.request(
             "GET",
@@ -576,10 +581,9 @@ class MarketPublicComponent:
             headers=headers,
             response_mode="json",
         )
-        rj: dict[str, int | dict[str, dict]] = r.content
+        rj: dict = r.content
 
-        if (eresult := EResult(rj.get("success", 0))) is not EResult.OK:
-            raise EResultError(eresult, rj.get("message", ""))
+        EResultError.check_data(rj)
 
         last_modified = parse_http_date(r.headers["Last-Modified"])
 
@@ -718,8 +722,7 @@ class MarketPublicComponent:
         )
         rj: dict[str, dict | int] = r.content
 
-        if (eresult := EResult(rj.get("success", 0))) is not EResult.OK:
-            raise EResultError(eresult, rj.get("message", ""))
+        EResultError.check_data(rj)
 
         return rj["facets"]
 
@@ -794,8 +797,7 @@ class MarketPublicComponent:
         )
         rj: dict[str, int | list[dict[str, str | int | dict[str, str | int]]]] = r.content
 
-        if (eresult := EResult(rj.get("success", 0))) is not EResult.OK:
-            raise EResultError(eresult, rj.get("message", ""))
+        EResultError.check_data(rj)
 
         if not rj["total_count"] or not rj["results"]:
             return [], 0
@@ -892,4 +894,116 @@ class MarketPublicComponent:
 
             yield search_results
 
-    # TODO popular items, newly listed, recently sold
+    async def get_newly_listed_items(
+        self,
+        *,
+        if_modified_since: datetime | str | None = None,
+        _item_descriptions_map: ItemDescriptionsMap | None = None,
+        _market_econ_items_map: dict[str, MarketListingItem] | None = None,
+    ) -> tuple[list[MarketListing], datetime]:
+        """
+        Get *newly listed items* from `Steam Market`.
+        Can be seen on main market page.
+
+        .. note:: It is **strongly advised** to use ``if_modified_since``.
+
+        :param if_modified_since: `If-Modified-Since` header value.
+        :return: list of ``MarketListing`` and datetime object when resource was last modified.
+        """
+
+        params = {"country": self._country, "language": self.language.value, "currency": self._currency.value}
+        headers = {"Referer": str(MARKET_URL), **CUSTOM_API_HEADERS}
+        self._prepare_if_modified_since(headers, if_modified_since)
+
+        r = await self._transport.request(
+            "GET",
+            MARKET_URL / "recent",
+            params=params,
+            headers=headers,
+            response_mode="json",
+        )
+        rj: dict = r.content
+
+        EResultError.check_data(rj)
+
+        _item_descriptions_map = {} if _item_descriptions_map is None else _item_descriptions_map
+        _market_econ_items_map = {} if _market_econ_items_map is None else _market_econ_items_map
+
+        self._parse_descriptions_from_market_assets(rj["assets"], _item_descriptions_map)
+        self._parse_market_listing_items(rj["assets"], _item_descriptions_map, _market_econ_items_map)
+
+        # unknow fields: last_time, last_listing
+
+        return (
+            self._create_market_listings(rj, _market_econ_items_map),
+            parse_http_date(r.headers["Last-Modified"]),
+        )
+
+    @classmethod
+    def _create_purchase_infos(
+        cls,
+        data: dict[str, dict[str, dict]],
+        items_map: dict[str, MarketListingItem],
+    ) -> list[PurchaseInfo]:
+        return [
+            PurchaseInfo(
+                id=int(p_data["purchaseid"]),
+                listing_id=int(p_data["listingid"]),
+                # get assets from mapped listings due to missing?? assets in purchase data
+                item=cls._get_market_item_from_map_by_ident_code(data["listinginfo"][p_data["listingid"]], items_map),
+                original=PurchaseInfoValues(
+                    currency=Currency(int(p_data["currencyid"]) - 2000),
+                    paid_amount=int(p_data["paid_amount"]),
+                    paid_fee=int(p_data["paid_fee"]),
+                    steam_fee=int(p_data["steam_fee"]),
+                    publisher_fee=int(p_data["publisher_fee"]),
+                ),
+                converted=PurchaseInfoValues(
+                    currency=Currency(int(p_data["converted_currencyid"]) - 2000),
+                    paid_amount=int(p_data["paid_amount"]),
+                    paid_fee=int(p_data["paid_fee"]),
+                    steam_fee=int(p_data["converted_steam_fee"]),
+                    publisher_fee=int(p_data["converted_publisher_fee"]),
+                ),
+            )
+            for p_data in data["purchaseinfo"].values()
+        ]
+
+    async def get_recently_sold_items(
+        self,
+        *,
+        _item_descriptions_map: ItemDescriptionsMap | None = None,
+        _market_econ_items_map: dict[str, MarketListingItem] | None = None,
+    ) -> list[PurchaseInfo]:
+        """
+        Get *recently sold items* from `Steam Market`. Can be seen on main market page.
+
+        :return: list of ``PurchaseInfo``.
+        """
+
+        params = {"country": self._country, "language": self.language.value, "currency": self._currency.value}
+        headers = {"Referer": str(MARKET_URL), **CUSTOM_API_HEADERS}
+
+        r = await self._transport.request(
+            "GET",
+            MARKET_URL / "recentcompleted",
+            params=params,
+            headers=headers,
+            response_mode="json",
+        )
+        rj: dict = r.content
+
+        EResultError.check_data(rj)
+
+        _item_descriptions_map = {} if _item_descriptions_map is None else _item_descriptions_map
+        _market_econ_items_map = {} if _market_econ_items_map is None else _market_econ_items_map
+
+        self._parse_descriptions_from_market_assets(rj["assets"], _item_descriptions_map)
+        self._parse_market_listing_items(rj["assets"], _item_descriptions_map, _market_econ_items_map)
+
+        # unknow fields: last_time, last_listing
+
+        return self._create_purchase_infos(rj, _market_econ_items_map)
+
+    # have get_popular_items will be good, but there is no api endpoint (or unknown) to get them
+    # and we definitely don't want to parse html

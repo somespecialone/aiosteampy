@@ -5,17 +5,18 @@ from datetime import datetime
 
 from yarl import URL
 
+from .app import App, AppContext
 from .constants import (
     STEAM_URL,
-    TRADABLE_AFTER_DATE_FORMAT,
-    App,
-    AppContext,
     Currency,
     TradeOfferStatus,
 )
 from .utils import create_ident_code, make_inspect_link
 
 from .id import SteamID
+
+
+TRADABLE_AFTER_DATE_FORMAT = "%b %d, %Y (%H:%M:%S) %Z"
 
 
 class ItemAction(NamedTuple):
@@ -64,7 +65,7 @@ class BaseEntityWithIdentCode:
 
     @property
     def ident_code(self) -> str:
-        """Alias for ``id``"""
+        """Alias for ``id``."""
         return self.id
 
     def __eq__(self, other):
@@ -148,12 +149,11 @@ class ItemDescription(BaseEntityWithIdentCode):
 
     def __post_init__(self):
         super(ItemDescription, self).__post_init__()
-        # self._set_ident_code()
         self._set_d_id()
         self._set_restrictions_end_time()
 
     def _set_ident_code(self):
-        self.id = create_ident_code(self.instance_id, self.class_id, self.app.value)
+        self.id = create_ident_code(self.instance_id, self.class_id, self.app.id)
 
     def _set_d_id(self):
         if self.app is App.CS2:
@@ -176,11 +176,6 @@ class ItemDescription(BaseEntityWithIdentCode):
                 self.protected_until = datetime.strptime(date_string, TRADABLE_AFTER_DATE_FORMAT)
 
     @property
-    def ident_code(self) -> str:
-        """Alias for ``id``."""
-        return self.id
-
-    @property
     def icon_url(self) -> URL:
         return STEAM_URL.STATIC / f"economy/image/{self.icon}/96fx96f"
 
@@ -191,7 +186,7 @@ class ItemDescription(BaseEntityWithIdentCode):
     @property
     def market_url(self) -> URL:
         """URL of item page on `Steam Market`."""
-        return STEAM_URL.MARKET / f"listings/{self.app.value}/{self.market_hash_name}"
+        return STEAM_URL.COMMUNITY / f"market/listings/{self.app.id}/{self.market_hash_name}"
 
 
 @dataclass(eq=False, slots=True, kw_only=True)
@@ -202,12 +197,12 @@ class EconItem(BaseEntityWithIdentCode):
     .. note:: ``id`` or (``ident_code``) field is guaranteed unique within whole `Steam Economy`.
     """
 
+    context_id: int
+    """Unique identifier within item `App`."""
     asset_id: int  # The item's unique ID within its app+context
     """Unique identifier within item `App+Context`."""
     owner_id: SteamID  # absent in data, will be set in methods
     """The item's owner's ``SteamID``."""
-
-    app_context: AppContext
 
     amount: int  # if stackable, otherwise always 1
     """Amount of items in the stack."""
@@ -222,16 +217,16 @@ class EconItem(BaseEntityWithIdentCode):
         # self._set_ident_code()
 
     def _set_ident_code(self):
-        self.id = create_ident_code(self.asset_id, self.app_context.context, self.app_context.app.value)
+        self.id = create_ident_code(self.asset_id, self.context_id, self.description.app.id)
 
     @property
-    def ident_code(self) -> str:
-        """Alias for ``id``"""
-        return self.id
+    def app_context(self) -> AppContext:
+        return self.description.app.with_context(self.context_id)
 
     @property
     def inspect_link(self) -> str | None:
         """`Inspect in game` link for `CS2` item, if available."""
+
         if self.description.d_id:
             return make_inspect_link(owner_id=self.owner_id.id64, asset_id=self.asset_id, d_id=self.description.d_id)
 
@@ -271,7 +266,7 @@ class BaseTradeOfferItem(EconItem):
     @property
     def inspect_link(self) -> str | None:
         if self.description is not None and self.description.d_id:  # can't do super().inspect_url due to an error
-            return make_inspect_link(owner_id=self.owner_id, asset_id=self.asset_id, d_id=self.description.d_id)
+            return make_inspect_link(owner_id=self.owner_id.id64, asset_id=self.asset_id, d_id=self.description.d_id)
 
 
 @dataclass(eq=False, slots=True, kw_only=True)

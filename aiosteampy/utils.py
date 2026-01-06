@@ -13,6 +13,7 @@ __all__ = (
     "async_throttle",
     "create_ident_code",
     "make_inspect_link",
+    "extract_icon_hash_from_app_icon_link",
 )
 
 
@@ -125,3 +126,7 @@ def make_inspect_link(*, market_id: int = None, owner_id: int = None, asset_id: 
         return f"{base}M{market_id}A{asset_id}D{d_id}"
     else:
         return f"{base}S{owner_id}A{asset_id}D{d_id}"
+
+
+def extract_icon_hash_from_app_icon_link(link: str) -> str:
+    return link.split(".jpg")[0].rsplit("/", 1)[-1]

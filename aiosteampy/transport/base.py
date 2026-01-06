@@ -4,7 +4,8 @@ from datetime import datetime
 
 from yarl import URL
 
-from ..constants import CORO, EResult, STEAM_URL
+from ..types import CORO
+from ..constants import EResult, STEAM_URL
 from ..exceptions import EResultError, SessionExpired
 
 from .types import Headers, Payload, Params, HttpMethod, ResponseMode, WebAPIInterface, WebAPIMethod, WebAPIVersion

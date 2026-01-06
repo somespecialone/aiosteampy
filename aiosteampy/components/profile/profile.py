@@ -10,7 +10,8 @@ from datetime import datetime
 
 from yarl import URL
 
-from ...constants import STEAM_URL, EResult, CORO, Language
+from ...types import CORO
+from ...constants import STEAM_URL, EResult, Language
 from ...exceptions import EResultError
 from ...id import SteamID
 from ...transport import BaseSteamTransport, TransportResponse

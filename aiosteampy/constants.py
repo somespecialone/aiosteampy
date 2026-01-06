@@ -1,162 +1,120 @@
-"""Constants and enums, some types"""
+""""""
 
-from sys import version_info
-from typing import TypeAlias, Any, TypeVar, Coroutine, Mapping
-from enum import Enum, IntEnum
+from typing import TypeAlias, Any, TypeVar, Coroutine, Mapping, NewType
+from enum import Enum, IntEnum, StrEnum
 
 from yarl import URL
-
-# from aenum import extend_enum
-
-_T = TypeVar("_T")
-
-# TODO separate constants to models, types
-CORO: TypeAlias = Coroutine[Any, Any, _T]
-
-
-if version_info < (3, 11):
-
-    class StrEnum(str, Enum):
-        """Enum with possibility to be a query param serializable"""
-
-        # also for params serialization, make `print` to show only value which complicates debugging a little
-        def __str__(self):
-            return self.value
-
-else:
-    from enum import StrEnum
-
-
-class App(IntEnum):
-    """App enum. Add new member, when missing"""
-
-    # predefined
-    CS2 = 730
-    CSGO = CS2  # alias
-
-    DOTA2 = 570
-    H1Z1 = 433850
-    RUST = 252490
-    TF2 = 440
-    PUBG = 578080
-
-    STEAM = 753
-
-    # @classmethod
-    # def extend(cls, name: str, value: int) -> "App":
-    #     return extend_enum(cls, name, value)
-
-    @classmethod
-    def _missing_(cls, value: int):
-        return value
-
-    @property
-    def app_id(self) -> int:
-        return self.value
-
-
-# TODO need rework. namedtuple and similar is better option
-class AppContext(Enum):
-    """
-    Combination of `App` and context (sub-inventory of the app)
-
-    .. seealso:: https://dev.doctormckay.com/topic/332-identifying-steam-items/
-    """
-
-    # predefined
-    CS2 = App.CS2, 2
-    CSGO = CS2  # alias
-    CS2_PROTECTED = App.CS2, 16  # trade protection
-
-    DOTA2 = App.DOTA2, 2
-    H1Z1 = App.H1Z1, 2
-    RUST = App.RUST, 2
-    TF2 = App.TF2, 2
-    PUBG = App.PUBG, 2
-
-    STEAM_GIFTS = App.STEAM, 1
-    STEAM_COMMUNITY = App.STEAM, 6
-    STEAM_REWARDS = App.STEAM, 7  # item rewards
-
-    @classmethod
-    def _missing_(cls, value: tuple[App | int, int]):
-        return (App(value[0]), value[1])
-
-    @property
-    def app(self) -> App:
-        return self.value[0]
-
-    @property
-    def app_id(self) -> int:
-        return self.value[0].value
-
-    @property
-    def context(self) -> int:
-        return self.value[1]
 
 
 class Currency(IntEnum):  # already params serializable
     """
-    Steam currency enum.
+    All `Steam` currencies.
 
-    .. seealso:: https://partner.steamgames.com/doc/store/pricing/currencies
+    .. seealso::
+        Currently supported currencies: https://partner.steamgames.com/doc/store/pricing/currencies.
     """
 
-    USD = 1  # UnitedStates Dollar
-    GBP = 2  # United Kingdom Pound
-    # EURO = 3  # European Union Euro
-    EUR = 3  # European Union Euro
-    CHF = 4  # Swiss Francs
-    RUB = 5  # Russian Rouble
-    PLN = 6  # Polish Złoty
-    BRL = 7  # Brazilian Reals
-    JPY = 8  # Japanese Yen
-    NOK = 9  # Norwegian Krone
-    IDR = 10  # Indonesian Rupiah
-    MYR = 11  # Malaysian Ringgit
-    PHP = 12  # Philippine Peso
-    SGD = 13  # Singapore Dollar
-    THB = 14  # Thai Baht
-    VND = 15  # Vietnamese Dong
-    KRW = 16  # South KoreanWon
-    TRY = 17  # Turkish Lira
-    UAH = 18  # Ukrainian Hryvnia
-    MXN = 19  # Mexican Peso
-    CAD = 20  # Canadian Dollars
-    AUD = 21  # Australian Dollars
-    NZD = 22  # New Zealand Dollar
-    CNY = 23  # Chinese Renminbi (yuan)
-    INR = 24  # Indian Rupee
-    CLP = 25  # Chilean Peso
-    PEN = 26  # Peruvian Sol
-    COP = 27  # Colombian Peso
-    ZAR = 28  # South AfricanRand
-    HKD = 29  # Hong KongDollar
-    TWD = 30  # New TaiwanDollar
-    SAR = 31  # Saudi Riyal
-    AED = 32  # United ArabEmirates Dirham
-    # SEK = 33  # Swedish Krona
-    ARS = 34  # Argentine Peso
-    ILS = 35  # Israeli NewShekel
-    # BYN = 36  # Belarusian Ruble
-    KZT = 37  # Kazakhstani Tenge
-    KWD = 38  # Kuwaiti Dinar
-    QAR = 39  # Qatari Riyal
-    CRC = 40  # Costa Rican Colón
-    UYU = 41  # Uruguayan Peso
-    # BGN = 42  # Bulgarian Lev
-    # HRK = 43  # Croatian Kuna
-    # CZK = 44  # Czech Koruna
-    # DKK = 45  # Danish Krone
-    # HUF = 46  # Hungarian Forint
-    # RON = 47  # Romanian Leu
+    USD = 1
+    """United States Dollar."""
+    GBP = 2
+    """United Kingdom Pound."""
+    EUR = 3
+    """European Union Euro."""
+    CHF = 4
+    """Swiss Francs."""
+    RUB = 5
+    """Russian Rouble."""
+    PLN = 6
+    """Polish Złoty."""
+    BRL = 7
+    """Brazilian Reals."""
+    JPY = 8
+    """Japanese Yen."""
+    NOK = 9
+    """Norwegian Krone."""
+    IDR = 10
+    """Indonesian Rupiah."""
+    MYR = 11
+    """Malaysian Ringgit."""
+    PHP = 12
+    """Philippine Peso."""
+    SGD = 13
+    """Singapore Dollar."""
+    THB = 14
+    """Thai Baht."""
+    VND = 15
+    """Vietnamese Dong."""
+    KRW = 16
+    """South Korean Won."""
+    TRY = 17
+    """Turkish Lira. **Support suspended**."""
+    UAH = 18
+    """Ukrainian Hryvnia."""
+    MXN = 19
+    """Mexican Peso."""
+    CAD = 20
+    """Canadian Dollars."""
+    AUD = 21
+    """Australian Dollars."""
+    NZD = 22
+    """New Zealand Dollar."""
+    CNY = 23
+    """Chinese Renminbi (yuan)."""
+    INR = 24
+    """Indian Rupee."""
+    CLP = 25
+    """Chilean Peso."""
+    PEN = 26
+    """Peruvian Sol."""
+    COP = 27
+    """Colombian Peso."""
+    ZAR = 28
+    """South African Rand."""
+    HKD = 29
+    """Hong Kong Dollar."""
+    TWD = 30
+    """New Taiwan Dollar."""
+    SAR = 31
+    """Saudi Riyal."""
+    AED = 32
+    """United Arab Emirates Dirham."""
+    SEK = 33
+    """Swedish Krona. **Support suspended**."""
+    ARS = 34
+    """Argentine Peso. **Support suspended**."""
+    ILS = 35
+    """Israeli New Shekel."""
+    BYN = 36
+    """Belarusian Ruble. **Support suspended**."""
+    KZT = 37
+    """Kazakhstani Tenge."""
+    KWD = 38
+    """Kuwaiti Dinar."""
+    QAR = 39
+    """Qatari Riyal."""
+    CRC = 40
+    """Costa Rican Colón."""
+    UYU = 41
+    """Uruguayan Peso."""
+    BGN = 42
+    """Bulgarian Lev. **Support suspended**."""
+    HRK = 43
+    """Croatian Kuna. **Support suspended**."""
+    CZK = 44
+    """Czech Koruna. **Support suspended**."""
+    DKK = 45
+    """Danish Krone. **Support suspended**."""
+    HUF = 46
+    """Hungarian Forint. **Support suspended**."""
+    RON = 47
+    """Romanian Leu. **Support suspended**."""
 
 
 class Language(StrEnum):
     """
-    Steam languages.
+    Supported languages by `Steam`.
 
-    .. seealso:: https://partner.steamgames.com/doc/store/localization/languages
+    .. seealso:: https://partner.steamgames.com/doc/store/localization/languages.
     """
 
     ARABIC = "arabic"
@@ -219,34 +177,9 @@ class STEAM_URL:
     TRADE = COMMUNITY / "tradeoffer"  # TODO remove after trade comp
 
 
-T_PARAMS: TypeAlias = Mapping[str, int | str | float]
-T_PAYLOAD: TypeAlias = Mapping[str, str | int | float | bool | None | list | Mapping]
-T_HEADERS: TypeAlias = Mapping[str, str]
-
-
-class EnumWithMultipleValues(Enum):
-    """Author: ChatGPT"""
-
-    def __new__(cls, *values):
-        # The first value is considered the primary value for the enum member
-        obj = object.__new__(cls)
-        obj._value_ = values[0]
-        # Store all the additional values in a class-level dictionary
-        if not hasattr(cls, "_alt_map"):
-            cls._alt_map = {}
-        for value in values:
-            cls._alt_map[value] = obj
-        return obj
-
-    @classmethod
-    def _missing_(cls, value):
-        # Handle cases where the value doesn't directly map to a member
-        return cls._alt_map.get(value, super()._missing_(value))
-
-
 class EResult(IntEnum):
     """
-    All possible/known Steam result codes.
+    Possible/known `Steam` result codes.
 
     .. seealso::
         * https://steamerrors.com.
@@ -254,10 +187,8 @@ class EResult(IntEnum):
         * https://github.com/DoctorMcKay/node-steamcommunity/blob/master/resources/EResult.js.
     """
 
-    # UNKNOWN = None  # special case
-
-    INVALID = 0
-    OK = 1  # also be return when EResult(True
+    INVALID = 0  # False
+    OK = 1  # True
     FAIL = 2
     NO_CONNECTION = 3
     INVALID_PASSWORD = 5
@@ -311,7 +242,6 @@ class EResult(IntEnum):
     DATA_CORRUPTION = 53
     DISK_FULL = 54
     REMOTE_CALL_FAILED = 55
-    # PASSWORD_NOT_SET= 56 // removed "renamed to PasswordUnset"
     PASSWORD_UNSET = 56
     EXTERNAL_ACCOUNT_UNLINKED = 57
     PSN_TICKET_INVALID = 58
@@ -322,7 +252,6 @@ class EResult(IntEnum):
     ACCOUNT_LOGON_DENIED = 63
     CANNOT_USE_OLD_PASSWORD = 64
     INVALID_LOGIN_AUTH_CODE = 65
-    # ACCOUNT_LOGON_DENIED_NO_MAIL_SENT= 66 // removed "renamed to AccountLogonDeniedNoMail"
     ACCOUNT_LOGON_DENIED_NO_MAIL = 66
     HARDWARE_NOT_CAPABLE_OF_IPT = 67
     IPT_INIT_ERROR = 68
@@ -330,7 +259,6 @@ class EResult(IntEnum):
     FACEBOOK_QUERY_ERROR = 70
     EXPIRED_LOGIN_AUTH_CODE = 71
     IP_LOGIN_RESTRICTION_FAILED = 72
-    # ACCOUNT_LOCKED= 73 // removed "renamed to AccountLockedDown"
     ACCOUNT_LOCKED_DOWN = 73
     ACCOUNT_LOGON_DENIED_VERIFIED_EMAIL_REQUIRED = 74
     NO_MATCHING_URL = 75
@@ -343,22 +271,16 @@ class EResult(IntEnum):
     RESTRICTED_DEVICE = 82
     REGION_LOCKED = 83
     RATE_LIMIT_EXCEEDED = 84
-    # ACCOUNT_LOGON_DENIED_NEED_TWO_FACTOR_CODE= 85 // removed "renamed to AccountLoginDeniedNeedTwoFactor"
     ACCOUNT_LOGIN_DENIED_NEED_TWO_FACTOR = 85
-    # ITEM_OR_ENTRY_HAS_BEEN_DELETED= 86 // removed "renamed to ItemDeleted"
     ITEM_DELETED = 86
     ACCOUNT_LOGIN_DENIED_THROTTLE = 87
     TWO_FACTOR_CODE_MISMATCH = 88
     TWO_FACTOR_ACTIVATION_CODE_MISMATCH = 89
-    # ACCOUNT_ASSOCIATED_TO_MULTIPLE_PLAYERS= 90 // removed "renamed to AccountAssociatedToMultiplePartners"
     ACCOUNT_ASSOCIATED_TO_MULTIPLE_PARTNERS = 90
     NOT_MODIFIED = 91
-    # NO_MOBILE_DEVICE_AVAILABLE= 92 // removed "renamed to NoMobileDevice"
     NO_MOBILE_DEVICE = 92
-    # TIME_IS_OUT_OF_SYNC= 93 // removed "renamed to TimeNotSynced"
     TIME_NOT_SYNCED = 93
     SMS_CODE_FAILED = 94
-    # TOO_MANY_ACCOUNTS_ACCESS_THIS_RESOURCE= 95 // removed "renamed to AccountLimitExceeded"
     ACCOUNT_LIMIT_EXCEEDED = 95
     ACCOUNT_ACTIVITY_LIMIT_EXCEEDED = 96
     PHONE_ACTIVITY_LIMIT_EXCEEDED = 97
@@ -384,6 +306,3 @@ class EResult(IntEnum):
     NO_LAUNCHER_SPECIFIED = 117
     MUST_AGREE_TO_SSA = 118
     CLIENT_NO_LONGER_SUPPORTED = 119
-
-
-TRADABLE_AFTER_DATE_FORMAT = "%b %d, %Y (%H:%M:%S) %Z"

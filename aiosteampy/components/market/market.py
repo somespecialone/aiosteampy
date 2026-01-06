@@ -4,7 +4,9 @@ from contextlib import suppress
 from typing import overload, Literal, Callable, AsyncGenerator, TYPE_CHECKING
 from datetime import datetime
 
-from ...constants import Currency, AppContext, STEAM_URL, EResult, App, CORO, Language
+from ...types import CORO, AppMap
+from ...app import App, AppContext
+from ...constants import Currency, STEAM_URL, EResult, Language
 from ...exceptions import (
     EResultError,
     SessionExpired,
@@ -56,7 +58,7 @@ class MarketComponent(MarketPublicComponent):
         transport: BaseSteamTransport,
         steam_id: SteamID,
         country: str = "UA",
-        currency: Currency = Currency.UAH,
+        currency: Currency = Currency.USD,
         language: Language = Language.ENGLISH,
         confirmation: "ConfirmationComponent | None" = None,
     ):
@@ -71,7 +73,7 @@ class MarketComponent(MarketPublicComponent):
         return self._steam_id
 
     @overload
-    async def confirm_sell_listing(self, obj: int, app_context: AppContext) -> "Confirmation": ...
+    async def confirm_sell_listing(self, obj: int, app_ctx: AppContext) -> "Confirmation": ...
 
     @overload
     async def confirm_sell_listing(self, obj: MyMarketListing | EconItem | int) -> "Confirmation": ...
@@ -79,13 +81,13 @@ class MarketComponent(MarketPublicComponent):
     async def confirm_sell_listing(
         self,
         obj: MyMarketListing | EconItem | int,
-        app_context: AppContext | None = None,
+        app_ctx: AppContext | None = None,
     ) -> "Confirmation":
         """
         Perform sell listing confirmation.
 
         :param obj: ``MyMarketListing``, ``EconItem`` that you listed, `listing id` or `asset id`.
-        :param app_context: ``AppContext`` of item. Required when ``obj`` is `asset id`.
+        :param app_ctx: ``AppContext`` of item. Required when ``obj`` is `asset id`.
         :return: processed ``Confirmation``.
         :raises KeyError: if confirmation not found.
         :raises EResultError: ordinary reasons.
@@ -103,9 +105,9 @@ class MarketComponent(MarketPublicComponent):
         elif isinstance(obj, EconItem):
             key = obj.id
             details_for_listing_type = True
-        else:  # int
-            if app_context is not None:  # asset id & app context
-                key = create_ident_code(obj, app_context.context, app_context.app.value)
+        else:  # int and app ctx
+            if app_ctx is not None:  # asset id & app context
+                key = create_ident_code(obj, app_ctx.context_id, app_ctx.app.id)
                 details_for_listing_type = True
             else:  # listing id
                 key = obj
@@ -121,32 +123,48 @@ class MarketComponent(MarketPublicComponent):
         cls,
         data: dict[str, dict | list[dict]],
         item_descriptions_map: ItemDescriptionsMap,
+        app_map: AppMap,
     ):
         """
         Extract item descriptions from user listings data or market history data to ``item_descriptions_map`` dict.
         """
 
         for app_id, app_data in (data["assets"] or {}).items():  # thanks to Steam for an empty list instead of a dict
+            app_id_int = int(app_id)
+            if app_id_int not in app_map:
+                app_map[app_id_int] = App(app_id_int)
+
             for context_id, context_data in app_data.items():
                 for asset_id, mixed_data in context_data.items():
                     key = create_ident_code(mixed_data["instanceid"], mixed_data["classid"], app_id)
                     if key not in item_descriptions_map:
-                        item_descriptions_map[key] = cls._create_item_descr(mixed_data)
+                        item_descriptions_map[key] = cls._create_item_descr(mixed_data, app_map)
+
+                    # there can be retrieved app ico, but
 
         for listing_data in data.get("listings_to_confirm", ()):
             mixed_data = listing_data["asset"]
+
+            app_id_int = int(mixed_data["appid"])
+            if app_id_int not in app_map:
+                app_map[app_id_int] = App(app_id_int)
+
             key = create_ident_code(mixed_data["instanceid"], mixed_data["classid"], mixed_data["appid"])
             if key not in item_descriptions_map:
-                item_descriptions_map[key] = cls._create_item_descr(mixed_data)
+                item_descriptions_map[key] = cls._create_item_descr(mixed_data, app_map)
 
         for order_data in data.get("buy_orders", ()):
             descr_data = order_data.get("description")
             if not descr_data:  # ignore orders with invalid outdated descriptions
                 continue
 
+            app_id_int = int(descr_data["appid"])
+            if app_id_int not in app_map:
+                app_map[app_id_int] = App(app_id_int)
+
             key = create_ident_code(descr_data["instanceid"], descr_data["classid"], descr_data["appid"])
             if key not in item_descriptions_map:
-                item_descriptions_map[key] = cls._create_item_descr(descr_data)
+                item_descriptions_map[key] = cls._create_item_descr(descr_data, app_map)
 
     def _parse_my_listings(
         self,
@@ -159,6 +177,7 @@ class MarketComponent(MarketPublicComponent):
                 lister=self._steam_id,  # no need to parse data again
                 created_at=datetime.fromtimestamp(l_data["time_created"]),
                 item=MarketListingItem(
+                    context_id=int(l_data["asset"]["contextid"]),
                     asset_id=int(l_data["asset"]["id"]),
                     unowned_id=int(l_data["asset"]["unowned_id"]) if "unowned_id" in l_data["asset"] else None,
                     # owner_id=self.steam_id,
@@ -167,7 +186,6 @@ class MarketComponent(MarketPublicComponent):
                         int(l_data["asset"]["unowned_contextid"]) if "unowned_contextid" in l_data["asset"] else None
                     ),
                     amount=int(l_data["asset"]["amount"]),
-                    app_context=AppContext((App(int(l_data["asset"]["appid"])), int(l_data["asset"]["contextid"]))),
                     description=item_descriptions_map[
                         create_ident_code(
                             l_data["asset"]["instanceid"],
@@ -220,6 +238,8 @@ class MarketComponent(MarketPublicComponent):
         *,
         start: int = 0,
         count: int = 100,
+        # share mapping with iterator method
+        _app_map: AppMap | None = None,
         _item_descriptions_map: ItemDescriptionsMap | None = None,
     ) -> UserListingData:
         """
@@ -228,7 +248,7 @@ class MarketComponent(MarketPublicComponent):
         .. note:: Pagination of active listings can be achieved by passing ``start`` arg.
 
         :param start: start index.
-        :param count: listings per page. Current limit is 100.
+        :param count: listings per page.
         :return: active listings, listings to confirm, buy orders, total count of active listings.
         :raises EResultError: ordinary reasons.
         :raises TransportError: arbitrary reasons.
@@ -256,9 +276,11 @@ class MarketComponent(MarketPublicComponent):
 
         # no need to check `assets` or `total_count`
 
+        _app_map = {} if _app_map is None else _app_map
         _item_descriptions_map = {} if _item_descriptions_map is None else _item_descriptions_map
 
-        self._parse_descriptions_from_my_listings_or_market_history(rj, _item_descriptions_map)
+        # we get only app id here, so func below will do the work
+        self._parse_descriptions_from_my_listings_or_market_history(rj, _item_descriptions_map, _app_map)
 
         active = self._parse_my_listings(rj["listings"], _item_descriptions_map)
         # what is "listings_on_hold"?
@@ -267,18 +289,12 @@ class MarketComponent(MarketPublicComponent):
 
         return active, to_confirm, buy_orders, rj["num_active_listings"]
 
-    async def my_listings(
-        self,
-        *,
-        start: int = 0,
-        count: int = 100,
-        _item_descriptions_map: ItemDescriptionsMap | None = None,
-    ) -> AsyncGenerator[UserListingData, None]:
+    async def my_listings(self, *, start: int = 0, count: int = 100) -> AsyncGenerator[UserListingData, None]:
         """
         Get current user market listings as async generator to paginate over.
 
         :param start: start index.
-        :param count: listings per page. Current limit is 100.
+        :param count: listings per page.
         :return: ``AsyncGenerator`` that yields list of active listings as page,
             listings to confirm, buy orders, total count of active listings.
         :raises EResultError: ordinary reasons.
@@ -286,8 +302,8 @@ class MarketComponent(MarketPublicComponent):
         :raises SessionExpired: current login session is expired.
         """
 
-        if _item_descriptions_map is None:
-            _item_descriptions_map = {}
+        _app_map = {}
+        _item_descriptions_map = {}
 
         more_listings = True
         while more_listings:
@@ -295,6 +311,7 @@ class MarketComponent(MarketPublicComponent):
             listings_data = await self.get_my_listings(
                 start=start,
                 count=count,
+                _app_map=_app_map,
                 _item_descriptions_map=_item_descriptions_map,
             )
             start += count
@@ -322,13 +339,12 @@ class MarketComponent(MarketPublicComponent):
         need_confirmation: bool = False,
         asset_id: int | None = None,
         ident_code: str | None = None,
-        _item_descriptions_map: ItemDescriptionsMap | None = None,
     ) -> MyMarketListing | None:
         """
         Iterate over current user sell listings pages
         until find *first one* that satisfies passed arguments.
 
-        :param obj: listing id or `predicate` function.
+        :param obj: `listing id` or `predicate` function.
         :param need_confirmation: get listing from `to_confirm` list.
         :param asset_id: asset id of listing item.
         :param ident_code: ident code of listing item.
@@ -356,16 +372,11 @@ class MarketComponent(MarketPublicComponent):
 
                 return True
 
-        async for listings, to_confirm, _, _ in self.my_listings(_item_descriptions_map=_item_descriptions_map):
+        async for listings, to_confirm, _, _ in self.my_listings():
             with suppress(StopIteration):  # iterate until find first one that satisfies predicate
                 return next(filter(predicate, to_confirm if need_confirmation else listings))
 
-    async def get_my_buy_order(
-        self,
-        obj: int | Callable[[BuyOrder], bool],
-        *,
-        _item_descriptions_map: ItemDescriptionsMap | None = None,
-    ) -> BuyOrder | None:
+    async def get_my_buy_order(self, obj: int | Callable[[BuyOrder], bool]) -> BuyOrder | None:
         """
         Get current user buy orders and return *first one* that satisfies passed arguments.
 
@@ -384,7 +395,7 @@ class MarketComponent(MarketPublicComponent):
                 return order.id == obj
 
         # count 1 to reduce unnecessary work as we only need buy orders
-        _, _, orders, _ = await self.get_my_listings(count=1, _item_descriptions_map=_item_descriptions_map)
+        _, _, orders, _ = await self.get_my_listings(count=1)
         return next(filter(predicate, orders), None)
 
     @overload
@@ -407,7 +418,7 @@ class MarketComponent(MarketPublicComponent):
     async def place_sell_listing(
         self,
         obj: int,
-        app_context: AppContext,
+        app_ctx: AppContext,
         *,
         price: int,
     ) -> int | None: ...
@@ -416,7 +427,7 @@ class MarketComponent(MarketPublicComponent):
     async def place_sell_listing(
         self,
         obj: int,
-        app_context: AppContext,
+        app_ctx: AppContext,
         *,
         to_receive: int,
     ) -> int | None: ...
@@ -424,7 +435,7 @@ class MarketComponent(MarketPublicComponent):
     async def place_sell_listing(
         self,
         obj: EconItem | int,
-        app_context: AppContext | None = None,
+        app_ctx: AppContext | None = None,
         *,
         price: int | None = None,
         to_receive: int | None = None,
@@ -437,7 +448,7 @@ class MarketComponent(MarketPublicComponent):
             * ``price`` or ``to_receive`` is integers equal to cents.
 
         :param obj: ``EconItem`` that you want to list on market or it's `asset id`.
-        :param app_context: `AppContext` of item.
+        :param app_ctx: ``AppContext`` of item.
         :param price: money that *buyer must pay*, including fees.
         :param to_receive: money that listener will *receive*.
         :return: `listing id` or ``None``.
@@ -451,7 +462,7 @@ class MarketComponent(MarketPublicComponent):
 
         if isinstance(obj, EconItem):
             asset_id = obj.asset_id
-            app_context = obj.app_context
+            app_ctx = obj.app_context
 
             if not obj.description.marketable:
                 raise ValueError("Item is not marketable")
@@ -472,8 +483,8 @@ class MarketComponent(MarketPublicComponent):
         data = {
             "assetid": asset_id,
             "sessionid": self._transport.session_id,
-            "contextid": app_context.context,
-            "appid": app_context.app.value,
+            "contextid": app_ctx.context_id,
+            "appid": app_ctx.app.id,
             "amount": 1,
             "price": to_receive,
         }
@@ -490,10 +501,10 @@ class MarketComponent(MarketPublicComponent):
 
         if rj.get("needs_mobile_confirmation"):
             if self._conf is None:
-                conf_key = create_ident_code(asset_id, app_context.context, app_context.app.value)
+                conf_key = create_ident_code(asset_id, app_ctx.context_id, app_ctx.app.id)
                 raise NeedMobileConfirmation(conf_key)
 
-            conf = await self.confirm_sell_listing(asset_id, app_context)
+            conf = await self.confirm_sell_listing(asset_id, app_ctx)
             return conf.creator_id  # listing id
 
         elif rj.get("needs_email_confirmation"):
@@ -580,14 +591,14 @@ class MarketComponent(MarketPublicComponent):
         data = {
             "sessionid": self._transport.session_id,
             "currency": self._currency.value,
-            "appid": app.value,
+            "appid": app.id,
             "market_hash_name": name,
             "price_total": price * quantity,
             "quantity": quantity,
             "confirmation": confirmation_id,
         }
 
-        headers = {"Referer": str(MARKET_URL / f"listings/{app.value}/{name}")}
+        headers = {"Referer": str(MARKET_URL / f"listings/{app.id}/{name}")}
         try:
             r = await self._transport.request(
                 "POST",
@@ -637,7 +648,7 @@ class MarketComponent(MarketPublicComponent):
 
         if isinstance(obj, BuyOrder):
             buy_order_id = obj.id
-            headers = {"Referer": str(obj.item_description.market_url)}  # at least
+            headers = {"Referer": str(obj.item_description.market_url)}  # at least there
         else:
             buy_order_id = obj
             headers = None
@@ -762,7 +773,7 @@ class MarketComponent(MarketPublicComponent):
             price = obj.converted.price
             fee = obj.converted.fee
             market_hash_name = obj.item.description.market_hash_name
-            app = obj.item.app_context.app
+            app = obj.item.description.app
         else:
             listing_id = obj
 
@@ -779,7 +790,7 @@ class MarketComponent(MarketPublicComponent):
             "quantity": 1,
             "confirmation": confirmation_id,
         }
-        headers = {"Referer": str(MARKET_URL / f"listings/{app.value}/{market_hash_name}")}  # mandatory
+        headers = {"Referer": str(MARKET_URL / f"listings/{app.id}/{market_hash_name}")}  # mandatory
         try:
             r = await self.transport.request(
                 "POST",
@@ -860,6 +871,7 @@ class MarketComponent(MarketPublicComponent):
                     key_unowned_id = create_ident_code(a_data["unowned_id"], context_id, app_id)
                     if key_id not in item_descriptions_map or key_unowned_id not in item_descriptions_map:
                         econ_item = MarketHistoryListingItem(
+                            context_id=int(a_data["contextid"]),
                             asset_id=int(a_data["id"]),
                             unowned_id=int(a_data["unowned_id"]),
                             unowned_context_id=int(a_data["unowned_contextid"]),
@@ -869,7 +881,6 @@ class MarketComponent(MarketPublicComponent):
                             rollback_new_context_id=(
                                 int(a_data["rollback_new_contextid"]) if "rollback_new_contextid" in a_data else None
                             ),
-                            app_context=AppContext((App(int(a_data["appid"])), int(a_data["contextid"]))),
                             description=item_descriptions_map[
                                 create_ident_code(
                                     a_data["instanceid"],
@@ -968,6 +979,8 @@ class MarketComponent(MarketPublicComponent):
         *,
         start: int = 0,
         count: int = 100,
+        # share mapping with iterator method
+        _app_map: AppMap | None = None,
         _item_descriptions_map: ItemDescriptionsMap | None = None,
         _market_history_econ_items_map: dict[str, MarketHistoryListingItem] | None = None,
         _market_history_listings_map: dict[int, MarketHistoryListing] | None = None,
@@ -978,7 +991,7 @@ class MarketComponent(MarketPublicComponent):
         .. note:: Pagination can be achieved by passing ``start`` arg.
 
         :param start: start index.
-        :param count: listings per page. At the current moment `Steam` do not accept value greater than 100.
+        :param count: listings per page.
         :return: list of ``MarketHistoryEvent``, total_count.
         :raises EResultError: ordinary reasons.
         :raises TransportError: arbitrary reasons.
@@ -1001,13 +1014,14 @@ class MarketComponent(MarketPublicComponent):
         if not rj["total_count"] or not rj["assets"]:  # safe
             return [], 0
 
+        _app_map = {} if _app_map is None else _app_map
         _item_descriptions_map = {} if _item_descriptions_map is None else _item_descriptions_map
         _market_history_econ_items_map = (
             {} if _market_history_econ_items_map is None else _market_history_econ_items_map
         )
         _market_history_listings_map = {} if _market_history_listings_map is None else _market_history_listings_map
 
-        self._parse_descriptions_from_my_listings_or_market_history(rj, _item_descriptions_map)
+        self._parse_descriptions_from_my_listings_or_market_history(rj, _item_descriptions_map, _app_map)
         self._parse_assets_for_history_listings(rj["assets"], _item_descriptions_map, _market_history_econ_items_map)
         self._parse_history_listings(rj, _market_history_econ_items_map, _market_history_listings_map)
 
@@ -1018,26 +1032,22 @@ class MarketComponent(MarketPublicComponent):
         *,
         start: int = 0,
         count: int = 100,
-        _item_descriptions_map: ItemDescriptionsMap = None,
-        _market_history_econ_items_map: dict[str, MarketHistoryListingItem] = None,
-        _market_history_listings_map: dict[int, MarketHistoryListing] = None,
     ) -> AsyncGenerator[UserMarketHistoryData, None]:
         """
         Get market history of current user.
         Return async generator to paginate over history event pages.
 
         :param start: start index.
-        :param count: listings per page. At the current moment `Steam` do not accept value greater than 100.
+        :param count: listings per page.
         :return: `AsyncGenerator` that yields list of ``MarketHistoryEvent``, total_count.
         :raises EResultError: ordinary reasons.
         :raises TransportError: arbitrary reasons.
         """
 
-        _item_descriptions_map = {} if _item_descriptions_map is None else _item_descriptions_map
-        _market_history_econ_items_map = (
-            {} if _market_history_econ_items_map is None else _market_history_econ_items_map
-        )
-        _market_history_listings_map = {} if _market_history_listings_map is None else _market_history_listings_map
+        _app_map = {}
+        _item_descriptions_map = {}
+        _market_history_econ_items_map = {}
+        _market_history_listings_map = {}
 
         more_listings = True
         while more_listings:
@@ -1045,6 +1055,7 @@ class MarketComponent(MarketPublicComponent):
             history_data = await self.get_my_market_history(
                 start=start,
                 count=count,
+                _app_map=_app_map,
                 _item_descriptions_map=_item_descriptions_map,
                 _market_history_econ_items_map=_market_history_econ_items_map,
                 _market_history_listings_map=_market_history_listings_map,
@@ -1082,7 +1093,7 @@ class MarketComponent(MarketPublicComponent):
         else:  # str
             name = obj
 
-        params = {"appid": app.value, "market_hash_name": name}
+        params = {"appid": app.id, "market_hash_name": name}
         try:
             r = await self.transport.request(
                 "GET",

@@ -16,7 +16,8 @@ from rsa import PublicKey, encrypt as rsa_encrypt
 from yarl import URL
 from betterproto2 import Message
 
-from ..constants import STEAM_URL, CORO
+from ..types import CORO
+from ..constants import STEAM_URL
 from ..id import SteamID
 from ..transport import (
     BaseSteamTransport,

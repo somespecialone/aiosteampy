@@ -8,7 +8,8 @@ from datetime import datetime
 from enum import IntEnum
 from typing import Literal, Iterable
 
-from ..constants import STEAM_URL, EResult, CORO
+from ..types import CORO
+from ..constants import STEAM_URL, EResult
 from ..utils import create_ident_code
 from ..exceptions import SessionExpired, EResultError
 from ..transport import BaseSteamTransport

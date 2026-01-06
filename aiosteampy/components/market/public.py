@@ -4,11 +4,13 @@ from collections.abc import AsyncGenerator
 from typing import Literal, overload, Sequence, Mapping
 from datetime import datetime
 
-from ...constants import Currency, EResult, STEAM_URL, App, AppContext, Language
-from ...utils import create_ident_code
+from ...app import App, AppContext
+from ...constants import Currency, EResult, STEAM_URL, Language
+from ...utils import create_ident_code, extract_icon_hash_from_app_icon_link
 from ...exceptions import EResultError
 from ...models import ItemAction, ItemDescriptionEntry, ItemTag, AssetPropertyId, AssetProperty, ItemDescription
 from ...transport import BaseSteamTransport, TransportError, format_http_date, parse_http_date
+from ...types import AppMap, ItemDescriptionsMap
 
 from .models import (
     SellOrderTableEntry,
@@ -34,8 +36,6 @@ ITEM_NAME_ID_RE = re.compile(r"Market_LoadOrderSpread\(\s?(\d+)\s?\)")
 # listings, total count, last modified
 MarketItemListingData = tuple[list[MarketListing], int, datetime]
 
-ItemDescriptionsMap = dict[str, ItemDescription]  # ident code : descr
-
 # Steam current limit
 LISTING_COUNT = 10
 
@@ -58,13 +58,15 @@ class MarketPublicComponent:
         "_country",
         "_currency",
         "_language",
+        "_app_map",
+        "_item_descriptions_map",
     )
 
     def __init__(
         self,
         transport: BaseSteamTransport,
         country: str = "UA",
-        currency: Currency = Currency.UAH,
+        currency: Currency = Currency.USD,
         language: Language = Language.ENGLISH,
     ):
         self._transport = transport
@@ -150,7 +152,7 @@ class MarketPublicComponent:
 
         params = {
             "norender": 1,
-            "language": self.language.value,
+            "language": self._language.value,
             "currency": self._currency.value,
             "item_nameid": item_name_id,
         }
@@ -223,7 +225,7 @@ class MarketPublicComponent:
 
         params = {
             "norender": 1,
-            "language": self.language.value,
+            "language": self._language.value,
             "country": self._country,
             "currency": self._currency.value,
             "item_nameid": item_name_id,
@@ -283,7 +285,7 @@ class MarketPublicComponent:
     async def get_price_overview(
         self,
         obj: str | ItemDescription,
-        app: App = None,
+        app: App | None = None,
         *,
         if_modified_since: datetime | str | None = None,
     ) -> tuple[PriceOverview, datetime]:
@@ -311,7 +313,7 @@ class MarketPublicComponent:
             "country": self._country,
             "currency": self._currency,
             "market_hash_name": name,
-            "appid": app.value,
+            "appid": app.id,
         }
         # referer header is profile alias / inventory, good that it is not mandatory
         headers = {}
@@ -333,6 +335,16 @@ class MarketPublicComponent:
             volume=self._parse_quantity(rj["volume"]),
             median_price=self._parse_price_with_currency(rj["lowest_price"]),
         ), parse_http_date(r.headers["Last-Modified"])
+
+    @staticmethod
+    def _parse_apps_from_app_data(data: dict[str, dict[str, int | str]], app_map: AppMap):
+        for _, app_data in data.items():
+            if app_data["appid"] not in app_map:
+                app_map[app_data["appid"]] = App(
+                    app_data["appid"],
+                    app_data["name"],
+                    extract_icon_hash_from_app_icon_link(app_data["icon"]),
+                )
 
     @staticmethod
     def _get_market_item_from_map_by_ident_code(
@@ -405,11 +417,11 @@ class MarketPublicComponent:
         ]
 
     @classmethod
-    def _create_item_descr(cls, data: dict) -> ItemDescription:
+    def _create_item_descr(cls, data: dict, app_map: AppMap) -> ItemDescription:
         return ItemDescription(
             class_id=int(data["classid"]),
             instance_id=int(data["instanceid"]),
-            app=App(data["appid"]),
+            app=app_map[data["appid"]],
             name=data["name"],
             market_name=data["market_name"],
             market_hash_name=data["market_hash_name"],
@@ -442,7 +454,8 @@ class MarketPublicComponent:
     def _parse_descriptions_from_market_assets(
         cls,
         assets: dict[str, dict[str, dict[str, dict]]],
-        item_descriptions_map: dict[str, ItemDescription],
+        item_descriptions_map: ItemDescriptionsMap,
+        app_map: AppMap,
     ):
         """Extract item descriptions from market assets data to ``item_descriptions_map`` dict."""
 
@@ -451,12 +464,12 @@ class MarketPublicComponent:
                 for asset_id, mixed_data in context_data.items():  # asset+descr data
                     key = create_ident_code(mixed_data["instanceid"], mixed_data["classid"], app_id)
                     if key not in item_descriptions_map:
-                        item_descriptions_map[key] = cls._create_item_descr(mixed_data)
+                        item_descriptions_map[key] = cls._create_item_descr(mixed_data, app_map)
 
     @staticmethod
     def _parse_market_listing_items(
         data: dict[str, dict[str, dict[str, dict]]],
-        item_descriptions_map: dict[str, ItemDescription],
+        item_descriptions_map: ItemDescriptionsMap,
         items_map: dict[str, MarketListingItem],
     ):
         """Extract ``MarketListingItem`` from market assets data to ``items_map`` dict."""
@@ -486,11 +499,11 @@ class MarketPublicComponent:
 
                         descr_key = create_ident_code(a_data["instanceid"], a_data["classid"], app_id)
                         items_map[key] = MarketListingItem(
+                            context_id=int(context_id),
                             asset_id=int(a_data["id"]),
                             market_id=0,  # will be set in MarketListing.__post_init__
                             unowned_id=int(a_data["unowned_id"]),
                             unowned_context_id=int(a_data["unowned_contextid"]),
-                            app_context=AppContext((App(int(a_data["appid"])), int(a_data["contextid"]))),
                             description=item_descriptions_map[descr_key],
                             properties=properties_list,
                         )
@@ -528,6 +541,8 @@ class MarketPublicComponent:
         start: int = 0,
         count: int = LISTING_COUNT,
         if_modified_since: datetime | str | None = None,
+        # share mapping with iterator method
+        _app_map: AppMap | None = None,
         _item_descriptions_map: ItemDescriptionsMap | None = None,
         _market_econ_items_map: dict[str, MarketListingItem] | None = None,
     ) -> MarketItemListingData:
@@ -561,7 +576,7 @@ class MarketPublicComponent:
         else:  # str
             name = obj
 
-        base_url = MARKET_URL / f"listings/{app.value}/{name}"
+        base_url = MARKET_URL / f"listings/{app.id}/{name}"
         params = {
             "filter": query,
             "query": "",  # as web browser
@@ -569,7 +584,7 @@ class MarketPublicComponent:
             "currency": self._currency.value,
             "start": start,
             "count": count,
-            "language": self.language.value,
+            "language": self._language.value,
         }
         headers = {"Referer": str(base_url), **CUSTOM_API_HEADERS}
         self._prepare_if_modified_since(headers, if_modified_since)
@@ -590,10 +605,13 @@ class MarketPublicComponent:
         if not rj["total_count"] or not rj["assets"]:
             return [], 0, last_modified
 
+        _app_map = {} if _app_map is None else _app_map
         _item_descriptions_map = {} if _item_descriptions_map is None else _item_descriptions_map
         _market_econ_items_map = {} if _market_econ_items_map is None else _market_econ_items_map
 
-        self._parse_descriptions_from_market_assets(rj["assets"], _item_descriptions_map)
+        _app_map[app.id] = app  # no need to extract apps from data, we can share passed one
+
+        self._parse_descriptions_from_market_assets(rj["assets"], _item_descriptions_map, _app_map)
         # Do we need to share items?
         self._parse_market_listing_items(rj["assets"], _item_descriptions_map, _market_econ_items_map)
 
@@ -632,8 +650,6 @@ class MarketPublicComponent:
         start: int = 0,
         count: int = LISTING_COUNT,
         if_modified_since: datetime | str | None = None,
-        _item_descriptions_map: ItemDescriptionsMap | None = None,
-        _market_econ_items_map: dict[str, MarketListingItem] | None = None,
     ) -> AsyncGenerator[MarketItemListingData, None]:
         """
         Get iterator of item listings pages from `Steam Market`.
@@ -654,8 +670,9 @@ class MarketPublicComponent:
         :raises ResourceNotModified: 304 status code.
         """
 
-        _item_descriptions_map = {} if _item_descriptions_map is None else _item_descriptions_map
-        _market_econ_items_map = {} if _market_econ_items_map is None else _market_econ_items_map
+        _app_map: AppMap = {}
+        _item_descriptions_map: ItemDescriptionsMap = {}
+        _market_econ_items_map: dict[str, MarketListingItem] = {}
 
         total_count: int = 10000000  # simplify logic for initial iteration
         while total_count > start:
@@ -667,6 +684,7 @@ class MarketPublicComponent:
                 query=query,
                 count=count,
                 if_modified_since=if_modified_since,
+                _app_map=_app_map,
                 _item_descriptions_map=_item_descriptions_map,
                 _market_econ_items_map=_market_econ_items_map,
                 start=start,
@@ -675,6 +693,12 @@ class MarketPublicComponent:
             start += count
 
             yield listings_data
+
+    @overload
+    async def get_item_name_id(self, obj: ItemDescription) -> int: ...
+
+    @overload
+    async def get_item_name_id(self, obj: str, app: App) -> int: ...
 
     async def get_item_name_id(self, obj: str | ItemDescription, app: App | None = None) -> int:
         """
@@ -692,8 +716,8 @@ class MarketPublicComponent:
 
         if isinstance(obj, ItemDescription):
             url = obj.market_url
-        else:  # str
-            url = MARKET_URL / f"listings/{app.value}/{obj}"
+        else:  # str and app
+            url = MARKET_URL / f"listings/{app.id}/{obj}"
 
         r = await self._transport.request("GET", url, response_mode="text")
 
@@ -716,7 +740,7 @@ class MarketPublicComponent:
 
         r = await self._transport.request(
             "GET",
-            MARKET_URL / f"appfilters/{app.value}",
+            MARKET_URL / f"appfilters/{app.id}",
             headers={"Referer": str(MARKET_URL)},
             response_mode="json",
         )
@@ -726,6 +750,7 @@ class MarketPublicComponent:
 
         return rj["facets"]
 
+    # TODO check new search
     async def get_market_search_results(
         self,
         query="",
@@ -737,6 +762,8 @@ class MarketPublicComponent:
         sort_column: SortColumn = "default",
         sort_dir: SortDir = "desc",
         filters: str | Mapping[str, str | Sequence[str]] = "",
+        # share mapping with iterator method
+        _app_map: AppMap | None = None,
         _item_descriptions_map: ItemDescriptionsMap | None = None,
     ) -> tuple[list[MarketSearchItem], int]:
         """
@@ -783,9 +810,9 @@ class MarketPublicComponent:
         }
 
         if app is not None:
-            req_params["appid"] = referer_params["appid"] = app.value
+            req_params["appid"] = referer_params["appid"] = str(app.id)
         if descriptions:
-            referer_params["descriptions"] = 1
+            referer_params["descriptions"] = "1"
 
         referer = SEARCH_URL % referer_params % filters
 
@@ -802,7 +829,11 @@ class MarketPublicComponent:
         if not rj["total_count"] or not rj["results"]:
             return [], 0
 
+        _app_map = {} if _app_map is None else _app_map
         _item_descriptions_map = {} if _item_descriptions_map is None else _item_descriptions_map
+
+        if app is not None:
+            _app_map[app.id] = app  # share same app if passed
 
         items = []
         for item_data in rj["results"]:
@@ -815,7 +846,14 @@ class MarketPublicComponent:
             if descr_ident_code in _item_descriptions_map:
                 description = _item_descriptions_map[descr_ident_code]
             else:
-                description = self._create_item_descr(item_data["asset_description"])
+                if item_data["asset_description"]["appid"] not in _app_map:
+                    _app_map[item_data["asset_description"]["appid"]] = App(
+                        item_data["asset_description"]["appid"],
+                        item_data["app_name"],
+                        extract_icon_hash_from_app_icon_link(item_data["app_icon"]),
+                    )
+
+                description = self._create_item_descr(item_data["asset_description"], _app_map)
                 _item_descriptions_map[descr_ident_code] = description
 
             item = MarketSearchItem(
@@ -823,8 +861,6 @@ class MarketPublicComponent:
                 sell_price=item_data["sell_price"],
                 sell_price_text=item_data["sell_price_text"],
                 sale_price_text=item_data["sale_price_text"],
-                app_icon=item_data["app_icon"],
-                app_name=item_data["app_name"],
                 description=description,
             )
             items.append(item)
@@ -834,7 +870,7 @@ class MarketPublicComponent:
     async def market_search_results(
         self,
         query="",
-        app: App = None,
+        app: App | None = None,
         *,
         start=0,
         count=10,
@@ -842,7 +878,6 @@ class MarketPublicComponent:
         sort_column: SortColumn = "default",
         sort_dir: SortDir = "desc",
         filters: str | Mapping[str, str | Sequence[str]] = "",
-        _item_descriptions_map: ItemDescriptionsMap | None = None,
     ) -> AsyncGenerator[tuple[list[MarketSearchItem], int], None]:
         """
         Get search results from `Steam Market`.
@@ -872,7 +907,8 @@ class MarketPublicComponent:
         :raises RateLimitExceeded: rate limit has been hit.
         """
 
-        _item_descriptions_map = {} if _item_descriptions_map is None else _item_descriptions_map
+        _app_map = {}
+        _item_descriptions_map = {}
 
         total_count: int = 10000000  # simplify logic for initial iteration
         while total_count > start:
@@ -885,6 +921,7 @@ class MarketPublicComponent:
                 descriptions=descriptions,
                 sort_column=sort_column,
                 sort_dir=sort_dir,
+                _app_map=_app_map,
                 _item_descriptions_map=_item_descriptions_map,
                 start=start,
                 filters=filters,
@@ -898,8 +935,6 @@ class MarketPublicComponent:
         self,
         *,
         if_modified_since: datetime | str | None = None,
-        _item_descriptions_map: ItemDescriptionsMap | None = None,
-        _market_econ_items_map: dict[str, MarketListingItem] | None = None,
     ) -> tuple[list[MarketListing], datetime]:
         """
         Get *newly listed items* from `Steam Market`.
@@ -911,7 +946,7 @@ class MarketPublicComponent:
         :return: list of ``MarketListing`` and datetime object when resource was last modified.
         """
 
-        params = {"country": self._country, "language": self.language.value, "currency": self._currency.value}
+        params = {"country": self._country, "language": self._language.value, "currency": self._currency.value}
         headers = {"Referer": str(MARKET_URL), **CUSTOM_API_HEADERS}
         self._prepare_if_modified_since(headers, if_modified_since)
 
@@ -926,10 +961,12 @@ class MarketPublicComponent:
 
         EResultError.check_data(rj)
 
-        _item_descriptions_map = {} if _item_descriptions_map is None else _item_descriptions_map
-        _market_econ_items_map = {} if _market_econ_items_map is None else _market_econ_items_map
+        _app_map = {}
+        _item_descriptions_map = {}
+        _market_econ_items_map = {}
 
-        self._parse_descriptions_from_market_assets(rj["assets"], _item_descriptions_map)
+        self._parse_apps_from_app_data(rj["app_data"], _app_map)
+        self._parse_descriptions_from_market_assets(rj["assets"], _item_descriptions_map, _app_map)
         self._parse_market_listing_items(rj["assets"], _item_descriptions_map, _market_econ_items_map)
 
         # unknow fields: last_time, last_listing
@@ -969,19 +1006,14 @@ class MarketPublicComponent:
             for p_data in data["purchaseinfo"].values()
         ]
 
-    async def get_recently_sold_items(
-        self,
-        *,
-        _item_descriptions_map: ItemDescriptionsMap | None = None,
-        _market_econ_items_map: dict[str, MarketListingItem] | None = None,
-    ) -> list[PurchaseInfo]:
+    async def get_recently_sold_items(self) -> list[PurchaseInfo]:
         """
         Get *recently sold items* from `Steam Market`. Can be seen on main market page.
 
         :return: list of ``PurchaseInfo``.
         """
 
-        params = {"country": self._country, "language": self.language.value, "currency": self._currency.value}
+        params = {"country": self._country, "language": self._language.value, "currency": self._currency.value}
         headers = {"Referer": str(MARKET_URL), **CUSTOM_API_HEADERS}
 
         r = await self._transport.request(
@@ -995,15 +1027,17 @@ class MarketPublicComponent:
 
         EResultError.check_data(rj)
 
-        _item_descriptions_map = {} if _item_descriptions_map is None else _item_descriptions_map
-        _market_econ_items_map = {} if _market_econ_items_map is None else _market_econ_items_map
+        _app_map: AppMap = {}
+        _item_descriptions_map: ItemDescriptionsMap = {}
+        _market_econ_items_map: dict[str, MarketListingItem] = {}
 
-        self._parse_descriptions_from_market_assets(rj["assets"], _item_descriptions_map)
+        self._parse_apps_from_app_data(rj["app_data"], _app_map)
+        self._parse_descriptions_from_market_assets(rj["assets"], _item_descriptions_map, _app_map)
         self._parse_market_listing_items(rj["assets"], _item_descriptions_map, _market_econ_items_map)
 
         # unknow fields: last_time, last_listing
 
         return self._create_purchase_infos(rj, _market_econ_items_map)
 
-    # have get_popular_items will be good, but there is no api endpoint (or unknown) to get them
+    # having get_popular_items will be good, but there is no api endpoint (or unknown) to get them
     # and we definitely don't want to parse html

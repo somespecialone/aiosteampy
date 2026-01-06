@@ -3,6 +3,7 @@ from typing import NamedTuple
 from datetime import datetime
 from enum import StrEnum, IntEnum
 
+from ...app import AppContext
 from ...id import SteamID
 from ...constants import Currency
 from ...utils import make_inspect_link
@@ -101,13 +102,17 @@ class MarketListingItem(EconItem):
 
     amount: int = 1  # listing item always have amount eq 1
 
-    owner_id: SteamID = SteamID()  # always 0 for listings from market, so let it be blank by default
+    owner_id: None = None  # always 0 for listings from market, so let it be None
 
     @property
     def inspect_link(self) -> str | None:
         """`Inspect in game` link for `CS2` item, if available."""
         if self.description.d_id:
             return make_inspect_link(market_id=self.market_id, asset_id=self.asset_id, d_id=self.description.d_id)
+
+    @property
+    def unowned_app_context(self) -> AppContext:
+        return self.description.app.with_context(self.unowned_context_id)
 
 
 @dataclass(eq=False, slots=True, kw_only=True)
@@ -185,6 +190,7 @@ class MarketListing(BaseMarketListing):
         # return self.steam_fee == 0 and self.converted_fee == 0
 
 
+# TODO there must be app info or remove icon and name, these fields already in descr.app
 @dataclass(eq=False, slots=True, kw_only=True)
 class MarketSearchItem:
     """Entry from `Steam Market` search result list."""
@@ -193,9 +199,6 @@ class MarketSearchItem:
     sell_price: int
     sell_price_text: str
     sale_price_text: str
-
-    app_icon: str
-    app_name: str
 
     description: ItemDescription
 
@@ -273,11 +276,21 @@ class MarketHistoryListingItem(MarketListingItem):
     # purchase fields
     new_asset_id: int | None = None
     new_context_id: int | None = None
+
     rollback_new_asset_id: int | None = None
     rollback_new_context_id: int | None = None
 
-    # always None, because we can't be sure that asset id has not been changed
-    inspect_link: None = None
+    inspect_link: None = None  # always None, because we can't be sure that asset id has not been changed
+
+    @property
+    def new_app_context(self) -> AppContext | None:
+        if self.new_context_id is not None:
+            return self.description.app.with_context(self.new_context_id)
+
+    @property
+    def rollback_new_app_context(self) -> AppContext | None:
+        if self.rollback_new_context_id is not None:
+            return self.description.app.with_context(self.rollback_new_context_id)
 
 
 @dataclass(eq=False, slots=True, kw_only=True)
@@ -357,7 +370,7 @@ class PurchaseInfoValues(BaseValues):
 @dataclass(eq=False, slots=True)
 class PurchaseInfo(BaseOrder):
     listing_id: int  # listing is empty so no need to store it
-    item: MarketListingItem
+    item: MarketListingItem  # MarketListingItem has "sold" property which must be always True here, but who cares
 
     original: PurchaseInfoValues
     converted: PurchaseInfoValues

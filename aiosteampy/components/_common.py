@@ -93,7 +93,11 @@ class EconMixin:
     def _create_property(data: dict[str, str | int]) -> AssetProperty:
         _, value = next(filter(lambda kv: kv[0].endswith("_value"), data.items()))
 
-        return AssetProperty(data["propertyid"], value, data.get("name"))
+        return AssetProperty(
+            data["propertyid"],
+            value,
+            # data.get("name"),
+        )
 
     @classmethod
     def _parse_asset_properties(cls, data: dict) -> tuple[AssetProperty, ...]:

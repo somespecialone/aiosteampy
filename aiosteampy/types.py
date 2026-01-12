@@ -1,6 +1,7 @@
 """Shared types."""
 
-from typing import Any, TypeVar, Coroutine, NewType, TYPE_CHECKING
+from typing import Any, TypeVar, NewType, TYPE_CHECKING
+from collections.abc import Coroutine
 
 if TYPE_CHECKING:
     from .app import App

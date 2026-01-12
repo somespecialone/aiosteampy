@@ -1,7 +1,8 @@
 import re
 
 from contextlib import suppress
-from typing import overload, Literal, Callable, AsyncGenerator, TYPE_CHECKING
+from collections.abc import AsyncGenerator
+from typing import overload, Literal, Callable, TYPE_CHECKING
 from datetime import datetime
 
 from ...types import CORO, AppMap
@@ -193,6 +194,7 @@ class MarketComponent(MarketPublicComponent):
                             l_data["asset"]["appid"],
                         )
                     ],
+                    properties=self._parse_asset_properties(l_data["asset"]),
                 ),
                 status=MarketListingStatus(l_data["status"]),
                 active=bool(l_data["active"]),
@@ -857,8 +859,9 @@ class MarketComponent(MarketPublicComponent):
             trade_max_balance=int(rj["wallet_trade_max_balance"]),
         )
 
-    @staticmethod
+    @classmethod
     def _parse_assets_for_history_listings(
+        cls,
         data: dict[str, dict[str, dict[str, dict]]],
         item_descriptions_map: ItemDescriptionsMap,
         econ_item_map: dict[str, MarketHistoryListingItem],
@@ -888,6 +891,7 @@ class MarketComponent(MarketPublicComponent):
                                     app_id,
                                 )
                             ],
+                            properties=cls._parse_asset_properties(a_data),
                         )
                         if key_id not in econ_item_map:
                             econ_item_map[key_id] = econ_item

@@ -1,7 +1,6 @@
 """"""
 
-from typing import TypeAlias, Any, TypeVar, Coroutine, Mapping, NewType
-from enum import Enum, IntEnum, StrEnum
+from enum import IntEnum, StrEnum
 
 from yarl import URL
 
@@ -148,7 +147,7 @@ class Language(StrEnum):
     VIETNAMESE = "vietnamese"
 
 
-class TradeOfferStatus(Enum):
+class TradeOfferStatus(IntEnum):
     INVALID = 1
     ACTIVE = 2
     ACCEPTED = 3

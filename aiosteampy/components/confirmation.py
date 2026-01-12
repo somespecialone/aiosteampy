@@ -6,7 +6,8 @@ import json
 from dataclasses import dataclass
 from datetime import datetime
 from enum import IntEnum
-from typing import Literal, Iterable
+from collections.abc import Iterable
+from typing import Literal
 
 from ..types import CORO
 from ..constants import STEAM_URL, EResult

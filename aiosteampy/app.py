@@ -23,12 +23,16 @@ class App:
 
     # predefined apps
     CS2: ClassVar["App"]
+    """Counter-Strike 2."""
 
     DOTA2: ClassVar["App"]
     H1Z1: ClassVar["App"]
+    """Z1 Battle Royale."""
     RUST: ClassVar["App"]
     TF2: ClassVar["App"]
+    """Team Fortress 2."""
     PUBG: ClassVar["App"]
+    """PUBG: BATTLEGROUNDS."""
 
     STEAM: ClassVar["App"]
 

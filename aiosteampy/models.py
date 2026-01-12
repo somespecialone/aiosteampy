@@ -1,6 +1,6 @@
 from dataclasses import dataclass, field
-from enum import IntEnum
-from typing import NamedTuple
+from enum import IntEnum, StrEnum
+from typing import NamedTuple, TYPE_CHECKING
 from datetime import datetime
 
 from yarl import URL
@@ -11,9 +11,11 @@ from .constants import (
     Currency,
     TradeOfferStatus,
 )
-from .utils import create_ident_code, make_inspect_link
-
+from .utils import create_ident_code
 from .id import SteamID
+
+if TYPE_CHECKING:
+    from .cs2 import DescriptionContext as CS2DescriptionContext, ItemContext as CS2ItemContext
 
 
 TRADABLE_AFTER_DATE_FORMAT = "%b %d, %Y (%H:%M:%S) %Z"
@@ -26,7 +28,7 @@ class ItemAction(NamedTuple):
 
 class ItemDescriptionEntry(NamedTuple):
     value: str
-    type: str | None
+    type: str | None  # html, bbcode
     name: str | None
     color: str | None  # hexadecimal
 
@@ -39,16 +41,17 @@ class ItemTag(NamedTuple):
     color: str | None  # hexadecimal
 
 
-class AssetPropertyId(IntEnum):
-    PATTERN_TEMPLATE = 1  # pattern
-    WEAR_RATING = 2  # float value
-    UNKNOWN = 6  # ?
-
-
+# these two probably cs2 only props, so we store them raw delegating parsing to cs2.py
 class AssetProperty(NamedTuple):
-    id: AssetPropertyId
-    value: str | int | float | None
+    id: int
+    value: str
     name: str | None
+
+
+class AssetAccessory(NamedTuple):
+    class_id: int
+    parent_relationship_properties: tuple[AssetProperty, ...]
+    standalone_properties: tuple[AssetProperty, ...]
 
 
 @dataclass(eq=False, slots=True, kw_only=True)
@@ -84,12 +87,12 @@ class ItemDescription(BaseEntityWithIdentCode):
     .. note:: ``id`` or (``ident_code``) field is guaranteed unique within whole `Steam Economy`.
     """
 
-    # As even Steam does not separate class from instance in response data, so we
+    # As even Steam does not separate class from instance in response data, so are we
 
     class_id: int
-    """Unique identifier within item `App`."""
+    """Unique identifier within item's `App`."""
     instance_id: int
-    """Unique identifier within item `Class+App`."""
+    """Unique identifier within item's `Class+App`."""
 
     app: App
 
@@ -107,25 +110,28 @@ class ItemDescription(BaseEntityWithIdentCode):
 
     # TODO do I need defaults here? Wait for trade, inventory methods
 
-    tags: list[ItemTag] = field(default_factory=list)  # listing item does not show tags
-    descriptions: list[ItemDescriptionEntry] = field(default_factory=list)
+    tags: tuple[ItemTag, ...] = ()  # listing item does not show tags
+    descriptions: tuple[ItemDescriptionEntry, ...] = ()
 
-    fraud_warnings: list[str] = field(default_factory=list)  # ?
+    fraud_warnings: tuple[str, ...] = ()  # ?
 
     commodity: bool
     """Item use sell and buy orders on market and does not have listings."""
+
     market_tradable_restriction: int = 0
     """Period **in days** when item will be *untradable* after being purchased on the market."""
     market_buy_country_restriction: str | None = None
-    market_fee_app: int | None = None
+    market_fee_app: App | None = None
     market_marketable_restriction: int = 0
     """Period **in days** when item will be *unmarketable* after being purchased on the market."""
 
     # class instance fields
-    owner_descriptions: list[ItemDescriptionEntry] = field(default_factory=list)
-    actions: list[ItemAction] = field(default_factory=list)
-    market_actions: list[ItemAction] = field(default_factory=list)
-    owner_actions: list[ItemAction] = field(default_factory=list)
+    owner_descriptions: tuple[ItemDescriptionEntry, ...] = ()
+    """Descriptions available only to item owner."""
+    actions: tuple[ItemAction, ...] = ()
+    market_actions: tuple[ItemAction, ...] = ()
+    owner_actions: tuple[ItemAction, ...] = ()
+
     tradable: bool
     """If item available for trade at the current moment."""
     marketable: bool
@@ -141,25 +147,14 @@ class ItemDescription(BaseEntityWithIdentCode):
     sealed: bool
     """If item under `Trade Protection` at the current moment."""
 
-    # CS2
-    d_id: int | None = field(init=False, default=None)  # also belongs to class instance
-    """Optional **CS2** special `inspect id`."""
-
-    # TODO stickers, keychains (charm) info from "descriptions"
+    _cs2_ctx: "CS2DescriptionContext | None" = field(init=False, default=None)  # cached
 
     def __post_init__(self):
         super(ItemDescription, self).__post_init__()
-        self._set_d_id()
-        self._set_restrictions_end_time()
+        self.owner_descriptions and self._set_restrictions_end_time()
 
     def _set_ident_code(self):
         self.id = create_ident_code(self.instance_id, self.class_id, self.app.id)
-
-    def _set_d_id(self):
-        if self.app is App.CS2:
-            # find inspect action, language agnostic (safe) option
-            if (i_action := next(filter(lambda a: "action_preview" in a.link, self.actions), None)) is not None:
-                self.d_id = int(i_action.link.split("%D")[1])
 
     def _set_restrictions_end_time(self):
         if self.market_tradable_restriction or self.market_marketable_restriction:
@@ -174,6 +169,18 @@ class ItemDescription(BaseEntityWithIdentCode):
             if (t_a_descr := next(filter(lambda d: sep in d.value, self.owner_descriptions), None)) is not None:
                 date_string = t_a_descr.value.split(sep)[1]
                 self.protected_until = datetime.strptime(date_string, TRADABLE_AFTER_DATE_FORMAT)
+
+    @property
+    def cs2(self) -> "CS2DescriptionContext | None":
+        """`CS2` specific item description data."""
+
+        if self.app is App.CS2:
+            if self._cs2_ctx is None:
+                from . import cs2
+
+                self._cs2_ctx = cs2.DescriptionContext.from_description(self)
+
+            return self._cs2_ctx
 
     @property
     def icon_url(self) -> URL:
@@ -199,9 +206,9 @@ class EconItem(BaseEntityWithIdentCode):
 
     context_id: int
     """Unique identifier within item `App`."""
-    asset_id: int  # The item's unique ID within its app+context
+    asset_id: int
     """Unique identifier within item `App+Context`."""
-    owner_id: SteamID  # absent in data, will be set in methods
+    owner_id: SteamID  # absent in data, will be set in methods, if possible
     """The item's owner's ``SteamID``."""
 
     amount: int  # if stackable, otherwise always 1
@@ -209,12 +216,14 @@ class EconItem(BaseEntityWithIdentCode):
 
     description: ItemDescription
 
-    properties: list[AssetProperty] = field(default_factory=list)
+    properties: tuple[AssetProperty, ...]
+    accessories: tuple[AssetAccessory, ...]  # see only stickers wear here
+
+    _cs2_ctx: "CS2ItemContext | None" = field(init=False, default=None)  # cached
 
     # optimization 🚀
     def __post_init__(self):
         super(EconItem, self).__post_init__()
-        # self._set_ident_code()
 
     def _set_ident_code(self):
         self.id = create_ident_code(self.asset_id, self.context_id, self.description.app.id)
@@ -224,11 +233,16 @@ class EconItem(BaseEntityWithIdentCode):
         return self.description.app.with_context(self.context_id)
 
     @property
-    def inspect_link(self) -> str | None:
-        """`Inspect in game` link for `CS2` item, if available."""
+    def cs2(self) -> "CS2ItemContext | None":
+        """`CS2` specific item data."""
 
-        if self.description.d_id:
-            return make_inspect_link(owner_id=self.owner_id.id64, asset_id=self.asset_id, d_id=self.description.d_id)
+        if self.description.app is App.CS2:
+            if self._cs2_ctx is None:
+                from . import cs2
+
+                self._cs2_ctx = cs2.ItemContext.from_item(self)
+
+            return self._cs2_ctx
 
 
 class Notifications(NamedTuple):
@@ -245,8 +259,6 @@ class Notifications(NamedTuple):
     account_alerts: int  # 11
 
 
-# TODO how about composition instead of inheritance?
-#  Item from trade not inherit econ item but contain field with it and new values?
 @dataclass(eq=False, slots=True, kw_only=True)
 class BaseTradeOfferItem(EconItem):
     description: ItemDescription | None  # not active trade offers have no description on items

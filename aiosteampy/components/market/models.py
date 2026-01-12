@@ -3,10 +3,9 @@ from typing import NamedTuple
 from datetime import datetime
 from enum import StrEnum, IntEnum
 
-from ...app import AppContext
+from ...app import App, AppContext
 from ...id import SteamID
 from ...constants import Currency
-from ...utils import make_inspect_link
 from ...models import ItemDescription, EconItem
 
 
@@ -31,16 +30,15 @@ class OrderGraphEntry(NamedTuple):
 class ItemOrdersHistogram:
     sell_order_count: int
     sell_order_price: int | None
-    sell_order_table: list[SellOrderTableEntry]
+    sell_order_table: tuple[SellOrderTableEntry, ...]
     buy_order_count: int
     buy_order_price: int | None
-    buy_order_table: list[BuyOrderTableEntry]
+    buy_order_table: tuple[BuyOrderTableEntry, ...]
     highest_buy_order: int | None
     lowest_sell_order: int | None
 
-    # prices in integers (cents)!
-    buy_order_graph: list[OrderGraphEntry]
-    sell_order_graph: list[OrderGraphEntry]
+    buy_order_graph: tuple[OrderGraphEntry, ...]
+    sell_order_graph: tuple[OrderGraphEntry, ...]
 
     graph_max_y: int
     graph_min_x: int  # in cents
@@ -69,15 +67,9 @@ class ActivityEntry(NamedTuple):
     persona_seller: str | None
 
 
-@dataclass(eq=False, slots=True)
-class ItemOrdersActivity:
-    activity: list[ActivityEntry]
-    timestamp: int
-
-    time: datetime = field(init=False, default=None)
-
-    def __post_init__(self):
-        self.time = datetime.fromtimestamp(self.timestamp)
+class ItemOrdersActivity(NamedTuple):
+    activity: tuple[ActivityEntry, ...]
+    time: datetime
 
 
 class PriceOverview(NamedTuple):
@@ -104,11 +96,17 @@ class MarketListingItem(EconItem):
 
     owner_id: None = None  # always 0 for listings from market, so let it be None
 
-    @property
-    def inspect_link(self) -> str | None:
-        """`Inspect in game` link for `CS2` item, if available."""
-        if self.description.d_id:
-            return make_inspect_link(market_id=self.market_id, asset_id=self.asset_id, d_id=self.description.d_id)
+    accessories: None = None  # no data
+
+    # @property
+    # def inspect_link(self) -> str | None:
+    #     """`Inspect in game` link for `CS2` item, if available."""
+    #     if self.description.cs2 and self.description.cs2.inspect_id:
+    #         return make_inspect_link(
+    #             market_id=self.market_id,
+    #             asset_id=self.asset_id,
+    #             d_id=self.description.cs2.inspect_id,
+    #         )
 
     @property
     def unowned_app_context(self) -> AppContext:
@@ -185,14 +183,11 @@ class MarketListing(BaseMarketListing):
     @property
     def sold(self) -> bool:
         """If current listing has been *sold* and unavailable for purchase."""
-        # TODO need to test/check listing with same currency as requested
         return self.converted is None
         # return self.steam_fee == 0 and self.converted_fee == 0
 
 
-# TODO there must be app info or remove icon and name, these fields already in descr.app
-@dataclass(eq=False, slots=True, kw_only=True)
-class MarketSearchItem:
+class MarketSearchItem(NamedTuple):
     """Entry from `Steam Market` search result list."""
 
     sell_listings: int
@@ -237,9 +232,7 @@ class BuyOrder(BaseOrder):
     """Quantity of items left to fulfill order."""
 
 
-# multiple inheritance will be a good option, if it works with dataclasses slots...
-@dataclass(eq=False, slots=True)
-class BuyOrderStatus:
+class BuyOrderStatus(NamedTuple):
     # from pending
     need_confirmation: bool = False
 
@@ -251,8 +244,7 @@ class BuyOrderStatus:
     quantity_remaining: int = 0
 
 
-@dataclass(eq=False, slots=True)
-class WalletInfo:
+class WalletInfo(NamedTuple):
     balance: int
     country: str
     currency: Currency
@@ -330,8 +322,7 @@ class MarketHistoryEventType(IntEnum):
     LISTING_PURCHASED = 4
 
 
-@dataclass(eq=False, slots=True)
-class MarketHistoryEvent:
+class MarketHistoryEvent(NamedTuple):
     """
     Event entity in market history. Represents event linked with related listing.
     Snapshot of listing and asset data (state) at event time,
@@ -343,8 +334,7 @@ class MarketHistoryEvent:
     listing: MarketHistoryListing
 
 
-@dataclass(eq=False, slots=True)
-class PriceHistoryEntry:
+class PriceHistoryEntry(NamedTuple):
     price: int
     """Parsed ``int`` price in cents."""
     price_raw: float
@@ -374,3 +364,13 @@ class PurchaseInfo(BaseOrder):
 
     original: PurchaseInfoValues
     converted: PurchaseInfoValues
+
+
+class MarketSearchSuggestion(NamedTuple):
+    app: App
+    listing_count: int
+    market_name: str
+    market_hash_name: str
+    market_type: str
+    min_price: float
+    search_score: int

@@ -1,16 +1,18 @@
 import re
 
-from collections.abc import AsyncGenerator
-from typing import Literal, overload, Sequence, Mapping
+from collections.abc import AsyncGenerator, Sequence, Mapping
+from typing import Literal, overload
 from datetime import datetime
 
 from ...app import App, AppContext
 from ...constants import Currency, EResult, STEAM_URL, Language
 from ...utils import create_ident_code, extract_icon_hash_from_app_icon_link
 from ...exceptions import EResultError
-from ...models import ItemAction, ItemDescriptionEntry, ItemTag, AssetPropertyId, AssetProperty, ItemDescription
+from ...models import ItemAction, ItemDescriptionEntry, ItemTag, AssetProperty, ItemDescription
 from ...transport import BaseSteamTransport, TransportError, format_http_date, parse_http_date
 from ...types import AppMap, ItemDescriptionsMap
+
+from .._common import EconMixin
 
 from .models import (
     SellOrderTableEntry,
@@ -28,6 +30,7 @@ from .models import (
     MarketSearchItem,
     PurchaseInfoValues,
     PurchaseInfo,
+    MarketSearchSuggestion,
 )
 
 ITEM_ORDER_HIST_PRICE_RE = re.compile(r"[^\d\s]*([\d,]+(?:\.\d+)?)[^\d\s]*")  # Author: ChatGPT
@@ -50,7 +53,7 @@ SEARCH_RENDER_URL = SEARCH_URL / "render/"
 CUSTOM_API_HEADERS = {"X-Prototype-Version": "1.7", "X-Requested-With": "XMLHttpRequest"}
 
 
-class MarketPublicComponent:
+class MarketPublicComponent(EconMixin):
     """Component with public `Steam Market` methods. Available without authentication."""
 
     __slots__ = (
@@ -173,27 +176,27 @@ class MarketPublicComponent:
         return ItemOrdersHistogram(
             sell_order_count=self._parse_quantity(rj["sell_order_count"]),
             sell_order_price=self._parse_price_with_currency(rj["sell_order_price"]),
-            sell_order_table=[
+            sell_order_table=tuple(
                 SellOrderTableEntry(
                     self._parse_price_with_currency(d["price"]),
                     self._parse_price_with_currency(d["price_with_fee"]),
                     self._parse_quantity(d["quantity"]),
                 )
                 for d in rj["sell_order_table"] or ()
-            ],
+            ),
             buy_order_count=self._parse_quantity(rj["buy_order_count"]),
             buy_order_price=self._parse_price_with_currency(rj["buy_order_price"]),
-            buy_order_table=[
+            buy_order_table=tuple(
                 BuyOrderTableEntry(
                     self._parse_price_with_currency(d["price"]),
                     self._parse_quantity(d["quantity"]),
                 )
                 for d in rj["buy_order_table"] or ()
-            ],
+            ),
             highest_buy_order=int(rj["highest_buy_order"]) if rj["highest_buy_order"] is not None else None,
             lowest_sell_order=int(rj["lowest_sell_order"]) if rj["lowest_sell_order"] is not None else None,
-            buy_order_graph=[OrderGraphEntry(int(d[0] * 100), d[1], d[2]) for d in rj["buy_order_graph"]],
-            sell_order_graph=[OrderGraphEntry(int(d[0] * 100), d[1], d[2]) for d in rj["sell_order_graph"]],
+            buy_order_graph=tuple(OrderGraphEntry(int(d[0] * 100), d[1], d[2]) for d in rj["buy_order_graph"]),
+            sell_order_graph=tuple(OrderGraphEntry(int(d[0] * 100), d[1], d[2]) for d in rj["sell_order_graph"]),
             graph_max_y=rj["graph_max_y"],
             graph_min_x=int(rj["graph_min_x"] * 100),
             graph_max_x=int(rj["graph_max_x"] * 100),
@@ -246,7 +249,7 @@ class MarketPublicComponent:
         EResultError.check_data(rj)
 
         return ItemOrdersActivity(
-            activity=[
+            activity=tuple(
                 ActivityEntry(
                     type=ActivityType(a["type"]),
                     quantity=self._parse_quantity(a["quantity"]),
@@ -260,8 +263,8 @@ class MarketPublicComponent:
                     persona_seller=a.get("persona_seller"),
                 )
                 for a in rj["activity"]
-            ],
-            timestamp=rj["timestamp"],
+            ),
+            time=datetime.fromtimestamp(rj["timestamp"]),
         ), parse_http_date(r.headers["Last-Modified"])
 
     @overload
@@ -386,70 +389,6 @@ class MarketPublicComponent:
             for l_data in data["listinginfo"].values()
         ]
 
-    @staticmethod
-    def _parse_item_actions(actions: list[dict]) -> list[ItemAction]:
-        return [ItemAction(a_data["link"], a_data["name"]) for a_data in actions]
-
-    @staticmethod
-    def _parse_item_tags(tags: list[dict]) -> list[ItemTag]:
-        return [
-            ItemTag(
-                t_data["category"],
-                t_data["internal_name"],
-                t_data["localized_category_name"],
-                t_data["localized_tag_name"],
-                t_data.get("color"),
-            )
-            for t_data in tags
-        ]
-
-    @staticmethod
-    def _parse_item_descr_entries(descriptions: list[dict]) -> list[ItemDescriptionEntry]:
-        return [
-            ItemDescriptionEntry(
-                d_data["value"],
-                d_data.get("type"),
-                d_data.get("name"),
-                d_data.get("color"),
-            )
-            for d_data in descriptions
-            if (d_data["value"] != " " and d_data["value"])  # let's omit "blank" descriptions
-        ]
-
-    @classmethod
-    def _create_item_descr(cls, data: dict, app_map: AppMap) -> ItemDescription:
-        return ItemDescription(
-            class_id=int(data["classid"]),
-            instance_id=int(data["instanceid"]),
-            app=app_map[data["appid"]],
-            name=data["name"],
-            market_name=data["market_name"],
-            market_hash_name=data["market_hash_name"],
-            name_color=data.get("name_color") or None,
-            background_color=data.get("name_color") or None,
-            type=data["type"] or None,
-            icon=data["icon_url"],
-            icon_large=data.get("icon_url_large"),
-            commodity=bool(data["commodity"]),
-            tradable=bool(data["tradable"]),
-            # market search page descriptions may miss this so True by default
-            marketable=bool(data.get("marketable", True)),
-            market_tradable_restriction=data.get("market_tradable_restriction", 0),
-            market_buy_country_restriction=data.get("market_buy_country_restriction"),
-            market_fee_app=data.get("market_fee_app"),
-            market_marketable_restriction=data.get("market_marketable_restriction", 0),
-            actions=cls._parse_item_actions(data["actions"]) if "actions" in data else [],
-            market_actions=cls._parse_item_actions(data["market_actions"]) if "market_actions" in data else [],
-            owner_actions=cls._parse_item_actions(data["owner_actions"]) if "owner_actions" in data else [],
-            tags=cls._parse_item_tags(data["tags"]) if "tags" in data else [],
-            descriptions=cls._parse_item_descr_entries(data["descriptions"]) if "descriptions" in data else [],
-            owner_descriptions=(
-                cls._parse_item_descr_entries(data["owner_descriptions"]) if "owner_descriptions" in data else []
-            ),
-            fraud_warnings=data.get("fraudwarnings", []),
-            sealed=bool(data["sealed"]),
-        )
-
     @classmethod
     def _parse_descriptions_from_market_assets(
         cls,
@@ -466,8 +405,9 @@ class MarketPublicComponent:
                     if key not in item_descriptions_map:
                         item_descriptions_map[key] = cls._create_item_descr(mixed_data, app_map)
 
-    @staticmethod
+    @classmethod
     def _parse_market_listing_items(
+        cls,
         data: dict[str, dict[str, dict[str, dict]]],
         item_descriptions_map: ItemDescriptionsMap,
         items_map: dict[str, MarketListingItem],
@@ -479,24 +419,6 @@ class MarketPublicComponent:
                 for a_data in context_data.values():
                     key = create_ident_code(a_data["id"], context_id, app_id)
                     if key not in items_map:
-                        properties_list = []
-                        for prop_data in a_data.get("asset_properties", ()) or ():
-                            prop_data: dict
-
-                            value = None
-
-                            property_id = AssetPropertyId(prop_data["propertyid"])
-                            match property_id:
-                                case AssetPropertyId.PATTERN_TEMPLATE:
-                                    value = int(prop_data["int_value"])
-                                case AssetPropertyId.WEAR_RATING:
-                                    # trunc to 16 digits so python can handle such precision
-                                    value = float(prop_data["float_value"][:18])
-                                case AssetPropertyId.UNKNOWN:
-                                    value = prop_data["string_value"]  # ?
-
-                            properties_list.append(AssetProperty(property_id, value, prop_data.get("name")))
-
                         descr_key = create_ident_code(a_data["instanceid"], a_data["classid"], app_id)
                         items_map[key] = MarketListingItem(
                             context_id=int(context_id),
@@ -505,7 +427,7 @@ class MarketPublicComponent:
                             unowned_id=int(a_data["unowned_id"]),
                             unowned_context_id=int(a_data["unowned_contextid"]),
                             description=item_descriptions_map[descr_key],
-                            properties=properties_list,
+                            properties=cls._parse_asset_properties(a_data),
                         )
 
     @overload
@@ -734,14 +656,35 @@ class MarketPublicComponent:
         Get `Steam App` filter facets for `Steam Market` search.
 
         .. note::
-            You can see filter facets structure when you click on `Show advanced options...`
+            You can see filter facets structure when you click on **"Show advanced options..."**
             button under search input field on `Steam` market page.
         """
 
         r = await self._transport.request(
             "GET",
             MARKET_URL / f"appfilters/{app.id}",
-            headers={"Referer": str(MARKET_URL)},
+            headers={"Referer": str(SEARCH_URL % {"appid": str(app.id)})},
+            response_mode="json",
+        )
+        rj: dict[str, dict | int] = r.content
+
+        EResultError.check_data(rj)
+
+        return rj["facets"]
+
+    async def get_market_search_app_accessories(self, app: App) -> dict[str, ...]:
+        """
+        Get `Steam App` accessory filter facets for `Steam Market` search.
+
+        .. note::
+            You can see filter facets structure when you click on **"Show advanced options..."**
+            button under search input field on `Steam` market page.
+        """
+
+        r = await self._transport.request(
+            "GET",
+            MARKET_URL / f"appaccessories/{app.id}",
+            headers={"Referer": str(SEARCH_URL % {"appid": str(app.id)})},
             response_mode="json",
         )
         rj: dict[str, dict | int] = r.content
@@ -814,12 +757,10 @@ class MarketPublicComponent:
         if descriptions:
             referer_params["descriptions"] = "1"
 
-        referer = SEARCH_URL % referer_params % filters
-
         r = await self._transport.request(
             "GET",
             SEARCH_RENDER_URL % req_params % filters,
-            headers={"Referer": str(referer)},
+            headers={"Referer": str(SEARCH_URL % referer_params % filters)},
             response_mode="json",
         )
         rj: dict[str, int | list[dict[str, str | int | dict[str, str | int]]]] = r.content
@@ -1007,11 +948,7 @@ class MarketPublicComponent:
         ]
 
     async def get_recently_sold_items(self) -> list[PurchaseInfo]:
-        """
-        Get *recently sold items* from `Steam Market`. Can be seen on main market page.
-
-        :return: list of ``PurchaseInfo``.
-        """
+        """Get *recently sold items* from `Steam Market`. Can be seen on main market page."""
 
         params = {"country": self._country, "language": self._language.value, "currency": self._currency.value}
         headers = {"Referer": str(MARKET_URL), **CUSTOM_API_HEADERS}
@@ -1041,3 +978,47 @@ class MarketPublicComponent:
 
     # having get_popular_items will be good, but there is no api endpoint (or unknown) to get them
     # and we definitely don't want to parse html
+
+    async def get_search_suggestions(self, query: str, app: App | None = None) -> list[MarketSearchSuggestion]:
+        """
+        Get market search suggestions.
+
+        :param query: raw search query.
+        :param app: `Steam` app.
+        :return: list of search suggestions.
+        :raises EResultError: ordinary reasons.
+        :raises TransportError: arbitrary reasons.
+        """
+
+        params = {"q": query}
+        if app is not None:
+            app_param = {"appid": str(app.id)}
+            params |= app_param
+            headers = {"Referer": str(SEARCH_URL % app_param)}
+        else:
+            headers = {"Referer": str(MARKET_URL)}
+
+        r = await self._transport.request(
+            "GET",
+            MARKET_URL / "searchsuggestionsresults",
+            params=params,
+            headers=headers,
+            response_mode="json",
+        )
+
+        rj: dict = r.content
+
+        return [
+            MarketSearchSuggestion(
+                app=App(data["app_id"], data["app_name"], extract_icon_hash_from_app_icon_link(data["icon_url"]))
+                if app is None
+                else app,
+                listing_count=data["listing_count"],
+                market_name=data["market_name"],
+                market_hash_name=data["market_hash_name"],
+                market_type=data["market_type"],
+                min_price=data["min_price"],
+                search_score=data["search_score"],
+            )
+            for data in rj["results"]
+        ]

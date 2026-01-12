@@ -12,7 +12,6 @@ __all__ = (
     "extract_openid_payload",
     "async_throttle",
     "create_ident_code",
-    "make_inspect_link",
     "extract_icon_hash_from_app_icon_link",
 )
 
@@ -108,24 +107,6 @@ def create_ident_code(*args, sep=":"):
     """
 
     return sep.join(reversed(list(str(i) for i in filter(lambda i: i is not None, args))))
-
-
-@overload
-def make_inspect_link(*, owner_id: int, asset_id: int, d_id: int) -> str: ...
-
-
-@overload
-def make_inspect_link(*, market_id: int, asset_id: int, d_id: int) -> str: ...
-
-
-def make_inspect_link(*, market_id: int = None, owner_id: int = None, asset_id: int, d_id: int) -> str:
-    """Create `Inspect in game` link for `CS2` item."""
-
-    base = "steam://rungame/730/76561202255233023/+csgo_econ_action_preview%20"
-    if market_id:
-        return f"{base}M{market_id}A{asset_id}D{d_id}"
-    else:
-        return f"{base}S{owner_id}A{asset_id}D{d_id}"
 
 
 def extract_icon_hash_from_app_icon_link(link: str) -> str:

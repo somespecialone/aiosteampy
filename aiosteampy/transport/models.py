@@ -1,4 +1,5 @@
-from typing import Literal, Any, Mapping, Self
+from collections.abc import Mapping
+from typing import Literal, Any, Self
 from dataclasses import dataclass, asdict, field
 from http.cookies import Morsel
 

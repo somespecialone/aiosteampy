@@ -24,7 +24,6 @@ class ProfilePublicComponent:
 
         :param user_id: ``SteamID`` of user.
         :return: miniprofile data.
-        :raises EResultError: ordinary reasons.
         :raises TransportError: arbitrary reasons.
         """
 
@@ -59,7 +58,6 @@ class ProfilePublicComponent:
 
         :param obj: ``SteamID`` or profile alias.
         :return: list of profile alias history.
-        :raises EResultError: ordinary reasons.
         :raises TransportError: arbitrary reasons.
         """
 

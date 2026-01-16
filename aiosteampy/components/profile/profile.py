@@ -1,5 +1,6 @@
 """Utils, models and component to work with current user profile."""
 
+import asyncio
 import re
 import json
 
@@ -54,11 +55,13 @@ class ProfileComponent(ProfilePublicComponent):
         super().__init__(session.transport)
 
         self._session = session
+
         self._trade_token = trade_token
         self._alias = alias
 
     @property
     def trade_token(self) -> str | None:
+        """Trade `token` of current user."""
         return self._trade_token
 
     @property
@@ -92,14 +95,19 @@ class ProfileComponent(ProfilePublicComponent):
         if "profiles/" in location:  # redirect to default url so there is no alias
             self._alias = None
         else:
-            self._alias = location.rsplit("/", 1)[-1]
+            self._alias = location.rsplit("/", 2)[-2]
 
         return self._alias
 
     async def update_trade_token(self) -> str | None:
         """Update ``trade_token`` from `Steam`."""
 
-        r = await self._transport.request("GET", self.url / "tradeoffers/privacy", response_mode="text")
+        r = await self._transport.request(
+            "GET",
+            self.url / "tradeoffers/privacy",
+            redirects=True,  # if alias is not set but existed, redirects will be handled
+            response_mode="text",
+        )
 
         search = TRADE_TOKEN_RE.search(r.content)
         self._trade_token = search.group(1) if search else None
@@ -256,8 +264,7 @@ class ProfileComponent(ProfilePublicComponent):
         )
         rj: dict = r.content
 
-        if (success := EResult(rj.get("success"))) is not EResult.OK:
-            raise EResultError(success, rj.get("message", ""))
+        EResultError.check_data(rj)
 
     async def edit_privacy_settings(
         self,
@@ -353,14 +360,12 @@ class ProfileComponent(ProfilePublicComponent):
         )
         rj: dict = r.content
 
-        if (success := EResult(rj.get("success"))) is not EResult.OK:
-            raise EResultError(success, rj.get("message", ""))
+        EResultError.check_data(rj)
 
     def make_public(self) -> Coro[None]:
         """
         Make current user profile fully public.
 
-        :raises EResultError: ordinary reasons.
         :raises TransportError: arbitrary reasons.
         """
 
@@ -378,7 +383,6 @@ class ProfileComponent(ProfilePublicComponent):
         """
         Make current user profile private.
 
-        :raises EResultError: ordinary reasons.
         :raises TransportError: arbitrary reasons.
         """
 
@@ -397,7 +401,6 @@ class ProfileComponent(ProfilePublicComponent):
         Get user `miniprofile` data.
 
         :return: miniprofile data.
-        :raises EResultError: ordinary reasons.
         :raises TransportError: arbitrary reasons.
         """
 
@@ -409,6 +412,11 @@ class ProfileComponent(ProfilePublicComponent):
         ``source`` can be a ``pathlib.Path`` pointing to a file,
         a ``yarl.URL`` as an address to image on a remote source,
         or a binary ``bytes`` buffer.
+
+        :param source: image source.
+        :return: avatar upload data.
+        :raises EResultError: ordinary reasons.
+        :raises TransportError: arbitrary reasons.
         """
 
         if isinstance(source, Path):
@@ -436,8 +444,7 @@ class ProfileComponent(ProfilePublicComponent):
         )
         rj: dict = r.content
 
-        if (success := EResult(rj.get("success"))) is not EResult.OK:
-            raise EResultError(success, rj.get("message", ""))
+        EResultError.check_data(rj)
 
         return AvatarUploadData(
             rj["hash"],
@@ -492,7 +499,6 @@ class ProfileComponent(ProfilePublicComponent):
         Get nickname history of current user.
 
         :return: list of profile alias history.
-        :raises EResultError: ordinary reasons.
         :raises TransportError: arbitrary reasons.
         """
 
@@ -505,8 +511,11 @@ class ProfileComponent(ProfilePublicComponent):
             "POST",
             self.url / "ajaxclearaliashistory",
             data={"sessionid": self._transport.session_id},
+            response_mode="meta",
         )
 
-    # TODO actualize
-    async def actualize(self):
-        """"""
+    def actualize(self) -> Coro[...]:
+        """Actualize component states for current user by updating them from `Steam`."""
+
+        loop = asyncio.get_running_loop()
+        return asyncio.wait(map(loop.create_task, [self.update_alias(), self.update_trade_token()]))

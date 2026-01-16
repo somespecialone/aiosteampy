@@ -119,7 +119,7 @@ class SteamLoginSession:
             Must not be ``EAuthTokenPlatformType.k_EAuthTokenPlatformType_SteamClient``.
         :param transport: A custom transport instance implementing the required
             HTTP communication interface. If provided, ``proxy`` cannot also be set.
-        :param proxy: A proxy URL to route HTTP requests through when using the default HTTP transport.
+        :param proxy: A proxy URL to route HTTP requests through when using the *default HTTP transport*.
         :raises ValueError: If unsupported platform type is used or invalid argument combinations are provided.
         """
 
@@ -139,8 +139,7 @@ class SteamLoginSession:
             self._transport.add_cookie(Cookie("mobileClientVersion", "777777 3.10.3", BASE_WEB_API_URL.host))
             self._transport.add_cookie(Cookie("mobileClient", "android", BASE_WEB_API_URL.host))
 
-        # set transient internal state
-        self._set_state()
+        self._set_state()  # set transient internal state
 
         self._steam_id = SteamID()
 

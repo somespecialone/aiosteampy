@@ -11,7 +11,7 @@ ResponseMode = Literal["bytes", "json", "text", "meta"]  # Enum is not worth it
 # Steam Web API
 # Option interface+dedicated methods with overload does not work with default str type for non-predefined literals
 # so let it be just unions of all predefined interfaces and methods. User of method responsible to not mess them
-WebAPIInterface = Literal["IEconService", "IAuthenticationService"]
+WebAPIInterface = Literal["IEconService", "IAuthenticationService", "ITwoFactorService"]
 WebAPIMethod = Literal[
     # IEconService
     "GetTradeHistory",
@@ -29,5 +29,9 @@ WebAPIMethod = Literal[
     "GenerateAccessTokenForApp",
     "GetAuthSessionInfo",
     "UpdateAuthSessionWithMobileConfirmation",
+    # ITwoFactorService
+    "AddAuthenticator",
+    "FinalizeAddAuthenticator",
+    "RemoveAuthenticator",
 ]
 WebAPIVersion = Literal["v1"]

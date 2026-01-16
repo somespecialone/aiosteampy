@@ -9,7 +9,7 @@ if TYPE_CHECKING:
 
 _T = TypeVar("_T")
 
-CORO = Coroutine[Any, Any, _T]
+Coro = Coroutine[Any, Any, _T]
 
 AppMap = dict[int, "App"]
 ItemDescriptionsMap = dict[str, "ItemDescription"]  # ident code : descr

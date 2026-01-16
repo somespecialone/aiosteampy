@@ -5,10 +5,11 @@ from typing import overload, Callable
 from ...constants import Language
 from ...app import App, AppContext
 from ...transport import BaseSteamTransport
-from ...types import AppMap, ItemDescriptionsMap, CORO
+from ...types import AppMap, ItemDescriptionsMap, Coro
 from ...id import SteamID
 from ...exceptions import SteamError, SessionExpired
 from ...models import EconItem
+from ...session import SteamLoginSession
 
 from .public import INV_COUNT, InventoryItemData, InventoryPublicComponent
 
@@ -16,21 +17,16 @@ from .public import INV_COUNT, InventoryItemData, InventoryPublicComponent
 class InventoryComponent(InventoryPublicComponent):
     """Component responsible for working with current user inventory."""
 
-    __slots__ = ("_steam_id",)
+    __slots__ = ("_session",)
 
     def __init__(
         self,
-        steam_id: SteamID,
-        transport: BaseSteamTransport,
+        session: SteamLoginSession,
         language: Language = Language.ENGLISH,
     ):
-        super().__init__(transport, language)
+        super().__init__(session.transport, language)
 
-        self._steam_id = steam_id
-
-    @property
-    def steam_id(self) -> SteamID:
-        return self._steam_id
+        self._session = session
 
     async def get_inventory(
         self,
@@ -46,7 +42,6 @@ class InventoryComponent(InventoryPublicComponent):
 
         .. note:: Pagination can be achieved by passing ``start_asset_id`` arg.
 
-        :param user_id: ``SteamID`` of user which inventory is requested.
         :param app_ctx: ``AppContext`` of requested inventory.
         :param start_asset_id: for partial inventory fetch.
         :param count: page size.
@@ -59,7 +54,7 @@ class InventoryComponent(InventoryPublicComponent):
 
         try:
             return await self.get_user_inventory(
-                self._steam_id,
+                self._session.steam_id,
                 app_ctx,
                 start_asset_id=start_asset_id,
                 count=count,
@@ -75,7 +70,7 @@ class InventoryComponent(InventoryPublicComponent):
         *,
         start_asset_id: int | None = None,
         count: int = INV_COUNT,
-    ) -> CORO[AsyncGenerator[InventoryItemData, None]]:
+    ) -> Coro[AsyncGenerator[InventoryItemData, None]]:
         """
         Get async iterator of current authenticated user inventory pages.
 
@@ -90,7 +85,7 @@ class InventoryComponent(InventoryPublicComponent):
         :raises SessionExpired: current login session is expired.
         """
 
-        return self.user_inventory(self._steam_id, app_ctx, start_asset_id=start_asset_id, count=count)
+        return self.user_inventory(self._session.steam_id, app_ctx, start_asset_id=start_asset_id, count=count)
 
     @overload
     async def get_inventory_item(self, app_ctx: AppContext, obj: int) -> EconItem | None: ...
@@ -98,7 +93,7 @@ class InventoryComponent(InventoryPublicComponent):
     @overload
     async def get_inventory_item(self, app_ctx: AppContext, obj: Callable[[EconItem], bool]) -> EconItem | None: ...
 
-    def get_inventory_item(self, app_ctx: AppContext, obj: int | Callable[[EconItem], bool]) -> CORO[EconItem | None]:
+    def get_inventory_item(self, app_ctx: AppContext, obj: int | Callable[[EconItem], bool]) -> Coro[EconItem | None]:
         """
         Fetch and iterate over inventory item pages of current authenticated
         user until find one that satisfies passed arguments.
@@ -112,4 +107,4 @@ class InventoryComponent(InventoryPublicComponent):
         :raises SessionExpired: current login session is expired.
         """
 
-        return self.get_user_inventory_item(self._steam_id, app_ctx, obj)
+        return self.get_user_inventory_item(self._session.steam_id, app_ctx, obj)

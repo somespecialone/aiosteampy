@@ -4,7 +4,7 @@ from datetime import datetime
 
 from yarl import URL
 
-from ..types import CORO
+from ..types import Coro
 from ..constants import EResult, STEAM_URL
 from ..exceptions import EResultError, SessionExpired
 

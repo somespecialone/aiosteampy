@@ -1,5 +1,6 @@
 from dataclasses import dataclass
-from typing import Literal
+from datetime import datetime
+from typing import Literal, NamedTuple
 
 # I am too lazy to make enum and lucky enough for them to be unnecessary there
 PrivacySettingsOptions = Literal[1, 2, 3]
@@ -7,8 +8,7 @@ PrivacySettingsCheckboxOptions = Literal[1, 3]
 CommentPrivacySettingsOptions = Literal[0, 1, 2]
 
 
-@dataclass(eq=False, slots=True)
-class LocationData:
+class LocationData(NamedTuple):
     city: str  # locCity
     city_code: int  # locCityCode
     country: str  # locCountry
@@ -47,25 +47,21 @@ class ProfilePrivacy:
     comment_permission: CommentPrivacySettingsOptions  # eCommentPermission
 
 
-@dataclass(eq=False, slots=True)
-class ProfileTheme:
+class ProfileTheme(NamedTuple):
     id: str  # theme_id
     title: str
 
 
-@dataclass(eq=False, slots=True)
-class ProfilePreferences:
+class ProfilePreferences(NamedTuple):
     hide_profile_awards: int
 
 
-@dataclass(eq=False, slots=True)
-class MiniprofileMovie:
+class MiniprofileMovie(NamedTuple):
     video_webm: str | None  # video/webm
     video_mp4: str | None  # video/mp4
 
 
-@dataclass(eq=False, slots=True)
-class GoldenProfileDataEntry:
+class GoldenProfileDataEntry(NamedTuple):
     appid: int
     css_url: str
     frame_url: str | None
@@ -86,20 +82,39 @@ class ProfileData:
     location_data: LocationData  # LocationData
     active_theme: ProfileTheme  # ActiveTheme
     profile_preferences: ProfilePreferences  # ProfilePreferences
-    available_themes: list[ProfileTheme]  # rgAvailableThemes
-    golden_profile_data: list[GoldenProfileDataEntry]  # rgGoldenProfileData
+    available_themes: tuple[ProfileTheme, ...]  # rgAvailableThemes
+    golden_profile_data: tuple[GoldenProfileDataEntry, ...]  # rgGoldenProfileData
     privacy: ProfilePrivacy  # Privacy
 
 
-@dataclass(eq=False, slots=True)
-class AvatarUploadImagesData:
+class AvatarUploadImagesData(NamedTuple):
     # 0: str
     medium: str
     full: str
 
 
-@dataclass(eq=False, slots=True)
-class AvatarUploadData:
+class AvatarUploadData(NamedTuple):
     hash: str
     images: AvatarUploadImagesData
     message: str
+
+
+class ProfileAliasHistoryEntry(NamedTuple):
+    new_name: str
+    time_changed: datetime
+
+
+class MiniProfileBadge(NamedTuple):
+    description: str
+    icon: str
+    level: int
+    name: str
+    xp: str
+
+
+class MiniProfileData(NamedTuple):
+    avatar: str
+    favorite_badge: MiniProfileBadge | None
+    level: int
+    level_class: str
+    persona_name: str

@@ -5,7 +5,7 @@ from collections.abc import AsyncGenerator
 from typing import overload, Literal, Callable, TYPE_CHECKING
 from datetime import datetime
 
-from ...types import CORO, AppMap
+from ...types import Coro, AppMap
 from ...app import App, AppContext
 from ...constants import Currency, STEAM_URL, EResult, Language
 from ...exceptions import (
@@ -18,6 +18,7 @@ from ...utils import create_ident_code
 from ...models import ItemDescription, EconItem
 from ...id import SteamID
 from ...transport import BaseSteamTransport, TransportError, TransportResponse
+from ...session import SteamLoginSession
 
 if TYPE_CHECKING:  # make market component independent from confirmation component
     from ..confirmation import ConfirmationComponent, Confirmation
@@ -49,29 +50,21 @@ UserMarketHistoryData = tuple[list[MarketHistoryEvent], int]
 class MarketComponent(MarketPublicComponent):
     """Component for working with `Steam Market`. Requires authentication."""
 
-    __slots__ = (
-        "_steam_id",
-        "_conf",
-    )
+    __slots__ = ("_session", "_conf")
 
     def __init__(
         self,
-        transport: BaseSteamTransport,
-        steam_id: SteamID,
+        session: SteamLoginSession,
         country: str = "UA",
         currency: Currency = Currency.USD,
         language: Language = Language.ENGLISH,
         confirmation: "ConfirmationComponent | None" = None,
     ):
-        super().__init__(transport, country, currency, language)
+        super().__init__(session.transport, country, currency, language)
 
-        self._steam_id = steam_id
+        self._session = session
 
         self._conf = confirmation
-
-    @property
-    def steam_id(self) -> SteamID:
-        return self._steam_id
 
     @overload
     async def confirm_sell_listing(self, obj: int, app_ctx: AppContext) -> "Confirmation": ...
@@ -175,7 +168,7 @@ class MarketComponent(MarketPublicComponent):
         return [
             MyMarketListing(
                 id=int(l_data["listingid"]),
-                lister=self._steam_id,  # no need to parse data again
+                lister=self._session.steam_id,  # no need to parse data again
                 created_at=datetime.fromtimestamp(l_data["time_created"]),
                 item=MarketListingItem(
                     context_id=int(l_data["asset"]["contextid"]),
@@ -491,7 +484,7 @@ class MarketComponent(MarketPublicComponent):
             "price": to_receive,
         }
         # there must be profile alias, but who cares
-        headers = {"Referer": str(STEAM_URL.COMMUNITY / f"profiles/{self._steam_id.id64}/inventory")}
+        headers = {"Referer": str(STEAM_URL.COMMUNITY / f"profiles/{self._session.steam_id.id64}/inventory")}
         r = await self._transport.request(
             "POST",
             MARKET_URL / "sellitem/",
@@ -514,7 +507,7 @@ class MarketComponent(MarketPublicComponent):
 
         EResultError.check_data(rj)
 
-    async def cancel_sell_listing(self, obj: MyMarketListing | int) -> CORO[TransportResponse]:
+    async def cancel_sell_listing(self, obj: MyMarketListing | int) -> Coro[TransportResponse]:
         """
         Cancel current user active sell listing.
 
@@ -684,7 +677,7 @@ class MarketComponent(MarketPublicComponent):
             quantity_remaining=int(rj["quantity_remaining"]),
         )
 
-    def cancel_buy_order(self, order: int | BuyOrder) -> CORO[TransportResponse]:
+    def cancel_buy_order(self, order: int | BuyOrder) -> Coro[TransportResponse]:
         """
         Cancel current user active buy order.
 
@@ -1159,3 +1152,6 @@ class MarketComponent(MarketPublicComponent):
         # as at time of writing: last app purchase older than year and market still available
 
         return available, when
+
+    # TODO get asset prices, also access token instead of api key
+    # https://api.steampowered.com/ISteamEconomy/GetAssetPrices/v1/?key=<API KEY>&appid=...

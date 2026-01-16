@@ -45,7 +45,7 @@ class ItemTag(NamedTuple):
 class AssetProperty(NamedTuple):
     id: int
     value: str
-    name: str | None
+    # name: str | None
 
 
 class AssetAccessory(NamedTuple):

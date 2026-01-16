@@ -56,14 +56,7 @@ CUSTOM_API_HEADERS = {"X-Prototype-Version": "1.7", "X-Requested-With": "XMLHttp
 class MarketPublicComponent(EconMixin):
     """Component with public `Steam Market` methods. Available without authentication."""
 
-    __slots__ = (
-        "_transport",
-        "_country",
-        "_currency",
-        "_language",
-        "_app_map",
-        "_item_descriptions_map",
-    )
+    __slots__ = ("_transport", "_country", "_currency", "_language")
 
     def __init__(
         self,

@@ -16,7 +16,7 @@ from rsa import PublicKey, encrypt as rsa_encrypt
 from yarl import URL
 from betterproto2 import Message
 
-from ..types import CORO
+from ..types import Coro
 from ..constants import STEAM_URL
 from ..id import SteamID
 from ..transport import (
@@ -763,7 +763,7 @@ class SteamLoginSession:
             self._transport.request("POST", url, data=data, response_mode="meta") for url in logout_urls
         )
 
-    def close(self) -> CORO[None]:
+    def close(self) -> Coro[None]:
         return self._transport.close()
 
     async def check_authenticated(self) -> bool:

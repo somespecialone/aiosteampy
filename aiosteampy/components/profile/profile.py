@@ -6,15 +6,15 @@ import json
 from dataclasses import asdict
 from urllib.parse import quote
 from pathlib import Path
-from datetime import datetime
 
 from yarl import URL
 
-from ...types import CORO
-from ...constants import STEAM_URL, EResult, Language
+from ...types import Coro
+from ...constants import STEAM_URL, EResult, Language, Currency
 from ...exceptions import EResultError
 from ...id import SteamID
 from ...transport import BaseSteamTransport, TransportResponse
+from ...session import SteamLoginSession
 
 from .models import (
     PrivacySettingsOptions,
@@ -29,28 +29,33 @@ from .models import (
     ProfileData,
     AvatarUploadImagesData,
     AvatarUploadData,
+    ProfileAliasHistoryEntry,
+    MiniProfileBadge,
+    MiniProfileData,
 )
+from .public import ProfilePublicComponent
+from .utils import make_alias_profile_url, make_steam_id_profile_url
 
 TRADE_TOKEN_RE = re.compile(r"\d+&token=(.+)\" readonly")
 PROFILE_DATA_RE = re.compile(r"data-profile-edit=\"(.+)\" data-profile-badges")
 
 
-class ProfileComponent:
-    """Component to work with current user `Steam` profile."""
+class ProfileComponent(ProfilePublicComponent):
+    """Component to work with `Steam` profile."""
 
-    def __init__(self, transport: BaseSteamTransport, steam_id: SteamID, trade_token: str | None = None):
-        self._transport = transport
-        self._steam_id = steam_id
+    __slots__ = ("_session", "_trade_token", "_alias")
+
+    def __init__(
+        self,
+        session: SteamLoginSession,
+        trade_token: str | None = None,
+        alias: str | None = None,
+    ):
+        super().__init__(session.transport)
+
+        self._session = session
         self._trade_token = trade_token
-        #  profile custom url attribute is not needed now
-
-    @property
-    def steam_id(self) -> SteamID:
-        return self._steam_id
-
-    @property
-    def transport(self) -> BaseSteamTransport:
-        return self._transport
+        self._alias = alias
 
     @property
     def trade_token(self) -> str | None:
@@ -58,55 +63,74 @@ class ProfileComponent:
 
     @property
     def trade_url(self) -> URL | None:
-        """Trade url for current user."""
+        """Trade `url` of current user."""
         if self._trade_token:
-            return STEAM_URL.TRADE / "new/" % {"partner": self._steam_id.account_id, "token": self._trade_token}
+            return STEAM_URL.TRADE / "new/" % {"partner": self._session.steam_id.account_id, "token": self._trade_token}
 
     @property
-    def profile_url(self) -> URL:
-        return STEAM_URL.COMMUNITY / f"profiles/{self._steam_id.id64}"
+    def alias(self) -> str | None:
+        """Custom `alias` of current user profile `url`, e.g `https://steamcommunity.com/id/<ALIAS>`."""
+        return self._alias
 
-    async def get_profile_custom_url(self) -> URL:
-        """Get profile custom url, e.g `https://steamcommunity.com/id/<ALIAS>`."""
+    @property
+    def url(self) -> URL:
+        """
+        Profile `url` of current user.
+        If ``alias`` is set, return `custom url`, e.g `https://steamcommunity.com/id/<ALIAS>`.
+        """
+
+        if self._alias:
+            return make_alias_profile_url(self._alias)
+        else:
+            return make_steam_id_profile_url(self._session.steam_id)
+
+    async def update_alias(self) -> str | None:
+        """Update profile ``alias`` from `Steam`."""
 
         r = await self._transport.request("GET", STEAM_URL.COMMUNITY / "my", redirects=False, response_mode="meta")
-        return URL(r.headers["Location"])
+        location = r.headers["Location"]
+        if "profiles/" in location:  # redirect to default url so there is no alias
+            self._alias = None
+        else:
+            self._alias = location.rsplit("/", 1)[-1]
 
-    async def get_trade_token(self) -> str | None:
-        """Get trade token from `Steam`. Will set trade token to component."""
+        return self._alias
 
-        r = await self._transport.request("GET", self.profile_url / "tradeoffers/privacy", response_mode="text")
+    async def update_trade_token(self) -> str | None:
+        """Update ``trade_token`` from `Steam`."""
+
+        r = await self._transport.request("GET", self.url / "tradeoffers/privacy", response_mode="text")
 
         search = TRADE_TOKEN_RE.search(r.content)
         self._trade_token = search.group(1) if search else None
 
-        return self.trade_token
+        return self._trade_token
 
-    async def register_new_trade_url(self):
-        """Register new trade url. Will set trade token to component."""
+    async def generate_new_trade_token(self) -> str:
+        """Generates new `trade url` alongside `token`. Will update ``trade_token``."""
 
         r = await self.transport.request(
             "POST",
-            self.profile_url / "tradeoffers/newtradeurl",
+            self.url / "tradeoffers/newtradeurl",
             data={"sessionid": self._transport.session_id},
             response_mode="json",
         )
 
         self._trade_token = quote(r.content, safe="~()*!.'")  # https://stackoverflow.com/a/72449666/19419998
 
-    async def get_profile_data(self, profile_custom_url: URL | None = None) -> ProfileData:
-        """Get current user profile data including general properties and privacy settings."""
+        return self._trade_token
 
-        if profile_custom_url is None:
-            profile_custom_url = await self.get_profile_custom_url()
+    async def get_info(self) -> ProfileData:
+        """Get current user profile info including general properties and privacy settings."""
 
-        r = await self._transport.request("GET", profile_custom_url / "edit/info", response_mode="text")
+        # safe to make GET if alias is not set but existed, redirects will be handled
+        r = await self._transport.request("GET", self.url / "edit/info", redirects=True, response_mode="text")
 
         search = PROFILE_DATA_RE.search(r.content)
 
         data: dict = json.loads(search.group(1).replace("&quot;", '"'))
 
-        return ProfileData(
+        profile_data = ProfileData(
             persona_name=data["strPersonaName"],
             custom_url=data["strCustomURL"],
             real_name=data["strRealName"],
@@ -125,8 +149,8 @@ class ProfileComponent:
             ),
             active_theme=ProfileTheme(data["ActiveTheme"]["theme_id"], data["ActiveTheme"]["title"]),
             profile_preferences=ProfilePreferences(data["ProfilePreferences"]["hide_profile_awards"]),
-            available_themes=[ProfileTheme(t_d["theme_id"], t_d["title"]) for t_d in data["rgAvailableThemes"]],
-            golden_profile_data=[
+            available_themes=tuple(ProfileTheme(t_d["theme_id"], t_d["title"]) for t_d in data["rgAvailableThemes"]),
+            golden_profile_data=tuple(
                 GoldenProfileDataEntry(
                     gp_d["appid"],
                     gp_d["css_url"],
@@ -140,7 +164,7 @@ class ProfileComponent:
                     else None,
                 )
                 for gp_d in data["rgGoldenProfileData"]
-            ],
+            ),
             privacy=ProfilePrivacy(
                 settings=ProfilePrivacySettings(
                     friends_list=data["Privacy"]["PrivacySettings"]["PrivacyFriendsList"],
@@ -154,7 +178,11 @@ class ProfileComponent:
             ),
         )
 
-    async def edit_profile(
+        self._alias = profile_data.custom_url  # implicitly update alias, assuming that's safe
+
+        return profile_data
+
+    async def edit_info(
         self,
         *,
         persona_name: str | None = None,
@@ -165,10 +193,9 @@ class ProfileComponent:
         city: str | None = None,
         custom_url: str | None = None,
         hide_profile_award: bool | None = None,
-        _profile_custom_url: URL | None = None,
     ):
         """
-        Edit current user profile general data.
+        Edit current user profile general info.
 
         :param persona_name: nickname.
         :param real_name: real name of the user.
@@ -176,7 +203,7 @@ class ProfileComponent:
         :param country: profile country code.
         :param state: profile state code.
         :param city: profile city.
-        :param custom_url: custom url `ALIAS` (`https://steamcommunity.com/id/<ALIAS>`). E.g. `SomeSpecialOne`.
+        :param custom_url: custom url `ALIAS` (`https://steamcommunity.com/id/<ALIAS>`). E.g. `somespecialone`.
         :param hide_profile_award: whether to hide profile awards.
         :raises EResultError: ordinary reasons.
         :raises TransportError: arbitrary reasons.
@@ -191,10 +218,7 @@ class ProfileComponent:
         ):
             raise ValueError("At least one argument must be provided")
 
-        if _profile_custom_url is None:
-            _profile_custom_url = await self.get_profile_custom_url()
-
-        profile_data = await self.get_profile_data(_profile_custom_url)
+        profile_data = await self.get_info()  # alias will be updated here
 
         # https://github.com/DoctorMcKay/node-steamcommunity/blob/1067d4572ee9d467e8f686951901c51028c5c995/components/profile.js#L56
         data = {
@@ -223,10 +247,10 @@ class ProfileComponent:
             "customURL": custom_url if custom_url is not None else profile_data.custom_url,
         }
 
-        headers = {"Referer": str(_profile_custom_url / "edit/settings")}
+        headers = {"Referer": str(self.url / "edit/settings")}
         r = await self._transport.request(
             "POST",
-            _profile_custom_url / "edit/",
+            self.url / "edit/",
             data=data,
             headers=headers,
             response_mode="json",
@@ -246,7 +270,6 @@ class ProfileComponent:
         playtime: bool | None = None,
         profile: PrivacySettingsOptions | None = None,
         comment_permission: CommentPrivacySettingsOptions | None = None,
-        _profile_custom_url: URL | None = None,
     ):
         """
         Edit profile privacy settings.
@@ -290,10 +313,7 @@ class ProfileComponent:
         ):
             raise ValueError("At least one argument must be provided")
 
-        if _profile_custom_url is None:
-            _profile_custom_url = await self.get_profile_custom_url()
-
-        profile_data = await self.get_profile_data(_profile_custom_url)
+        profile_data = await self.get_info()  # alias will be updated here
 
         if friends_list is not None:
             profile_data.privacy.settings.friends_list = friends_list
@@ -312,14 +332,23 @@ class ProfileComponent:
 
         data = {
             "sessionid": self._transport.session_id,
-            "Privacy": json.dumps(asdict(profile_data.privacy.settings)),
+            "Privacy": json.dumps(
+                {
+                    "PrivacyProfile": profile_data.privacy.settings.profile,
+                    "PrivacyInventory": profile_data.privacy.settings.inventory,
+                    "PrivacyInventoryGifts": profile_data.privacy.settings.inventory_gifts,
+                    "PrivacyOwnedGames": profile_data.privacy.settings.owned_games,
+                    "PrivacyPlaytime": profile_data.privacy.settings.playtime,
+                    "PrivacyFriendsList": profile_data.privacy.settings.friends_list,
+                }
+            ),
             "eCommentPermission": comment_permission,
         }
-        headers = {"Referer": str(_profile_custom_url / "edit/settings")}
+        headers = {"Referer": str(self.url / "edit/settings")}
 
         r = await self._transport.request(
             "POST",
-            _profile_custom_url / "ajaxsetprivacy/",
+            self.url / "ajaxsetprivacy/",
             data=data,
             headers=headers,
             response_mode="json",
@@ -328,6 +357,53 @@ class ProfileComponent:
 
         if (success := EResult(rj.get("success"))) is not EResult.OK:
             raise EResultError(success, rj.get("message", ""))
+
+    def make_public(self) -> Coro[None]:
+        """
+        Make current user profile fully public.
+
+        :raises EResultError: ordinary reasons.
+        :raises TransportError: arbitrary reasons.
+        """
+
+        return self.edit_privacy_settings(
+            inventory=3,
+            inventory_gifts=True,
+            profile=3,
+            friends_list=3,
+            owned_games=3,
+            playtime=True,
+            comment_permission=1,
+        )
+
+    def make_private(self) -> Coro[None]:
+        """
+        Make current user profile private.
+
+        :raises EResultError: ordinary reasons.
+        :raises TransportError: arbitrary reasons.
+        """
+
+        return self.edit_privacy_settings(
+            inventory=1,
+            inventory_gifts=False,
+            owned_games=1,
+            playtime=False,
+            profile=1,
+            comment_permission=2,
+            friends_list=1,
+        )
+
+    def get_mini_profile(self) -> Coro[MiniProfileData]:
+        """
+        Get user `miniprofile` data.
+
+        :return: miniprofile data.
+        :raises EResultError: ordinary reasons.
+        :raises TransportError: arbitrary reasons.
+        """
+
+        return self.get_user_mini_profile(self._session.steam_id)
 
     async def upload_avatar(self, source: Path | URL | bytes) -> AvatarUploadData:
         """
@@ -347,7 +423,7 @@ class ProfileComponent:
 
         data = {
             "type": "player_avatar_image",
-            "sId": str(self.steam_id.id64),
+            "sId": str(self._session.steam_id.id64),
             "sessionid": self._transport.session_id,
             "doSub": "1",
             "json": "1",
@@ -375,13 +451,13 @@ class ProfileComponent:
         )
 
     # TODO move to trade
-    def trade_acknowledge(self) -> CORO[TransportResponse]:
+    def trade_acknowledge(self) -> Coro[TransportResponse]:
         """
         Acknowledge *trade protection rules*.
         Required only once before you can make trade offers.
         """
 
-        headers = {"Referer": str(self.profile_url / "tradeoffers/"), "Origin": str(STEAM_URL.COMMUNITY)}
+        headers = {"Referer": str(self.url / "tradeoffers/"), "Origin": str(STEAM_URL.COMMUNITY)}
         data = {"sessionid": self._transport.session_id, "message": 1}
 
         return self._transport.request(
@@ -392,13 +468,51 @@ class ProfileComponent:
             response_mode="meta",
         )
 
-    # TODO this may be insufficient to force language change, look at lang preferences in profile settings
-    def set_language(self, lang: Language) -> CORO[TransportResponse]:
+    async def set_language(self, lang: Language):
         """
-        Set language of steam community and other domains.
+        Set main `language` of `Steam` domains.
 
-        .. note:: Language other than English will break some methods.
+        .. note:: **Language other than `English` will break some methods**. Use cautiously!.
         """
+
+        # backup option
+        # POST https://store.steampowered.com/account/savelanguagepreferences?primary_language=...&sessionid=...
 
         data = {"sessionid": self._transport.session_id, "language": lang.value}
-        return self._transport.request("POST", STEAM_URL.COMMUNITY / "actions/SetLanguage", data=data)
+        await self._transport.request(
+            "POST",
+            STEAM_URL.COMMUNITY / "actions/SetLanguage",
+            data=data,
+            response_mode="meta",
+        )
+        # We can set lang cookie to store domain, but let's follow browser behaviour
+        await self._transport.request(
+            "GET",
+            STEAM_URL.STORE / "account/languagepreferences/",
+            redirects=False,  # we don't need to load page in new language, enough first request with cookie
+            response_mode="meta",
+        )
+
+    def get_name_history(self) -> Coro[list[ProfileAliasHistoryEntry]]:
+        """
+        Get nickname history of current user.
+
+        :return: list of profile alias history.
+        :raises EResultError: ordinary reasons.
+        :raises TransportError: arbitrary reasons.
+        """
+
+        return self.get_user_name_history(self._session.steam_id)
+
+    def clear_name_history(self) -> Coro[TransportResponse]:
+        """Clear nickname history of current user."""
+
+        return self._transport.request(
+            "POST",
+            self.url / "ajaxclearaliashistory",
+            data={"sessionid": self._transport.session_id},
+        )
+
+    # TODO actualize
+    async def actualize(self):
+        """"""

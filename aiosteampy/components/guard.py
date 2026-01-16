@@ -56,12 +56,7 @@ def generate_confirmation_key(identity_secret: str, tag: str, timestamp: int | N
 class SteamGuardComponent:
     """Contain functionality related to `Steam Guard`."""
 
-    __slots__ = (
-        "_steam_id",
-        "_shared_secret",
-        "_identity_secret",
-        "_device_id",
-    )
+    __slots__ = ("_steam_id", "_shared_secret", "_identity_secret", "_device_id")
 
     def __init__(
         self,
@@ -102,3 +97,6 @@ class SteamGuardComponent:
 
         ts = int(time.time())
         return generate_confirmation_key(self._identity_secret, tag, ts), ts
+
+    # TODO methods to enable/disable[optional] steam guard
+    #  generally, flow from newly registered acc to a fully prepared for trade activity

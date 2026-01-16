@@ -9,11 +9,12 @@ from enum import IntEnum
 from collections.abc import Iterable
 from typing import Literal
 
-from ..types import CORO
+from ..types import Coro
 from ..constants import STEAM_URL, EResult
 from ..utils import create_ident_code
 from ..exceptions import SessionExpired, EResultError
 from ..transport import BaseSteamTransport
+from ..session import SteamLoginSession
 
 from .guard import SteamGuardComponent
 
@@ -76,13 +77,10 @@ class Confirmation:
 class ConfirmationComponent:
     """Component for working with confirmations."""
 
-    __slots__ = (
-        "_transport",
-        "_guard",
-    )
+    __slots__ = ("_session", "_guard")
 
-    def __init__(self, transport: BaseSteamTransport, guard: SteamGuardComponent):
-        self._transport = transport
+    def __init__(self, session: SteamLoginSession, guard: SteamGuardComponent):
+        self._session = session
         self._guard = guard
 
     async def _create_confirmation_params(self, tag: str) -> dict:
@@ -117,7 +115,9 @@ class ConfirmationComponent:
             conf_id = obj
 
         params = await self._create_confirmation_params(f"details{conf_id}")
-        r = await self._transport.request("GET", CONF_URL / f"details/{conf_id}", params=params, response_mode="json")
+        r = await self._session.transport.request(
+            "GET", CONF_URL / f"details/{conf_id}", params=params, response_mode="json"
+        )
         rj: dict = r.content
 
         EResultError.check_data(rj)
@@ -143,7 +143,7 @@ class ConfirmationComponent:
         tag = "getlist"
         params = await self._create_confirmation_params(tag)
 
-        r = await self._transport.request("GET", CONF_URL / tag, params=params, response_mode="json")
+        r = await self._session.transport.request("GET", CONF_URL / tag, params=params, response_mode="json")
         rj: dict = r.content
 
         # https://github.com/DoctorMcKay/node-steamcommunity/blob/d3e90f6fd3bea65b1ebc1bdaec754f99dcc8ddb3/components/confirmations.js#L35
@@ -204,17 +204,17 @@ class ConfirmationComponent:
 
         params = await self._create_confirmation_params(tag)
         params |= {"op": tag, "cid": conf.id, "ck": conf.nonce}
-        r = await self._transport.request("GET", CONF_URL / "ajaxop", params=params, response_mode="json")
+        r = await self._session.transport.request("GET", CONF_URL / "ajaxop", params=params, response_mode="json")
         rj: dict = r.content
 
         EResultError.check_data(rj)
 
-    def allow_confirmation(self, conf: Confirmation) -> CORO[None]:
+    def allow_confirmation(self, conf: Confirmation) -> Coro[None]:
         """Allow single confirmation."""
 
         return self.send_confirmation(conf, "allow")
 
-    def cancel_confirmation(self, conf: Confirmation) -> CORO[None]:
+    def cancel_confirmation(self, conf: Confirmation) -> Coro[None]:
         """Cancel single confirmation."""
 
         return self.send_confirmation(conf, "cancel")
@@ -231,17 +231,17 @@ class ConfirmationComponent:
 
         data = await self._create_confirmation_params(tag)
         data |= {"op": tag, "cid[]": [conf.id for conf in confs], "ck[]": [conf.nonce for conf in confs]}
-        r = await self._transport.request("POST", CONF_URL / "multiajaxop", data=data, response_mode="json")
+        r = await self._session.transport.request("POST", CONF_URL / "multiajaxop", data=data, response_mode="json")
         rj: dict = r.content
 
         EResultError.check_data(rj)
 
-    def allow_multiple_confirmations(self, confs: Iterable[Confirmation]) -> CORO[None]:
+    def allow_multiple_confirmations(self, confs: Iterable[Confirmation]) -> Coro[None]:
         """Allow multiple confirmations."""
 
         return self.send_multiple_confirmations(confs, "allow")
 
-    def cancel_multiple_confirmations(self, confs: Iterable[Confirmation]) -> CORO[None]:
+    def cancel_multiple_confirmations(self, confs: Iterable[Confirmation]) -> Coro[None]:
         """Cancel multiple confirmations."""
 
         return self.send_multiple_confirmations(confs, "cancel")

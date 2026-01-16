@@ -15,7 +15,7 @@ TOKENS_COOKIES = {STEAM_ACCESS_TOKEN_COOKIE, STEAM_REFRESH_TOKEN_COOKIE}
 
 
 async def restore_from_cookies(session: SteamLoginSession, cookies: LooseCookies):
-    """Load cookies into session and try to restore session if possible."""
+    """Load cookies into ``session`` and try to restore ``session`` if possible."""
 
     if isinstance(cookies, Path):
         with cookies.open("r") as f:

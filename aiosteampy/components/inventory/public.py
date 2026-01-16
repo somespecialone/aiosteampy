@@ -6,7 +6,7 @@ from typing import overload, Callable
 from ...types import AppMap, ItemDescriptionsMap
 from ...id import SteamID
 from ...app import App, AppContext
-from ...constants import Language, STEAM_URL, EResult
+from ...constants import STEAM_URL, EResult
 from ...exceptions import EResultError, SteamError
 from ...transport import BaseSteamTransport, TransportError
 from ...utils import create_ident_code
@@ -25,23 +25,10 @@ INVENTORY_URL = STEAM_URL.COMMUNITY / "inventory"
 class InventoryPublicComponent(EconMixin):
     """Component with public `Steam Inventory` methods. Available without authentication."""
 
-    __slots__ = ("_transport", "_language")
+    __slots__ = ("_transport",)
 
-    def __init__(
-        self,
-        transport: BaseSteamTransport,
-        language: Language = Language.ENGLISH,
-    ):
+    def __init__(self, transport: BaseSteamTransport):
         self._transport = transport
-        self._language = language
-
-    @property
-    def transport(self) -> BaseSteamTransport:
-        return self._transport
-
-    @property
-    def language(self) -> Language:
-        return self._language
 
     @classmethod
     def _parse_inventory(
@@ -104,7 +91,7 @@ class InventoryPublicComponent(EconMixin):
 
         inv_url = INVENTORY_URL / f"{user_id.id64}/"
         params = {
-            "l": self._language.value,
+            "l": self._transport.language.value,
             "count": count,
             "raw_asset_properties": 1,  # as browser + save some network traffic
             "preserve_bbcode": 1,  # ?
@@ -112,14 +99,12 @@ class InventoryPublicComponent(EconMixin):
         if start_asset_id:
             params["start_assetid"] = start_asset_id
 
-        headers = {"Referer": str(inv_url)}
-
         try:
-            r = await self.transport.request(
+            r = await self._transport.request(
                 "GET",
                 inv_url / f"{app_ctx.app.id}/{app_ctx.context_id}",
                 params=params,
-                headers=headers,
+                headers={"Referer": str(inv_url)},
                 response_mode="json",
             )
 

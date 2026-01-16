@@ -4,8 +4,7 @@ from datetime import datetime
 
 from yarl import URL
 
-from ..types import Coro
-from ..constants import EResult, STEAM_URL
+from ..constants import EResult, STEAM_URL, Language
 from ..exceptions import EResultError, SessionExpired
 
 from .types import Headers, Payload, Params, HttpMethod, ResponseMode, WebAPIInterface, WebAPIMethod, WebAPIVersion
@@ -16,6 +15,7 @@ from .models import Cookie, TransportResponse
 Cookies = list[Cookie]
 
 SESSION_ID_COOKIE = "sessionid"
+LANG_COOKIE = "Steam_Language"
 
 BASE_WEB_API_URL = URL("https://api.steampowered.com")
 
@@ -45,13 +45,10 @@ class BaseSteamTransport(metaclass=ABCMeta):
 
     __slots__ = ()
 
-    def __init__(self, *, proxy: str | URL | None = None):
-        self._proxy = URL(proxy) if proxy is not None else None
-
     @property
+    @abstractmethod
     def proxy(self) -> URL | None:
         """Proxy URL."""
-        return self._proxy
 
     @property
     def user_agent(self) -> str | None:
@@ -143,6 +140,14 @@ class BaseSteamTransport(metaclass=ABCMeta):
             )
 
             self.add_cookie(cookie)
+
+    # TODO need to set default somewhere
+    @property
+    def language(self) -> Language | None:
+        """Language of `Steam` responses, descriptions, et cetera."""
+
+        if lang_cookie_val := self.get_cookie_value(STEAM_URL.COMMUNITY, LANG_COOKIE):
+            return Language(lang_cookie_val)
 
     @abstractmethod
     async def _request(

@@ -115,8 +115,12 @@ class ConfirmationComponent:
             conf_id = obj
 
         params = await self._create_confirmation_params(f"details{conf_id}")
+
         r = await self._session.transport.request(
-            "GET", CONF_URL / f"details/{conf_id}", params=params, response_mode="json"
+            "GET",
+            CONF_URL / f"details/{conf_id}",
+            params=params,
+            response_mode="json",
         )
         rj: dict = r.content
 
@@ -204,6 +208,7 @@ class ConfirmationComponent:
 
         params = await self._create_confirmation_params(tag)
         params |= {"op": tag, "cid": conf.id, "ck": conf.nonce}
+
         r = await self._session.transport.request("GET", CONF_URL / "ajaxop", params=params, response_mode="json")
         rj: dict = r.content
 
@@ -231,6 +236,7 @@ class ConfirmationComponent:
 
         data = await self._create_confirmation_params(tag)
         data |= {"op": tag, "cid[]": [conf.id for conf in confs], "ck[]": [conf.nonce for conf in confs]}
+
         r = await self._session.transport.request("POST", CONF_URL / "multiajaxop", data=data, response_mode="json")
         rj: dict = r.content
 

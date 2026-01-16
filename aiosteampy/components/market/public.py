@@ -5,7 +5,7 @@ from typing import Literal, overload
 from datetime import datetime
 
 from ...app import App, AppContext
-from ...constants import Currency, EResult, STEAM_URL, Language
+from ...constants import Currency, EResult, STEAM_URL
 from ...utils import create_ident_code, extract_icon_hash_from_app_icon_link
 from ...exceptions import EResultError
 from ...models import ItemAction, ItemDescriptionEntry, ItemTag, AssetProperty, ItemDescription
@@ -56,23 +56,17 @@ CUSTOM_API_HEADERS = {"X-Prototype-Version": "1.7", "X-Requested-With": "XMLHttp
 class MarketPublicComponent(EconMixin):
     """Component with public `Steam Market` methods. Available without authentication."""
 
-    __slots__ = ("_transport", "_country", "_currency", "_language")
+    __slots__ = ("_transport", "_country", "_currency")
 
     def __init__(
         self,
         transport: BaseSteamTransport,
         country: str = "UA",
         currency: Currency = Currency.USD,
-        language: Language = Language.ENGLISH,
     ):
         self._transport = transport
         self._country = country
         self._currency = currency
-        self._language = language
-
-    @property
-    def transport(self) -> BaseSteamTransport:
-        return self._transport
 
     @property
     def country(self) -> str:
@@ -81,10 +75,6 @@ class MarketPublicComponent(EconMixin):
     @property
     def currency(self) -> Currency:
         return self._currency
-
-    @property
-    def language(self) -> Language:
-        return self._language
 
     @staticmethod
     def _parse_quantity(text: str | int) -> int:
@@ -148,7 +138,7 @@ class MarketPublicComponent(EconMixin):
 
         params = {
             "norender": 1,
-            "language": self._language.value,
+            "language": self._transport.language.value,
             "currency": self._currency.value,
             "item_nameid": item_name_id,
         }
@@ -221,7 +211,7 @@ class MarketPublicComponent(EconMixin):
 
         params = {
             "norender": 1,
-            "language": self._language.value,
+            "language": self._transport.language.value,
             "country": self._country,
             "currency": self._currency.value,
             "item_nameid": item_name_id,
@@ -499,7 +489,7 @@ class MarketPublicComponent(EconMixin):
             "currency": self._currency.value,
             "start": start,
             "count": count,
-            "language": self._language.value,
+            "language": self._transport.language.value,
         }
         headers = {"Referer": str(base_url), **CUSTOM_API_HEADERS}
         self._prepare_if_modified_since(headers, if_modified_since)
@@ -880,7 +870,11 @@ class MarketPublicComponent(EconMixin):
         :return: list of ``MarketListing`` and datetime object when resource was last modified.
         """
 
-        params = {"country": self._country, "language": self._language.value, "currency": self._currency.value}
+        params = {
+            "country": self._country,
+            "language": self._transport.language.value,
+            "currency": self._currency.value,
+        }
         headers = {"Referer": str(MARKET_URL), **CUSTOM_API_HEADERS}
         self._prepare_if_modified_since(headers, if_modified_since)
 
@@ -943,14 +937,17 @@ class MarketPublicComponent(EconMixin):
     async def get_recently_sold_items(self) -> list[PurchaseInfo]:
         """Get *recently sold items* from `Steam Market`. Can be seen on main market page."""
 
-        params = {"country": self._country, "language": self._language.value, "currency": self._currency.value}
-        headers = {"Referer": str(MARKET_URL), **CUSTOM_API_HEADERS}
+        params = {
+            "country": self._country,
+            "language": self._transport.language.value,
+            "currency": self._currency.value,
+        }
 
         r = await self._transport.request(
             "GET",
             MARKET_URL / "recentcompleted",
             params=params,
-            headers=headers,
+            headers={"Referer": str(MARKET_URL), **CUSTOM_API_HEADERS},
             response_mode="json",
         )
         rj: dict = r.content

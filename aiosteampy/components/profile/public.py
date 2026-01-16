@@ -18,10 +18,6 @@ class ProfilePublicComponent:
     def __init__(self, transport: BaseSteamTransport):
         self._transport = transport
 
-    @property
-    def transport(self) -> BaseSteamTransport:
-        return self._transport
-
     async def get_user_mini_profile(self, user_id: SteamID) -> MiniProfileData:
         """
         Get user `miniprofile` data.

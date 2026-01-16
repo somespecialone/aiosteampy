@@ -7,7 +7,7 @@ from datetime import datetime
 
 from ...types import Coro, AppMap
 from ...app import App, AppContext
-from ...constants import Currency, STEAM_URL, EResult, Language
+from ...constants import Currency, STEAM_URL, EResult
 from ...exceptions import (
     EResultError,
     SessionExpired,
@@ -57,10 +57,9 @@ class MarketComponent(MarketPublicComponent):
         session: SteamLoginSession,
         country: str = "UA",
         currency: Currency = Currency.USD,
-        language: Language = Language.ENGLISH,
         confirmation: "ConfirmationComponent | None" = None,
     ):
-        super().__init__(session.transport, country, currency, language)
+        super().__init__(session.transport, country, currency)
 
         self._session = session
 
@@ -250,13 +249,11 @@ class MarketComponent(MarketPublicComponent):
         :raises SessionExpired: current login session is expired.
         """
 
-        params = {"norender": 1, "start": start, "count": count}
-
         try:
             r = await self._transport.request(
                 "GET",
                 MARKET_URL / "mylistings",
-                params=params,
+                params={"norender": 1, "start": start, "count": count},
                 response_mode="json",
             )
         except TransportError as e:
@@ -483,13 +480,12 @@ class MarketComponent(MarketPublicComponent):
             "amount": 1,
             "price": to_receive,
         }
-        # there must be profile alias, but who cares
-        headers = {"Referer": str(STEAM_URL.COMMUNITY / f"profiles/{self._session.steam_id.id64}/inventory")}
         r = await self._transport.request(
             "POST",
             MARKET_URL / "sellitem/",
             data=data,
-            headers=headers,
+            # there must be profile alias, but who cares
+            headers={"Referer": str(STEAM_URL.COMMUNITY / f"profiles/{self._session.steam_id.id64}/inventory")},
             response_mode="json",
         )
         rj: dict = r.content
@@ -515,13 +511,11 @@ class MarketComponent(MarketPublicComponent):
         """
 
         listing_id = obj.id if isinstance(obj, MyMarketListing) else obj
-        data = {"sessionid": self._transport.session_id}
-        headers = {"Referer": str(MARKET_URL)}
         return self._transport.request(
             "POST",
             MARKET_URL / f"removelisting/{listing_id}",
-            data=data,
-            headers=headers,
+            data={"sessionid": self._transport.session_id},
+            headers={"Referer": str(MARKET_URL)},
             response_mode="meta",
         )
 
@@ -593,13 +587,12 @@ class MarketComponent(MarketPublicComponent):
             "confirmation": confirmation_id,
         }
 
-        headers = {"Referer": str(MARKET_URL / f"listings/{app.id}/{name}")}
         try:
             r = await self._transport.request(
                 "POST",
                 MARKET_URL / "createbuyorder/",
                 data=data,
-                headers=headers,
+                headers={"Referer": str(MARKET_URL / f"listings/{app.id}/{name}")},
                 response_mode="json",
             )
         except TransportError as e:
@@ -648,12 +641,11 @@ class MarketComponent(MarketPublicComponent):
             buy_order_id = obj
             headers = None
 
-        params = {"sessionid": self._transport.session_id, "buy_orderid": buy_order_id}
         try:
             r = await self._transport.request(
                 "GET",
                 MARKET_URL / "getbuyorderstatus/",
-                params=params,
+                params={"sessionid": self._transport.session_id, "buy_orderid": buy_order_id},
                 headers=headers,
                 response_mode="json",
             )
@@ -690,13 +682,11 @@ class MarketComponent(MarketPublicComponent):
         else:
             order_id = order
 
-        data = {"sessionid": self._transport.session_id, "buy_orderid": order_id}
-        headers = {"Referer": str(MARKET_URL)}
         return self._transport.request(
             "POST",
             MARKET_URL / "cancelbuyorder/",
-            data=data,
-            headers=headers,
+            data={"sessionid": self._transport.session_id, "buy_orderid": order_id},
+            headers={"Referer": str(MARKET_URL)},
             response_mode="meta",
         )
 
@@ -785,13 +775,13 @@ class MarketComponent(MarketPublicComponent):
             "quantity": 1,
             "confirmation": confirmation_id,
         }
-        headers = {"Referer": str(MARKET_URL / f"listings/{app.id}/{market_hash_name}")}  # mandatory
+
         try:
-            r = await self.transport.request(
+            r = await self._transport.request(
                 "POST",
                 MARKET_URL / f"buylisting/{listing_id}",
                 data=data,
-                headers=headers,
+                headers={"Referer": str(MARKET_URL / f"listings/{app.id}/{market_hash_name}")},  # mandatory
                 response_mode="json",
             )
         except TransportError as e:  # ugly
@@ -994,14 +984,12 @@ class MarketComponent(MarketPublicComponent):
         :raises TransportError: arbitrary reasons.
         """
 
-        params = {"norender": 1, "start": start, "count": count}
-        headers = {"Referer": str(MARKET_URL)}
         # empty lists if session is expired
-        r = await self.transport.request(
+        r = await self._transport.request(
             "GET",
             MARKET_URL / "myhistory",
-            params=params,
-            headers=headers,
+            params={"norender": 1, "start": start, "count": count},
+            headers={"Referer": str(MARKET_URL)},
             response_mode="json",
         )
         rj: dict = r.content
@@ -1090,12 +1078,11 @@ class MarketComponent(MarketPublicComponent):
         else:  # str
             name = obj
 
-        params = {"appid": app.id, "market_hash_name": name}
         try:
-            r = await self.transport.request(
+            r = await self._transport.request(
                 "GET",
                 MARKET_URL / "pricehistory",
-                params=params,
+                params={"appid": app.id, "market_hash_name": name},
                 response_mode="json",
             )
         except TransportError as e:

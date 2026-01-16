@@ -9,11 +9,9 @@ from .base import Cookie, TransportResponse, BaseSteamTransport
 
 
 class AiohttpSteamTransport(BaseSteamTransport):
-    __slots__ = ("_proxy", "_session")
+    __slots__ = ("_session",)
 
-    def __init__(self, *, proxy=None):
-        super().__init__(proxy=proxy)
-
+    def __init__(self, proxy: str | URL | None = None):
         connector = None
 
         if proxy is not None and proxy.startswith("socks"):
@@ -31,6 +29,10 @@ class AiohttpSteamTransport(BaseSteamTransport):
             proxy = None
 
         self._session = ClientSession(proxy=proxy, connector=connector)
+
+    @property
+    def proxy(self) -> URL | None:
+        return URL(self._session._default_proxy) if isinstance(self._session._default_proxy, str) else None
 
     def get_headers(self):
         return self._session.headers

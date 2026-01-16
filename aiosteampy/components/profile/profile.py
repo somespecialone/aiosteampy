@@ -109,7 +109,7 @@ class ProfileComponent(ProfilePublicComponent):
     async def generate_new_trade_token(self) -> str:
         """Generates new `trade url` alongside `token`. Will update ``trade_token``."""
 
-        r = await self.transport.request(
+        r = await self._transport.request(
             "POST",
             self.url / "tradeoffers/newtradeurl",
             data={"sessionid": self._transport.session_id},
@@ -247,12 +247,11 @@ class ProfileComponent(ProfilePublicComponent):
             "customURL": custom_url if custom_url is not None else profile_data.custom_url,
         }
 
-        headers = {"Referer": str(self.url / "edit/settings")}
         r = await self._transport.request(
             "POST",
             self.url / "edit/",
             data=data,
-            headers=headers,
+            headers={"Referer": str(self.url / "edit/settings")},
             response_mode="json",
         )
         rj: dict = r.content
@@ -344,13 +343,12 @@ class ProfileComponent(ProfilePublicComponent):
             ),
             "eCommentPermission": comment_permission,
         }
-        headers = {"Referer": str(self.url / "edit/settings")}
 
         r = await self._transport.request(
             "POST",
             self.url / "ajaxsetprivacy/",
             data=data,
-            headers=headers,
+            headers={"Referer": str(self.url / "edit/settings")},
             response_mode="json",
         )
         rj: dict = r.content
@@ -418,7 +416,7 @@ class ProfileComponent(ProfilePublicComponent):
                 source = f.read()
 
         elif isinstance(source, URL):
-            r = await self.transport.request("GET", source, response_mode="bytes")
+            r = await self._transport.request("GET", source, response_mode="bytes")
             source = r.content
 
         data = {
@@ -457,14 +455,11 @@ class ProfileComponent(ProfilePublicComponent):
         Required only once before you can make trade offers.
         """
 
-        headers = {"Referer": str(self.url / "tradeoffers/"), "Origin": str(STEAM_URL.COMMUNITY)}
-        data = {"sessionid": self._transport.session_id, "message": 1}
-
         return self._transport.request(
             "POST",
             STEAM_URL.COMMUNITY / "trade/new/acknowledge",
-            data=data,
-            headers=headers,
+            data={"sessionid": self._transport.session_id, "message": 1},
+            headers={"Referer": str(self.url / "tradeoffers/"), "Origin": str(STEAM_URL.COMMUNITY)},
             response_mode="meta",
         )
 
@@ -478,11 +473,10 @@ class ProfileComponent(ProfilePublicComponent):
         # backup option
         # POST https://store.steampowered.com/account/savelanguagepreferences?primary_language=...&sessionid=...
 
-        data = {"sessionid": self._transport.session_id, "language": lang.value}
         await self._transport.request(
             "POST",
             STEAM_URL.COMMUNITY / "actions/SetLanguage",
-            data=data,
+            data={"sessionid": self._transport.session_id, "language": lang.value},
             response_mode="meta",
         )
         # We can set lang cookie to store domain, but let's follow browser behaviour

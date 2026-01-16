@@ -2,7 +2,6 @@ from collections.abc import AsyncGenerator
 from typing import overload, Callable
 
 
-from ...constants import Language
 from ...app import App, AppContext
 from ...transport import BaseSteamTransport
 from ...types import AppMap, ItemDescriptionsMap, Coro
@@ -19,12 +18,8 @@ class InventoryComponent(InventoryPublicComponent):
 
     __slots__ = ("_session",)
 
-    def __init__(
-        self,
-        session: SteamLoginSession,
-        language: Language = Language.ENGLISH,
-    ):
-        super().__init__(session.transport, language)
+    def __init__(self, session: SteamLoginSession):
+        super().__init__(session.transport)
 
         self._session = session
 

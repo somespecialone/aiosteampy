@@ -447,7 +447,8 @@ class MarketComponent(MarketPublicComponent):
         :raises ValueError: item is not marketable, wrong arguments combination or types.
         :raises EResultError: ordinary reasons.
         :raises TransportError: arbitrary reasons.
-        :raises NeedConfirmation: market action requires confirmation.
+        :raises NeedMobileConfirmation: action requires mobile app confirmation.
+        :raises NeedEmailConfirmation: action requires email confirmation.
         """
 
         # flow: place sell listing -> listing created but not active -> allow confirmation -> listing activated
@@ -560,7 +561,7 @@ class MarketComponent(MarketPublicComponent):
         :return: `buy order id` or ``BuyOrder``.
         :raises EResultError: ordinary reasons.
         :raises TransportError: arbitrary reasons.
-        :raises NeedConfirmation: market action requires confirmation.
+        :raises NeedMobileConfirmation: action requires mobile app confirmation.
         """
 
         # flow:
@@ -607,7 +608,7 @@ class MarketComponent(MarketPublicComponent):
             confirmation_id = int(rj["confirmation"]["confirmation_id"])
 
             if self._conf is None:
-                raise NeedMobileConfirmation(confirmation_id)
+                raise NeedMobileConfirmation(confirmation_id)  # can we get here need of email conf?
 
             conf = await self._conf.get_confirmation(confirmation_id)
             await self._conf.allow_confirmation(conf)
@@ -739,7 +740,7 @@ class MarketComponent(MarketPublicComponent):
             converted currency of ``MarketListing`` is different from wallet currency.
         :raises InsufficientBalance: not enough money in wallet.
         :raises ListingRemoved: listing has been removed from market.
-        :raises NeedMobileConfirmation: market action requires confirmation.
+        :raises NeedMobileConfirmation: action requires confirmation.
         """
 
         # flow: same as in creating buy order

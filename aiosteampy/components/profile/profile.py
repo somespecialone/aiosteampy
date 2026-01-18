@@ -7,15 +7,19 @@ import json
 from dataclasses import asdict
 from urllib.parse import quote
 from pathlib import Path
+from typing import TYPE_CHECKING
 
 from yarl import URL
 
 from ...types import Coro
 from ...constants import STEAM_URL, EResult, Language, Currency
-from ...exceptions import EResultError
+from ...exceptions import SteamError, EResultError, NeedMobileConfirmation
 from ...id import SteamID
 from ...transport import BaseSteamTransport, TransportResponse
 from ...session import SteamLoginSession
+
+if TYPE_CHECKING:  # make market component independent from confirmation component
+    from ..confirmation import ConfirmationComponent, Confirmation
 
 from .models import (
     PrivacySettingsOptions,
@@ -39,18 +43,21 @@ from .utils import make_alias_profile_url, make_steam_id_profile_url
 
 TRADE_TOKEN_RE = re.compile(r"\d+&token=(.+)\" readonly")
 PROFILE_DATA_RE = re.compile(r"data-profile-edit=\"(.+)\" data-profile-badges")
+STEAM_GUARD_REQ_RE = re.compile(r"Your account requires (<a [^>]+>)?Steam Guard Mobile Authenticator")
+API_KEY_RE = re.compile(r"<p>Key: ([0-9A-F]+)</p>")
 
 
 class ProfileComponent(ProfilePublicComponent):
     """Component to work with `Steam` profile."""
 
-    __slots__ = ("_session", "_trade_token", "_alias")
+    __slots__ = ("_session", "_trade_token", "_alias", "_conf")
 
     def __init__(
         self,
         session: SteamLoginSession,
         trade_token: str | None = None,
         alias: str | None = None,
+        confirmation: "ConfirmationComponent | None" = None,
     ):
         super().__init__(session.transport)
 
@@ -58,6 +65,7 @@ class ProfileComponent(ProfilePublicComponent):
 
         self._trade_token = trade_token
         self._alias = alias
+        self._conf = confirmation
 
     @property
     def trade_token(self) -> str | None:
@@ -519,3 +527,86 @@ class ProfileComponent(ProfilePublicComponent):
 
         loop = asyncio.get_running_loop()
         return asyncio.wait(map(loop.create_task, [self.update_alias(), self.update_trade_token()]))
+
+    # guess we don't need api key as attr
+    async def get_api_key(self) -> str | None:
+        """
+        Get `Steam Web API` key.
+
+        :return: api key or ``None`` if not registered yet.
+        :raises TransportError: arbitrary reasons.
+        :raises SteamError: unable to get api key.
+        """
+
+        r = await self._transport.request(
+            "GET",
+            STEAM_URL.COMMUNITY / "dev/apikey",
+            params={"l": "english"},  # force english
+            response_mode="text",
+        )
+        rt: str = r.content
+
+        if "You must have a validated email address to create a Steam Web API key" in rt:
+            raise SteamError("Validated email address required to create a Steam Web API key")
+        elif STEAM_GUARD_REQ_RE.search(rt):
+            raise SteamError("Steam Guard Mobile Authenticator is required")
+        elif "<h2>Access Denied</h2>" in rt:
+            raise SteamError("Access to Steam Web Api page is denied")
+
+        if search := API_KEY_RE.search(rt):
+            return search.group(1)
+
+    async def revoke_api_key(self):
+        """Revoke old `Steam Web API` key."""
+
+        data = {
+            "sessionid": self._transport.session_id,
+            "Revoke": "Revoke My Steam Web API Key",  # whatever
+        }
+        await self._transport.request("POST", STEAM_URL.COMMUNITY / "dev/revokekey", data=data)
+
+    async def confirm_api_key_request(self, req_id: int) -> "Confirmation":
+        """Confirm `Steam Web API` key registration request."""
+
+        if self._conf is None:
+            raise ValueError("Confirmation component is required to use this method")
+
+        conf = await self._conf.get_confirmation(req_id)
+        await self._conf.allow_confirmation(conf)
+
+        return conf
+
+    async def register_new_api_key(self, domain: str) -> str:
+        """
+        Request registration of a new `Steam Web API` key.
+
+        :param domain: on which domain api key will be registered.
+        :return: api key.
+        :raises TransportError: arbitrary reasons.
+        :raises EResultError: ordinary reasons.
+        :raises NeedMobileConfirmation: action requires mobile app confirmation.
+        """
+
+        await self.revoke_api_key()  # revoke old one as browser do
+
+        data = {
+            "domain": domain,
+            "request_id": 0,
+            "sessionid": self._transport.session_id,
+            "agreeToTerms": "true",
+        }
+        url = STEAM_URL.COMMUNITY / "dev/requestkey"
+        r = await self._transport.request("POST", url, data=data, response_mode="json")
+        rj: dict = r.content
+
+        if EResult(rj.get("success")) is EResult.PENDING and rj.get("requires_confirmation"):
+            if self._conf is None:
+                raise NeedMobileConfirmation(rj["request_id"])
+
+            await self.confirm_api_key_request(rj["request_id"])
+            r = await self._transport.request("POST", url, data=data, response_mode="json")  # repeat
+            rj = r.content
+
+        EResultError.check_data(rj)
+
+        return rj["api_key"]

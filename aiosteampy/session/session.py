@@ -767,8 +767,8 @@ class SteamLoginSession:
 
     async def check_authenticated(self) -> bool:
         """
-        Check if the current `Steam` login session is authenticated against `Steam Community` domain,
-        by making request to the `Steam Community`.
+        Check if the current `Steam` login session is
+        authenticated against `Steam Community` domain.
         """
 
         if (access_token := self.access_token) is None or access_token.expired:

@@ -8,14 +8,20 @@ from ..id import SteamID
 from .protobuf import EAuthTokenPlatformType
 from .session import SteamLoginSession, STEAM_ACCESS_TOKEN_COOKIE, STEAM_REFRESH_TOKEN_COOKIE
 
-LooseCookies = Cookie | list[dict] | Path
+LooseCookies = list[Cookie] | list[dict] | Path
 
 MOBILE_COOKIES = {"mobileClientVersion", "mobileClient"}
 TOKENS_COOKIES = {STEAM_ACCESS_TOKEN_COOKIE, STEAM_REFRESH_TOKEN_COOKIE}
 
 
-async def restore_from_cookies(session: SteamLoginSession, cookies: LooseCookies):
-    """Load cookies into ``session`` and try to restore ``session`` if possible."""
+async def restore_from_cookies(session: SteamLoginSession, cookies: LooseCookies, ensure_auth: bool = False):
+    """
+    Load cookies into ``session`` and try to restore ``session`` if possible.
+
+    :param session: ``SteamLoginSession`` instance.
+    :param cookies: cookies to load.
+    :param ensure_auth: whether to check authentication status after loading cookies.
+    """
 
     if isinstance(cookies, Path):
         with cookies.open("r") as f:
@@ -24,6 +30,8 @@ async def restore_from_cookies(session: SteamLoginSession, cookies: LooseCookies
     steam_id: SteamID | None = None
 
     for cookie in cookies:
+        cookie: Cookie
+
         if isinstance(cookie, dict):
             cookie = Cookie.from_dict(cookie)
 
@@ -53,9 +61,7 @@ async def restore_from_cookies(session: SteamLoginSession, cookies: LooseCookies
     if not session.steam_id:
         session._steam_id = steam_id
 
-    if not await session.check_authenticated():
-        refresh_token = session.refresh_token
-        if refresh_token is None or refresh_token.expired:
-            raise ValueError("Session cannot be restored from cookies as refresh token is not present or expired")
-
+    if (session.access_token is None or session.access_token.expired) or (
+        ensure_auth and not await session.check_authenticated()
+    ):
         await session.refresh_access_tokens()

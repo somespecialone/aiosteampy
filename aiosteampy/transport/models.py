@@ -2,8 +2,10 @@ from collections.abc import Mapping
 from typing import Literal, Any, Self
 from dataclasses import dataclass, asdict, field
 from http.cookies import Morsel
+from datetime import datetime
 
 from .types import JSON_SAFE_COOKIE_DICT, Headers
+from .utils import format_http_date
 
 
 @dataclass(slots=True, eq=False)
@@ -31,7 +33,7 @@ class Cookie:
 
     # meta
     comment: str = ""
-    created_at: str | None = None
+    created_at: str | None = field(default_factory=lambda: format_http_date(datetime.now()))
     last_accessed_at: str | None = None
 
     # non‑standard attributes or future RFCs

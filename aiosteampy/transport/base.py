@@ -4,20 +4,14 @@ from datetime import datetime
 
 from yarl import URL
 
-from ..constants import EResult, STEAM_URL, Language
 from ..exceptions import EResultError, SessionExpired
 
-from .types import Headers, Payload, Params, HttpMethod, ResponseMode, WebAPIInterface, WebAPIMethod, WebAPIVersion
+from .types import Headers, Payload, Params, HttpMethod, ResponseMode
 from .exceptions import TransportError, ResourceNotModified, RateLimitExceeded
-from .utils import format_http_date, parse_http_date
+from .utils import parse_http_date
 from .models import Cookie, TransportResponse
 
 Cookies = list[Cookie]
-
-SESSION_ID_COOKIE = "sessionid"
-LANG_COOKIE = "Steam_Language"
-
-BASE_WEB_API_URL = URL("https://api.steampowered.com")
 
 
 class BaseSteamTransport(metaclass=ABCMeta):
@@ -111,43 +105,6 @@ class BaseSteamTransport(metaclass=ABCMeta):
 
         for cookie in cookies:
             self.add_cookie(cookie)
-
-    @property
-    def session_id(self) -> str | None:
-        """`sessionid` cookie value for `Community` domain."""
-        return self.get_session_id(STEAM_URL.COMMUNITY)
-
-    # can't have domain literals (community, store, etc.) as url cannot be literal value :(
-    # https://github.com/DoctorMcKay/node-steamcommunity/blob/d3e90f6fd3bea65b1ebc1bdaec754f99dcc8ddb3/index.js#L181
-    def get_session_id(self, domain: URL) -> str | None:
-        """Get `sessionid` cookie value for `Steam` ``domain``."""
-        return self.get_cookie_value(domain, SESSION_ID_COOKIE)
-
-    def set_session_id(self, value: str | None, domain: URL):
-        """Set `sessionid` cookie value for `Steam` ``domain``."""
-
-        if value is None:
-            self.remove_cookie(domain, SESSION_ID_COOKIE)
-        else:
-            cookie = Cookie(
-                SESSION_ID_COOKIE,
-                value,
-                domain.host,
-                host_only=True,
-                secure=True,
-                same_site="None",
-                created_at=format_http_date(datetime.now()),
-            )
-
-            self.add_cookie(cookie)
-
-    # TODO need to set default somewhere
-    @property
-    def language(self) -> Language | None:
-        """Language of `Steam` responses, descriptions, et cetera."""
-
-        if lang_cookie_val := self.get_cookie_value(STEAM_URL.COMMUNITY, LANG_COOKIE):
-            return Language(lang_cookie_val)
 
     @abstractmethod
     async def _request(
@@ -245,9 +202,9 @@ class BaseSteamTransport(metaclass=ABCMeta):
         .. note:: This method along with transport intended to use only to make request to `Steam`.
 
         :param method: HTTP method verb.
-        :param url: target URL.
+        :param url: target `URL`.
         :param params: query string parameters.
-        :param data: `application/x-www-form-urlencoded` payload
+        :param data: `application/x-www-form-urlencoded` payload.
         :param json: JSON serializable payload.
         :param multipart: multipart form data payload.
         :param headers: specific HTTP headers for this request.
@@ -261,6 +218,8 @@ class BaseSteamTransport(metaclass=ABCMeta):
 
         if sum(map(bool, (data, json, multipart))) > 1:
             raise ValueError("`data`, `json` and `multipart` args are mutually exclusive")
+
+        # we can check access token expiration here and raise SessionExpired early
 
         try:
             resp = await self._request(
@@ -281,13 +240,13 @@ class BaseSteamTransport(metaclass=ABCMeta):
             raise TransportError from e
 
         # resource not modified. We would get this when "If-Modified-Since" header is provided
-        if resp.status == 304 and "If-Modified-Since" in (headers or {}):
+        if resp.status == 304:
             last_modified = parse_http_date(resp.headers["Last-Modified"])
             expires = parse_http_date(resp.headers["Expires"])
 
             raise ResourceNotModified(last_modified, expires)
 
-        if not redirects and 300 <= resp.status < 400 and "/login" in (resp.headers.get("Location") or ()):
+        if not redirects and (300 <= resp.status < 400) and "/login" in (resp.headers.get("Location") or ()):
             raise SessionExpired from TransportError(resp)
 
         if resp.status == 429:
@@ -297,70 +256,6 @@ class BaseSteamTransport(metaclass=ABCMeta):
             raise TransportError(resp)
 
         return resp
-
-    async def call_web_api(
-        self,
-        http_method: HttpMethod,
-        interface: WebAPIInterface | str,
-        method: WebAPIMethod | str,
-        version: WebAPIVersion = "v1",
-        *,
-        params: Params | None = None,
-        data: Payload | None = None,
-        json: Payload | None = None,
-        multipart: Payload | None = None,
-        headers: Headers | None = None,
-        response_mode: ResponseMode = "json",
-    ) -> bytes | str | Any | None:
-        """
-        Perform `Steam Web API` request.
-
-        .. seealso:: https://steamapi.xpaw.me.
-
-        :param http_method: HTTP method verb.
-        :param interface: API interface name.
-        :param method: API method name.
-        :param version: API version. Currently only `v1` version is supported by `Steam`.
-        :param params: query string parameters.
-        :param data: `application/x-www-form-urlencoded` payload
-        :param json: JSON serializable payload.
-        :param multipart: multipart form data payload.
-        :param headers: specific HTTP headers for this request.
-        :param response_mode: return response body in specified format.
-        :return: response body in specified format.
-        :raises TransportError: unable to process response.
-        :raises SessionExpired: current login session is expired.
-        """
-
-        try:
-            r = await self.request(
-                http_method,
-                BASE_WEB_API_URL / interface / method / version,
-                params=params,
-                data=data,
-                json=json,
-                multipart=multipart,
-                headers=headers,
-                redirects=False,
-                raise_for_status=True,
-                response_mode=response_mode,
-            )
-        except TransportError as e:
-            if e.response and e.response.status == 403:
-                raise SessionExpired from e  # also will be raised if api key or access token invalid which sad
-
-            raise
-
-        if r.status < 200 or r.status >= 300:
-            raise TransportError(r)
-
-        eresult = EResult(int(r.headers.get("X-eresult", 0)))
-
-        if eresult is not EResult.OK:
-            eresult_err_msg = r.headers.get("X-error_message", "Error calling Steam Web Api")
-            raise EResultError(eresult, eresult_err_msg)
-
-        return r.content
 
     async def close(self) -> None:
         """Close transport session and free resources."""

@@ -1,7 +1,9 @@
-"""Steam login session implementing auth flow."""
+"""
+`Steam` auth session implementation. Handles authentication process with tokens negotiation.
+"""
 
+from .exceptions import ConfirmationRequired, LoginError
+from .models import SteamJWT
 from .protobuf import EAuthSessionGuardType, EAuthTokenPlatformType
-from .utils import parse_qr_challenge_url, generate_session_id
-from .exceptions import LoginError, ConfirmationRequired
-from .session import SteamLoginSession
-from .helpers import restore_from_cookies
+from .session import SteamSession
+from .utils import generate_session_id, parse_qr_challenge_url

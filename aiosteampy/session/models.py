@@ -1,12 +1,12 @@
 import json
-
-from urllib.parse import quote, unquote
+from base64 import b64decode
+from dataclasses import dataclass, field
 from datetime import datetime
-from base64 import b64decode, b64encode
-from typing import Self, TypedDict, ClassVar
-from dataclasses import dataclass, field, asdict
+from typing import Self, TypedDict
 
 from ..id import SteamID
+
+ALTCHARS = b"-_"
 
 
 class JWTHeader(TypedDict):
@@ -29,10 +29,8 @@ class SteamJWTClaims(TypedDict, total=False):
     ip_confirmer: str
 
 
-@dataclass(eq=False, slots=True)
+@dataclass(slots=True)
 class SteamJWT:
-    ALTCHARS: ClassVar[bytes] = b"-_"
-
     raw: str = field(repr=False)
     """Raw encoded JWT token."""
     header: JWTHeader
@@ -42,39 +40,35 @@ class SteamJWT:
     signature: bytes = field(repr=False)
     """JWT signature."""
 
-    @property
-    def sub(self) -> str:
-        return self.claims["sub"]
+    subject: SteamID = field(init=False)
+    """Parsed token subject."""
+
+    def __post_init__(self):
+        self.subject = SteamID(self.claims["sub"])
 
     @property
-    def aud(self) -> list[str]:
+    def audiences(self) -> list[str]:
         """List of audiences (e.g. 'web:store')."""
         return self.claims["aud"]
 
     @property
-    def exp(self) -> int:
-        """Expiration ts."""
-        return self.claims["exp"]
-
-    @property
-    def expiration(self) -> datetime:
-        """Parsed expiration datetime."""
-        return datetime.fromtimestamp(self.exp)
-
-    @property
-    def subject(self) -> SteamID:
-        """Parsed token subject."""
-        return SteamID(self.sub)
+    def expire_at(self) -> datetime:
+        """Expiration ``datetime``."""
+        return datetime.fromtimestamp(self.claims["exp"])
 
     @property
     def expired(self) -> bool:
         """If current token has been expired."""
-        return self.expiration <= datetime.now()
+        return self.expire_at <= datetime.now()
+
+    @property
+    def issued_at(self) -> datetime:
+        return datetime.fromtimestamp(self.claims["iat"])
 
     @property
     def cookie_value(self) -> str:
-        """Encoded token as cookie value for *Steam* domain."""
-        return self.sub + "%7C%7C" + self.raw  # steam id 64 || encoded token
+        """Encoded token as cookie value for `Steam`."""
+        return self.claims["sub"] + "%7C%7C" + self.raw  # steam id 64 || encoded token
 
     @staticmethod
     def _restore_padding(segment: str) -> str:
@@ -89,8 +83,33 @@ class SteamJWT:
         except ValueError:
             raise ValueError("Invalid JWT token")
 
-        header = json.loads(b64decode(cls._restore_padding(header), altchars=cls.ALTCHARS))
-        claims = json.loads(b64decode(cls._restore_padding(claims), altchars=cls.ALTCHARS))
-        signature = b64decode(cls._restore_padding(signature), altchars=cls.ALTCHARS)
+        header = json.loads(b64decode(cls._restore_padding(header), altchars=ALTCHARS))
+        claims = json.loads(b64decode(cls._restore_padding(claims), altchars=ALTCHARS))
+        signature = b64decode(cls._restore_padding(signature), altchars=ALTCHARS)
 
         return cls(encoded_token, header, claims, signature)
+
+    @property
+    def is_refresh_token(self) -> bool:
+        """Is a `refresh` token."""
+        return "derive" in self.audiences
+
+    @property
+    def is_access_token(self) -> bool:
+        """Is an `access` token."""
+        return not self.is_refresh_token
+
+    @property
+    def for_mobile(self) -> bool:
+        """Issued for `mobile app` platform."""
+        return "mobile" in self.audiences
+
+    @property
+    def for_client(self) -> bool:
+        """Issued for `Steam Client` platform."""
+        return "client" in self.audiences
+
+    @property
+    def for_web(self):
+        """Issued for `web` (browser) platform."""
+        return not self.for_mobile and not self.for_client and "web" in self.audiences

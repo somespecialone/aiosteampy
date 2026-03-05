@@ -1041,7 +1041,7 @@ class MarketMixin(ConfirmationMixin, SteamCommunityPublicMixin):
                 for a_data in context_data.values():
                     # because I don't know why in data `id` and `unowned_id` combinations and how that suppose to work
                     key_id = create_ident_code(a_data["id"], context_id, app_id)
-                    key_unowned_id = create_ident_code(a_data["unowned_id"], context_id, app_id)
+                    key_unowned_id = create_ident_code(a_data["unowned_id"], a_data.get("unowned_contextid", context_id), app_id)
                     if key_id not in item_descrs_map or key_unowned_id not in item_descrs_map:
                         econ_item = MarketHistoryListingItem(
                             asset_id=int(a_data["id"]),

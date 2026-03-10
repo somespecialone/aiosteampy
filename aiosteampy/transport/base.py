@@ -1,15 +1,12 @@
-from typing import Literal, Any, overload
 from abc import ABCMeta, abstractmethod
-from datetime import datetime
+from typing import overload
 
 from yarl import URL
 
-from ..exceptions import EResultError, SessionExpired
-
-from .types import Headers, Payload, Params, HttpMethod, ResponseMode
-from .exceptions import TransportError, ResourceNotModified, RateLimitExceeded
-from .utils import parse_http_date
+from .exceptions import RateLimitExceeded, ResourceNotModified, TransportError
 from .models import Cookie, TransportResponse
+from .types import Headers, HttpMethod, Params, Payload, ResponseMode
+from .utils import parse_http_date
 
 Cookies = list[Cookie]
 
@@ -245,9 +242,6 @@ class BaseSteamTransport(metaclass=ABCMeta):
             expires = parse_http_date(resp.headers["Expires"])
 
             raise ResourceNotModified(last_modified, expires)
-
-        if not redirects and (300 <= resp.status < 400) and "/login" in (resp.headers.get("Location") or ()):
-            raise SessionExpired from TransportError(resp)
 
         if resp.status == 429:
             raise RateLimitExceeded(resp)

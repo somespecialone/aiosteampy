@@ -1,13 +1,14 @@
 from collections.abc import Mapping
-from typing import Literal, Any, Self
-from dataclasses import dataclass, asdict, field
-from http.cookies import Morsel
+from dataclasses import asdict, dataclass, field
 from datetime import datetime
+from http.cookies import Morsel
+from typing import Any, Literal, Self
 
 from .types import JSON_SAFE_COOKIE_DICT, Headers
 from .utils import format_http_date
 
 
+# TODO date fields better be datetime
 @dataclass(slots=True, eq=False)
 class Cookie:
     """Universal cookie data model. **RFC 6265**."""

@@ -1,5 +1,4 @@
 from ..exceptions import SteamError
-
 from .protobuf import CAuthenticationAllowedConfirmation, EAuthSessionGuardType
 
 
@@ -13,7 +12,7 @@ class ConfirmationRequired(LoginError):
     def __init__(
         self,
         confirmations: list[CAuthenticationAllowedConfirmation],
-        allowed_guard_types: set[EAuthSessionGuardType],
+        allowed_guard_types: tuple[EAuthSessionGuardType, ...],
     ):
         self.confirmations = confirmations
         self._allowed_guard_types = allowed_guard_types

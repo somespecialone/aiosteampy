@@ -5,6 +5,8 @@
 # and then modified by the author for the sake of speed and simplicity
 
 __all__ = (
+    "CAuthenticationAccessTokenGenerateForAppRequest",
+    "CAuthenticationAccessTokenGenerateForAppResponse",
     "CAuthenticationAllowedConfirmation",
     "CAuthenticationBeginAuthSessionViaCredentialsRequest",
     "CAuthenticationBeginAuthSessionViaCredentialsResponse",
@@ -25,6 +27,7 @@ __all__ = (
     "EAuthTokenAppType",
     "EAuthTokenPlatformType",
     "ESessionPersistence",
+    "ETokenRenewalType",
 )
 
 from dataclasses import dataclass
@@ -321,3 +324,27 @@ class CAuthenticationUpdateAuthSessionWithMobileConfirmationRequest(betterproto2
     persistence: "ESessionPersistence" = betterproto2.field(
         6, betterproto2.TYPE_ENUM, default_factory=lambda: ESessionPersistence(0)
     )
+
+
+class ETokenRenewalType(betterproto2.Enum):
+    k_ETokenRenewalType_None = 0
+
+    k_ETokenRenewalType_Allow = 1
+
+
+@dataclass(eq=False, repr=False)
+class CAuthenticationAccessTokenGenerateForAppRequest(betterproto2.Message):
+    refresh_token: "str" = betterproto2.field(1, betterproto2.TYPE_STRING)
+
+    steamid: "int" = betterproto2.field(2, betterproto2.TYPE_FIXED64)
+
+    renewal_type: "ETokenRenewalType" = betterproto2.field(
+        3, betterproto2.TYPE_ENUM, default_factory=lambda: ETokenRenewalType(0)
+    )
+
+
+@dataclass(eq=False, repr=False)
+class CAuthenticationAccessTokenGenerateForAppResponse(betterproto2.Message):
+    access_token: "str" = betterproto2.field(1, betterproto2.TYPE_STRING)
+
+    refresh_token: "str" = betterproto2.field(2, betterproto2.TYPE_STRING)

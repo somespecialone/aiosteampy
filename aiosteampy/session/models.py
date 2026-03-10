@@ -7,6 +7,7 @@ from typing import Self, TypedDict
 from ..id import SteamID
 
 ALTCHARS = b"-_"
+COOKIE_SEP = "%7C%7C"
 
 
 class JWTHeader(TypedDict):
@@ -52,14 +53,14 @@ class SteamJWT:
         return self.claims["aud"]
 
     @property
-    def expire_at(self) -> datetime:
+    def expires_at(self) -> datetime:
         """Expiration ``datetime``."""
         return datetime.fromtimestamp(self.claims["exp"])
 
     @property
     def expired(self) -> bool:
         """If current token has been expired."""
-        return self.expire_at <= datetime.now()
+        return self.expires_at <= datetime.now()
 
     @property
     def issued_at(self) -> datetime:
@@ -68,11 +69,17 @@ class SteamJWT:
     @property
     def cookie_value(self) -> str:
         """Encoded token as cookie value for `Steam`."""
-        return self.claims["sub"] + "%7C%7C" + self.raw  # steam id 64 || encoded token
+        return self.claims["sub"] + COOKIE_SEP + self.raw  # steam id 64 || encoded token
 
     @staticmethod
     def _restore_padding(segment: str) -> str:
         return segment + "=" * (-len(segment) % 4)
+
+    @classmethod
+    def from_cookie_value(cls, cookie_value: str) -> Self:
+        """Parse encoded JWT token from cookie value."""
+        _, encoded_token = cookie_value.split(COOKIE_SEP)
+        return cls.parse(encoded_token)
 
     @classmethod
     def parse(cls, encoded_token: str) -> Self:

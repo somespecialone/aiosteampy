@@ -1,40 +1,34 @@
 import asyncio
 import hashlib
 import hmac
-import json
-import re
 import struct
-import time
-from base64 import b64decode, b64encode
-from contextlib import asynccontextmanager
-from datetime import datetime, timedelta, timezone
-from enum import Enum, auto
+from base64 import b64encode
+from collections.abc import Awaitable
+from datetime import datetime
 from functools import wraps
-from typing import TYPE_CHECKING, Callable, Literal
+from typing import Callable, Literal
 
 from betterproto2 import Message
 from rsa import PublicKey
 from rsa import encrypt as rsa_encrypt
 from yarl import URL
 
-from ..constants import STEAM_URL, EResult
-from ..exceptions import EResultError
+from ..constants import STEAM_URL
 from ..id import SteamID
 from ..transport import (
-    AiohttpSteamTransport,
     BaseSteamTransport,
     Cookie,
     ResponseMode,
     TransportError,
+    TransportResponse,
     format_http_date,
 )
-from ..types import Coro
+from ..web_api import HttpMethod, SteamWebAPI
 from .exceptions import *
 from .models import SteamJWT
 from .protobuf import *
 from .utils import generate_session_id, parse_qr_challenge_url
 
-# https://github.com/DoctorMcKay/node-steam-session/blob/a13bdf1e9c9a42c17a13db2b6be269e0c740fb07/src/helpers.ts#L17
 API_HEADERS = {
     "Accept": "application/json, text/plain, */*",
     "Sec-Fetch-Dest": "empty",
@@ -50,30 +44,15 @@ BROWSER_HEADERS = {
 STEAM_ACCESS_TOKEN_COOKIE = "steamLoginSecure"
 STEAM_REFRESH_TOKEN_COOKIE = "steamRefresh_steam"
 
-# LOGOUT_URLS_RE = re.compile(r"TransferLogout\(\s+(.+),\srgParameters")
-# LOGOUT_TOKEN_RE = re.compile(r"rgParameters.token =\s\"(.+)\";")
-# LOGOUT_AUTH_RE = re.compile(r"auth:\s\"(.+)\"")
-
 I_AUTH_API_BASE_URL = STEAM_URL.WEB_API / "IAuthenticationService"
 LOGIN_URL = URL("https://login.steampowered.com")
 SESSION_ID_COOKIE = "sessionid"
-
-AuthWebAPIMethod = Literal[
-    "BeginAuthSessionViaCredentials",
-    "BeginAuthSessionViaQR",
-    "GetPasswordRSAPublicKey",
-    "UpdateAuthSessionWithSteamGuardCode",
-    "PollAuthSessionStatus",
-    "GenerateAccessTokenForApp",
-    "GetAuthSessionInfo",
-    "UpdateAuthSessionWithMobileConfirmation",
-]
 
 
 def mobile_platform(func):
     @wraps(func)
     def wrapper(self: "SteamSession", *args, **kwargs):
-        if self._platform_type is not EAuthTokenPlatformType.k_EAuthTokenPlatformType_MobileApp:
+        if not self.is_mobile:
             raise ValueError("This method is only supported for session with mobile app platform type")
         return func(self, *args, **kwargs)
 
@@ -83,7 +62,7 @@ def mobile_platform(func):
 class SteamSession:
     __slots__ = (
         "_platform_type",
-        "_transport",
+        "_api",
         "_account_name",
         "_access_token",
         "_refresh_token",
@@ -123,14 +102,16 @@ class SteamSession:
 
         3) **Restoration from refresh token**:
             - Create session instance with valid ``refresh_token``.
+            - Call ``refresh_access_token`` to request new access token if you need it.
 
-        After successful finalization, the *tokens* has been set and session
-        can be used to obtain `Steam` websites cookies.
+        After successful finalization or restoration, the *tokens* are set and session
+        can be used to obtain `Steam` websites cookies with ``obtain_cookies`` method.
 
         :param refresh_token: previously obtained and valid `refresh token` for the account.
+            If specified, ``steam_id`` and ``platform`` properties will be set automatically,
+            while ``platform_type`` argument ignored.
         :param platform_type: The platform type for which the client is being initialized.
-            Defaults to ``EAuthTokenPlatformType.k_EAuthTokenPlatformType_WebBrowser``.
-            Must not be ``EAuthTokenPlatformType.k_EAuthTokenPlatformType_SteamClient``.
+            Defaults to ``WebBrowser``. Must not be ``SteamClient``.
         :param transport: A custom transport instance implementing the required
             HTTP communication interface. If provided, ``proxy`` cannot also be set.
         :param proxy: A proxy URL to route HTTP requests through when using the *default HTTP transport*.
@@ -139,8 +120,8 @@ class SteamSession:
 
         if platform_type is EAuthTokenPlatformType.k_EAuthTokenPlatformType_SteamClient:
             raise ValueError("Steam Client platform is not supported")
-        if transport is not None and proxy is not None:
-            raise ValueError("Proxy is not supported for custom transport")
+
+        self._api = SteamWebAPI(transport=transport, proxy=proxy)
 
         self._account_name: str | None = None
         self._access_token: SteamJWT | None = None
@@ -161,12 +142,14 @@ class SteamSession:
                 # issue a warning for now as early measure
                 warnings.warn("Provided refresh token is expired. Are you sure you want to use it?", RuntimeWarning)
 
-            # https://github.com/DoctorMcKay/node-steam-session/blob/a13bdf1e9c9a42c17a13db2b6be269e0c740fb07/src/LoginSession.ts#L281
-            if not refresh_token.is_refresh_token:
+            if refresh_token.is_access_token:
                 raise ValueError("Provided token is an access token, not a refresh token")
 
             if refresh_token.for_web:
                 platform_type = EAuthTokenPlatformType.k_EAuthTokenPlatformType_WebBrowser
+
+                self._set_refresh_token(refresh_token)
+
             elif refresh_token.for_mobile:
                 platform_type = EAuthTokenPlatformType.k_EAuthTokenPlatformType_MobileApp
             else:  # client
@@ -177,22 +160,32 @@ class SteamSession:
 
         self._platform_type = platform_type
 
-        self._transport: BaseSteamTransport = transport or AiohttpSteamTransport(proxy=proxy)
-
-        # add mobile app specific user agent and cookie
-        if platform_type is EAuthTokenPlatformType.k_EAuthTokenPlatformType_MobileApp:
-            # https://github.com/DoctorMcKay/node-steam-session/blob/a13bdf1e9c9a42c17a13db2b6be269e0c740fb07/src/AuthenticationClient.ts#L412
-            self._transport.user_agent = "okhttp/4.9.2"
-            self._transport.add_cookie(Cookie("mobileClientVersion", "777777 3.10.3", STEAM_URL.WEB_API.host))
-            self._transport.add_cookie(Cookie("mobileClient", "android", STEAM_URL.WEB_API.host))
+        if self.is_mobile:  # add mobile app specific user agent and cookie
+            self._api.transport.user_agent = "okhttp/4.9.2"
+            self._api.transport.add_cookie(Cookie("mobileClientVersion", "777777 3.10.3", STEAM_URL.WEB_API.host))
+            self._api.transport.add_cookie(Cookie("mobileClient", "android", STEAM_URL.WEB_API.host))
 
     @property
     def platform(self) -> EAuthTokenPlatformType:
         return self._platform_type
 
     @property
+    def is_mobile(self) -> bool:
+        """Whether session is initialized with mobile app platform type."""
+        return self._platform_type is EAuthTokenPlatformType.k_EAuthTokenPlatformType_MobileApp
+
+    @property
+    def is_web(self) -> bool:
+        """Whether session is initialized with web browser platform type."""
+        return self._platform_type is EAuthTokenPlatformType.k_EAuthTokenPlatformType_WebBrowser
+
+    @property
+    def web_api(self) -> SteamWebAPI:
+        return self._api
+
+    @property
     def transport(self) -> BaseSteamTransport:
-        return self._transport
+        return self._api.transport
 
     @property
     def steam_id(self) -> SteamID:
@@ -208,7 +201,7 @@ class SteamSession:
     def access_token(self) -> SteamJWT | None:
         """
         Access token issued by `Steam` during login process.
-        At the current moment can be used only for `Steam Web API`.
+        *Web* `access token` at the current moment can be used only for `Steam Web API`.
         """
         return self._access_token
 
@@ -217,10 +210,9 @@ class SteamSession:
         """Refresh token. Required to renew `access token` or obtaining `auth cookies`."""
         return self._refresh_token
 
-    # session id needed only at and after obtaining web cookies
     @property
     def session_id(self) -> str | None:
-        """`sessionid` cookie value for `Community` domain."""
+        """`sessionid` cookie value."""
         return self._session_id
 
     def _set_state(self, request_id=b"", client_id=0, poll_interval=0.0):
@@ -228,15 +220,43 @@ class SteamSession:
         self._client_id = client_id
         self._poll_interval = poll_interval
 
-    async def _call_auth_web_api(
+    def _set_access_token(self, token: str | SteamJWT):
+        """Parse access token string, set session and web api attributes."""
+
+        if not isinstance(token, SteamJWT):
+            token = SteamJWT.parse(token)
+
+        self._access_token = token
+        self._api._access_token = token
+
+    def _set_refresh_token(self, token: str | SteamJWT):
+        """Parse refresh token string, create cookie if necessary."""
+
+        if not isinstance(token, SteamJWT):
+            token = SteamJWT.parse(token)
+
+        if token.for_web:  # set cookie if session is for web
+            self._refresh_token = token
+            cookie = Cookie(
+                STEAM_REFRESH_TOKEN_COOKIE,
+                token.cookie_value,
+                LOGIN_URL.host,
+                expires=format_http_date(token.expires_at),  # token expire value instead of 400 days from browser
+                host_only=True,
+                http_only=True,
+                secure=True,
+                same_site="None",
+            )
+
+            self._api.transport.add_cookie(cookie)
+
+    async def _auth_web_api(
         self,
-        http_method: Literal["GET", "POST"],
-        api_method: AuthWebAPIMethod,
+        http_method: HttpMethod,
+        api_method: str,
         protobuf: Message,
         response_mode: ResponseMode = "bytes",
     ) -> bytes:
-        """Wrapper method. Intended only to call `IAuthenticationService` methods."""
-
         params = None
         multipart = None
 
@@ -244,54 +264,45 @@ class SteamSession:
 
         if http_method == "GET":
             params = {**(params or {}), **protobuf_data}
-            # https://github.com/DoctorMcKay/node-steam-session/blob/a13bdf1e9c9a42c17a13db2b6be269e0c740fb07/src/transports/WebApiTransport.ts#L48
-            if self._platform_type is EAuthTokenPlatformType.k_EAuthTokenPlatformType_MobileApp:
+            if self.is_mobile:
                 params |= {"origin": "SteamMobile"}
 
         else:  # POST
             multipart = {**(multipart or {}), **protobuf_data}
 
         headers = {**API_HEADERS}
-        if self._platform_type is EAuthTokenPlatformType.k_EAuthTokenPlatformType_WebBrowser:
+        if self.is_web:
             headers |= BROWSER_HEADERS
 
-        r = await self._transport.request(
+        return await self._api.request(
             http_method,
-            I_AUTH_API_BASE_URL / f"{api_method}/v1",
+            "IAuthenticationService/" + api_method,
             params=params,
             multipart=multipart,
             headers=headers,
             response_mode=response_mode,
-            redirects=False,
-            raise_for_status=True,
         )
 
-        if r.status < 200 or r.status >= 300:  # redirect means error
-            raise TransportError(r)
+    def _get_platform_data(self, device_name: str | None) -> tuple[str, CAuthenticationDeviceDetails]:
+        """Get platform data for `Steam` authentication request. Return `website id` and `device details`."""
 
-        EResultError.check_headers(r.headers, "Error calling Steam Web Api")
+        if device_name is None:
+            from importlib.metadata import version
 
-        return r.content
+            device_name = f"Aiosteampy/{version('aiosteampy')}"
 
-    def _get_platform_data(self) -> tuple[str, dict]:
-        """Get platform data for `Steam` authentication request. Return `website id` and `device details data`."""
-
-        match self._platform_type:
-            case EAuthTokenPlatformType.k_EAuthTokenPlatformType_WebBrowser:
-                return "Community", {
-                    "device_friendly_name": self._transport.user_agent or "Unknown",
-                    "platform_type": self._platform_type,
-                }
-            # https://github.com/DoctorMcKay/node-steam-session/blob/a13bdf1e9c9a42c17a13db2b6be269e0c740fb07/src/AuthenticationClient.ts#L409
-            case EAuthTokenPlatformType.k_EAuthTokenPlatformType_MobileApp:
-                return "Mobile", {
-                    "device_friendly_name": "Galaxy S25",
-                    "platform_type": self._platform_type,
-                    "os_type": -500,  # Android Unknown from EOSType,
-                    "gaming_device_type": 528,
-                }
-            case _:
-                raise ValueError(f"Unknown or unsupported platform type: {self._platform_type}")
+        if self.is_web:
+            return "Community", CAuthenticationDeviceDetails(
+                device_friendly_name=device_name,
+                platform_type=self._platform_type,
+            )
+        else:
+            return "Mobile", CAuthenticationDeviceDetails(
+                device_friendly_name=device_name,
+                platform_type=self._platform_type,
+                os_type=-500,  # Android Unknown from EOSType,
+                gaming_device_type=528,
+            )
 
     async def _get_rsa_data(self, account_name: str) -> tuple[int, int, int]:
         """Get rsa data (pub. key mod, pub. key exp, ts) from `Steam`."""
@@ -299,7 +310,7 @@ class SteamSession:
         msg = CAuthenticationGetPasswordRsaPublicKeyRequest(account_name=account_name)
 
         try:
-            r = await self._call_auth_web_api("GET", "GetPasswordRSAPublicKey", msg)
+            r = await self._auth_web_api("GET", "GetPasswordRSAPublicKey", msg)
             resp = CAuthenticationGetPasswordRsaPublicKeyResponse.parse(r)
 
         except Exception as e:
@@ -311,13 +322,13 @@ class SteamSession:
             resp.timestamp,
         )
 
-    async def submit_steam_guard_code(
+    async def _update_session_with_guard_code(
         self,
         auth_code: str,
         code_type: Literal[
             EAuthSessionGuardType.k_EAuthSessionGuardType_DeviceCode,
             EAuthSessionGuardType.k_EAuthSessionGuardType_EmailCode,
-        ] = EAuthSessionGuardType.k_EAuthSessionGuardType_DeviceCode,
+        ],
     ):
         """
         Update current session with `Steam Guard` code either email or device code.
@@ -340,9 +351,33 @@ class SteamSession:
         )
 
         try:
-            await self._call_auth_web_api("POST", "UpdateAuthSessionWithSteamGuardCode", msg, "meta")
+            await self._auth_web_api("POST", "UpdateAuthSessionWithSteamGuardCode", msg, "meta")
         except Exception as e:
             raise LoginError("Could not update auth session with Steam Guard code") from e
+
+    def submit_device_code(self, auth_code: str) -> Awaitable[None]:
+        """
+        Update current session with `device Steam Guard` code.
+        Equivalent of entering `Steam Guard` code during login process page and submitting after.
+
+        :param auth_code: `Steam Guard` two-factor (TOTP) code.
+        :raises LoginError: for ordinary reasons.
+        :raises ValueError: when session is not initialized.
+        """
+
+        return self._update_session_with_guard_code(auth_code, EAuthSessionGuardType.k_EAuthSessionGuardType_DeviceCode)
+
+    def submit_email_code(self, auth_code: str) -> Awaitable[None]:
+        """
+        Update current session with `email Steam Guard` code.
+        Equivalent of entering `Steam Guard` code during login process page and submitting after.
+
+        :param auth_code: `Steam Guard` two-factor (TOTP) code.
+        :raises LoginError: for ordinary reasons.
+        :raises ValueError: when session is not initialized.
+        """
+
+        return self._update_session_with_guard_code(auth_code, EAuthSessionGuardType.k_EAuthSessionGuardType_EmailCode)
 
     @mobile_platform
     async def get_session_info(self, qr_challenge_url: URL | str) -> CAuthenticationGetAuthSessionInfoResponse:
@@ -361,7 +396,7 @@ class SteamSession:
         msg = CAuthenticationGetAuthSessionInfoRequest(client_id=client_id)
 
         try:
-            r = await self._call_auth_web_api("POST", "GetAuthSessionInfo", msg)
+            r = await self._auth_web_api("POST", "GetAuthSessionInfo", msg)
         except Exception as e:
             raise LoginError("Could not get auth session info") from e
 
@@ -393,7 +428,6 @@ class SteamSession:
 
         version, client_id = parse_qr_challenge_url(qr_challenge_url)
 
-        # https://github.com/DoctorMcKay/node-steam-session/blob/a13bdf1e9c9a42c17a13db2b6be269e0c740fb07/src/LoginApprover.ts#L194
         signature_data = bytearray(18)
         struct.pack_into("<H", signature_data, 0, version)
         struct.pack_into("<Q", signature_data, 2, client_id)
@@ -410,7 +444,7 @@ class SteamSession:
         )
 
         try:
-            await self._call_auth_web_api("POST", "UpdateAuthSessionWithMobileConfirmation", msg, "meta")
+            await self._auth_web_api("POST", "UpdateAuthSessionWithMobileConfirmation", msg, "meta")
         except Exception as e:
             raise LoginError("Could not update auth session with mobile confirmation") from e
 
@@ -442,7 +476,7 @@ class SteamSession:
         if login_session._steam_id:
             raise ValueError("Passed session is already initialized")
 
-        qr_url = await login_session.with_qr()
+        qr_url, _ = await login_session.with_qr()
         await self.perform_session_mobile_confirmation(qr_url, shared_secret, persistence=persistence)
         await login_session.finalize()
 
@@ -452,6 +486,7 @@ class SteamSession:
         password: str,
         persistence: bool = True,
         *,
+        device_friendly_name: str | None = None,
         device_steam_guard_code: str | Callable[[], str] | None = None,
     ):
         """
@@ -466,6 +501,8 @@ class SteamSession:
         :param account_name: username.
         :param password: password.
         :param persistence: whether session should be persisted.
+        :param device_friendly_name: name of the device used for authentication.
+            Should be unique, identifiable, and human readable. Used when managing account sessions.
         :param device_steam_guard_code: two-factor (TOTP) code from `Steam Guard`.
             Can be generated using secrets or copied from the `Steam mobile app`.
             Preferably should be a ``callable`` as the device code will be generated as close to the submission moment
@@ -477,7 +514,7 @@ class SteamSession:
         pub_mod, pub_exp, rsa_ts = await self._get_rsa_data(account_name)
         encrypted_password = b64encode(rsa_encrypt(password.encode("utf-8"), PublicKey(pub_mod, pub_exp))).decode()
 
-        website_id, device_details_data = self._get_platform_data()
+        website_id, device_details = self._get_platform_data(device_friendly_name)
 
         msg = CAuthenticationBeginAuthSessionViaCredentialsRequest(
             account_name=account_name,
@@ -486,24 +523,24 @@ class SteamSession:
             remember_login=persistence,
             persistence=ESessionPersistence(int(persistence)),
             website_id=website_id,
-            device_details=CAuthenticationDeviceDetails(**device_details_data),
+            device_details=device_details,
+            # language=0,
+            # qos_level=2,
         )
 
         try:
-            r = await self._call_auth_web_api("POST", "BeginAuthSessionViaCredentials", msg)
+            r = await self._auth_web_api("POST", "BeginAuthSessionViaCredentials", msg)
         except Exception as e:
             raise LoginError("Could not begin auth session via credentials") from e
 
-        begin_session_data = CAuthenticationBeginAuthSessionViaCredentialsResponse.parse(r)
-
-        self._set_state(begin_session_data.request_id, begin_session_data.client_id, begin_session_data.interval)
-
-        self._steam_id = SteamID(begin_session_data.steamid)
-
-        if not begin_session_data.allowed_confirmations:
+        res = CAuthenticationBeginAuthSessionViaCredentialsResponse.parse(r)
+        if not res.allowed_confirmations:
             raise LoginError("No allowed confirmations!")
 
-        allowed_guard_types = {conf.confirmation_type for conf in begin_session_data.allowed_confirmations}
+        self._steam_id = SteamID(res.steamid)  # required for submitting
+        self._set_state(res.request_id, res.client_id, res.interval)
+
+        allowed_guard_types = tuple(conf.confirmation_type for conf in res.allowed_confirmations)
 
         if EAuthSessionGuardType.k_EAuthSessionGuardType_None in allowed_guard_types:  # confirmation isn't required
             await self.finalize()
@@ -515,18 +552,23 @@ class SteamSession:
             if callable(device_steam_guard_code):  # callback or factory
                 device_steam_guard_code = device_steam_guard_code()
 
-            await self.submit_steam_guard_code(device_steam_guard_code)
+            await self.submit_device_code(device_steam_guard_code)
             await self.finalize()
 
         else:
-            raise ConfirmationRequired(begin_session_data.allowed_confirmations, allowed_guard_types)
+            raise ConfirmationRequired(res.allowed_confirmations, allowed_guard_types)
 
-    async def with_qr(self) -> URL:
+    async def with_qr(
+        self,
+        device_friendly_name: str | None = None,
+    ) -> tuple[URL, list[CAuthenticationAllowedConfirmation]]:
         """
         Begin authentication session with auth QR.
         Produce QR auth url that needs to be scanned with `Steam App` on a mobile device
         or using another login session (look at ``approve_session`` method).
 
+        :param device_friendly_name: name of the device used for authentication.
+            Should be unique, identifiable, and human readable. Used when managing account sessions.
         :return: QR challenge url.
         :raises LoginError: for ordinary reasons.
         :raises ValueError: when session has mobile app platform type.
@@ -535,22 +577,20 @@ class SteamSession:
         if self._platform_type is EAuthTokenPlatformType.k_EAuthTokenPlatformType_MobileApp:
             raise ValueError("This method is not supported for mobile app platform type")
 
-        _, device_details_data = self._get_platform_data()
+        _, device_details = self._get_platform_data(device_friendly_name)
 
-        msg = CAuthenticationBeginAuthSessionViaQrRequest(
-            device_details=CAuthenticationDeviceDetails(**device_details_data),
-        )
+        msg = CAuthenticationBeginAuthSessionViaQrRequest(device_details=device_details)
 
         try:
-            r = await self._call_auth_web_api("POST", "BeginAuthSessionViaQR", msg)
+            r = await self._auth_web_api("POST", "BeginAuthSessionViaQR", msg)
         except Exception as e:
             raise LoginError("Could not start auth session via qr") from e
 
-        begin_session_data = CAuthenticationBeginAuthSessionViaQrResponse.parse(r)
+        res = CAuthenticationBeginAuthSessionViaQrResponse.parse(r)
 
-        self._set_state(begin_session_data.request_id, begin_session_data.client_id, begin_session_data.interval)
+        self._set_state(res.request_id, res.client_id, res.interval)
 
-        return URL(begin_session_data.challenge_url)  # or str?
+        return URL(res.challenge_url), res.allowed_confirmations
 
     async def _get_status(self) -> CAuthenticationPollAuthSessionStatusResponse:
         """Get current session status."""
@@ -558,7 +598,7 @@ class SteamSession:
         msg = CAuthenticationPollAuthSessionStatusRequest(client_id=self._client_id, request_id=self._request_id)
 
         try:
-            r = await self._call_auth_web_api("POST", "PollAuthSessionStatus", msg)
+            r = await self._auth_web_api("POST", "PollAuthSessionStatus", msg)
         except Exception as e:
             raise LoginError("Could not get auth session status") from e
 
@@ -566,25 +606,29 @@ class SteamSession:
 
     async def _poll_status(self):
         """
-        Poll session status with interval. Will set `access and refresh tokens` on success.
+        Poll session status with interval until response with refresh token wll be received.
+        Will populate `access and refresh tokens`, `steam_id`.
         Use ``asyncio.wait_for`` with ``timeout`` to prevent infinite polling.
         """
 
         while True:
-            start = time.monotonic()
+            loop = asyncio.get_running_loop()
+            start = loop.time()
             status = await self._get_status()
             if status.refresh_token:
-                # there can be set account name
                 self._account_name = status.account_name
-                self._access_token = SteamJWT.parse(status.access_token)
-                self._refresh_token = SteamJWT.parse(status.refresh_token)
+                self._set_refresh_token(status.refresh_token)
+                self._set_access_token(status.access_token)  # will throw error if there is no access token
+
+                # if we start with qr we come here without id
+                if not self._steam_id:
+                    self._steam_id = self._refresh_token.subject
 
                 return
 
-            end = time.monotonic()
-            await asyncio.sleep(self._poll_interval - (end - start))  # respect steam interval and avoid shift
+            end = loop.time()
+            await asyncio.sleep(self._poll_interval - (end - start))  # respect steam interval and avoid drift
 
-    # here we need to obtain tokens
     async def finalize(self) -> tuple[SteamJWT, SteamJWT]:
         """
         Finalize login process for current session by obtaining `tokens`.
@@ -615,52 +659,33 @@ class SteamSession:
 
         return self.access_token, self.refresh_token
 
-    async def _perform_transfer(self, url: URL, params: dict, steam_id: str):
-        for _ in range(3):  # little bit of tenacity here
+    async def _perform_transfer(self, url: URL, params: dict, steam_id: str) -> TransportResponse:
+        i = 0
+        while True:  # little bit of tenacity here
             try:
-                await self._transport.request(
+                return await self._api.transport.request(
                     "POST",
                     url,
                     multipart={**params, "steamID": steam_id},
                     response_mode="meta",
                 )
-                break
 
-            except TransportError:
+            except TransportError as e:
                 await asyncio.sleep(0.55)
+                i += 1
+                if i == 3:
+                    raise LoginError(f"Could not perform transfer to '{url}' for '{steam_id}'") from e
 
-        else:
-            raise LoginError(f"Could not perform transfer to '{url}' for '{steam_id}'")
-
-    async def obtain_cookies(self) -> list[Cookie]:
-        """
-        Obtain auth web cookies for `Steam` websites using ``refresh_token``.
-        Store resulting cookies in the underlying ``transport`` cookie jar.
-
-        :return: list of auth cookies including session id.
-        """
-
-        if self._refresh_token is None:
-            raise ValueError("Session is not finalized or refresh token is not set")
-
-        # guess we don't required to make request to Steam
-        # and instead can generate sessionid by ourselves
-        if self._session_id is None:
-            self._session_id = generate_session_id()
-
-        # TODO node-steamcommunity return single access token for mobile platform
-        #  for some reason. Need to test it, maybe that access token can be used
-        #  for websites.
-        if self._platform_type is EAuthTokenPlatformType.k_EAuthTokenPlatformType_MobileApp:
-            raise NotImplementedError("Mobile app platform type is not supported yet")
+    async def _finalize_login(self) -> list[Cookie]:
+        """Finalize `Steam` websites login process. Obtain and return web auth cookies."""
 
         data = {
             "nonce": self._refresh_token.raw,
             "sessionid": self._session_id,
             "redir": str(STEAM_URL.COMMUNITY / "login/home/?goto="),
         }
-        # here we get refresh token cookie, if it is already present Steam return same refresh token
-        r = await self._transport.request(
+        # Steam will set refresh token cookie there
+        r = await self._api.transport.request(
             "POST",
             LOGIN_URL / "jwt/finalizelogin",
             multipart=data,
@@ -675,9 +700,6 @@ class SteamSession:
 
         fin_data_steam_id: str = rj["steamID"]
         transfer_datas: list[dict] = rj["transfer_info"]
-
-        if not self._steam_id:
-            self._steam_id = SteamID(fin_data_steam_id)  # or we can get it from token
 
         auth_urls = [URL(d["url"]) for d in transfer_datas]  # parse urls only once
 
@@ -694,70 +716,150 @@ class SteamSession:
 
         cookies = []
 
-        # rewrite sessionid, get auth cookies
+        # rewrite sessionid, get auth cookies, set access token
         for url, d in zip(auth_urls, transfer_datas):
-            session_id_cookie = Cookie(
-                SESSION_ID_COOKIE,
-                self._session_id,
-                url.host,
-                host_only=True,
-                secure=True,
-                same_site="None",
-            )
-            cookies.append(session_id_cookie)
-            self._transport.add_cookie(session_id_cookie)
+            cookies.append(self._set_session_id_cookie(url))
 
-            cookies.append(self._transport.get_cookie(url.with_path("/"), STEAM_ACCESS_TOKEN_COOKIE))
+            access_token_cookie = self._api.transport.get_cookie(url.with_path("/"), STEAM_ACCESS_TOKEN_COOKIE)
+            if access_token_cookie.domain == STEAM_URL.COMMUNITY.host:
+                self._set_access_token(SteamJWT.from_cookie_value(access_token_cookie.value))
+
+            cookies.append(access_token_cookie)
 
         return cookies
 
-    @mobile_platform
-    async def refresh_tokens(self):
-        """Refresh `access` and `refresh tokens`."""
+    def _set_session_id_cookie(self, domain: URL) -> Cookie:
+        """Set session id cookie."""
 
-        refresh_token = self.refresh_token
-        if refresh_token is None:
+        cookie = Cookie(
+            SESSION_ID_COOKIE,
+            self._session_id,
+            domain.host,
+            host_only=True,
+            secure=True,
+            same_site="None",
+        )
+
+        self._api.transport.add_cookie(cookie)
+
+        return cookie
+
+    def _set_access_token_cookie(self, domain: URL) -> Cookie:
+        """Set access token cookie."""
+
+        cookie = Cookie(
+            STEAM_ACCESS_TOKEN_COOKIE,
+            self._access_token.cookie_value,
+            domain.host,
+            expires=format_http_date(self._access_token.expires_at),
+            host_only=True,
+            http_only=True,
+            secure=True,
+            same_site="None",
+        )
+
+        self._api.transport.add_cookie(cookie)
+
+        return cookie
+
+    async def obtain_cookies(self) -> list[Cookie]:
+        """
+        Obtain auth cookies for `Steam` websites using ``refresh_token``.
+        Rewrite existing ``access_token`` with a new one.
+        Store resulting cookies in the underlying ``transport`` cookie jar.
+
+        :return: list of auth cookies including session id.
+        """
+
+        if self._refresh_token is None:
+            raise ValueError("Session is not finalized or refresh token is not set")
+
+        if self._session_id is None:  # generate session id by ourselves to avoid another request
+            self._session_id = generate_session_id()
+
+        if self.is_web:
+            return await self._finalize_login()
+
+        else:
+            if self._access_token is None or self._access_token.expired:
+                await self._generate_access_token_for_app(False)
+
+            cookies = []
+            # presumably urls from _finalize_login
+            for url in [STEAM_URL.COMMUNITY, STEAM_URL.STORE, STEAM_URL.HELP, STEAM_URL.CHECKOUT, STEAM_URL.TV]:
+                cookies.append(self._set_session_id_cookie(url))
+                cookies.append(self._set_access_token_cookie(url))
+
+            return cookies
+
+    async def _generate_access_token_for_web(self):
+        """Request new `access` token for web platform."""
+
+        r = await self._api.transport.request(
+            "GET",
+            LOGIN_URL / "jwt/refresh",
+            params={"redir": str(STEAM_URL.COMMUNITY)},
+            redirects=False,
+        )
+        location = URL(r.headers["Location"])
+
+        await self._api.transport.request("GET", location, redirects=False)
+
+        cookie = self._api.transport.get_cookie(location.with_path("/"), STEAM_ACCESS_TOKEN_COOKIE)
+        self._set_access_token(SteamJWT.from_cookie_value(cookie.value))
+
+    async def _generate_access_token_for_app(self, renew_refresh_token: bool = False):
+        """
+        Request new `access` token.
+        If ``renew_refresh_token`` is set, renewal of `refresh` token will be requested.
+        Whether a new `refresh` token will be actually issued is at the `Steam` discretion.
+        Existed tokens will be overwritten.
+
+        :return: `access` and `refresh` tokens.
+        """
+
+        msg = CAuthenticationAccessTokenGenerateForAppRequest(
+            refresh_token=self._refresh_token.raw,
+            steamid=self._steam_id.id64,
+            renewal_type=ETokenRenewalType.k_ETokenRenewalType_Allow
+            if renew_refresh_token
+            else ETokenRenewalType.k_ETokenRenewalType_None,
+        )
+
+        r = await self._auth_web_api("POST", "GenerateAccessTokenForApp", msg)
+
+        res = CAuthenticationAccessTokenGenerateForAppResponse.parse(r)
+
+        self._set_access_token(res.access_token)
+        if res.refresh_token and res.refresh_token != self._refresh_token.raw:
+            self._set_refresh_token(res.refresh_token)
+
+    async def refresh_access_token(self) -> SteamJWT:
+        """Request new `access` token from `Steam`."""
+
+        if self._refresh_token is None:
             raise ValueError("Refresh token is not set")
 
-        raise NotImplementedError
-        # https://github.com/DoctorMcKay/node-steam-session/blob/3ac0f34fd964b3f886ba18ef4824ac43c942e030/src/AuthenticationClient.ts#L288
+        if self.is_web:
+            await self._generate_access_token_for_web()
 
-    # # Am I sure we need this?
-    # async def logout(self):
-    #     """
-    #     Perform logout of the current session.
-    #     `Access` tokens will be invalidated while `refresh token` persist.
-    #     """
-    #
-    #     # technically, we can remove access tokens and be safe
-    #
-    #     if self.refresh_token is None:
-    #         raise ValueError("Refresh token is not set")
-    #
-    #     r = await self._transport.request(
-    #         "POST",
-    #         STEAM_URL.COMMUNITY / "login/logout/",
-    #         data={"sessionid": self.session_id},
-    #         response_mode="text",
-    #     )
-    #
-    #     # in theory can be the same urls from finalization
-    #     logout_urls = [URL(url) for url in json.loads(LOGOUT_URLS_RE.search(r.content).group(1))]
-    #     token = LOGOUT_TOKEN_RE.search(r.content).group(1)
-    #     auth = LOGOUT_AUTH_RE.search(r.content).group(1)  # some auth code, idk
-    #
-    #     data = {"in_transfer": 1, "auth": auth, "token": token}
-    #
-    #     async with asyncio.TaskGroup() as tg:
-    #         for url in logout_urls:
-    #             tg.create_task(
-    #                 self._transport.request(
-    #                     "POST",
-    #                     url,
-    #                     data=data,
-    #                     response_mode="meta",
-    #                 )
-    #             )
+        else:
+            await self._generate_access_token_for_app(False)
 
-    def close(self) -> Coro[None]:
-        return self._transport.close()
+        return self._access_token
+
+    @mobile_platform
+    async def renew_refresh_token(self) -> SteamJWT:
+        """
+        Request new `refresh` token alongside with `access` token.
+        Whether a new token will be actually issued is at the `Steam` discretion.
+        Existed tokens will be overwritten.
+
+        :return: `refresh` token.
+        """
+
+        await self._generate_access_token_for_app(True)
+        return self._refresh_token
+
+    def close(self) -> Awaitable[None]:
+        return self._api.transport.close()

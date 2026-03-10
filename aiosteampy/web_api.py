@@ -1,13 +1,15 @@
-""""""
+"""A module for interacting with the `Steam Web API`."""
 
+from collections.abc import Awaitable
 from typing import Any, Literal
 
 from .constants import STEAM_URL
 from .exceptions import EResultError
 from .transport import AiohttpSteamTransport, BaseSteamTransport, Headers, Params, Payload, ResponseMode, TransportError
-from .types import Coro
 
 HttpMethod = Literal["GET", "POST"]
+# TODO rewrite to specs with dot notation
+# can be generated from https://steamapi.xpaw.me/#ISteamWebAPIUtil/GetSupportedAPIList
 InterfaceMethod = Literal[
     # IEconService
     "IEconService/GetTradeHistory",
@@ -45,7 +47,7 @@ class SteamWebAPI:
         api_key: str | None = None,
     ):
         """
-        `Steam Web API` full fledged client.
+        `Steam Web API` client.
 
         :param transport: custom transport.
         :param proxy: proxy to use.
@@ -65,7 +67,7 @@ class SteamWebAPI:
     def transport(self) -> BaseSteamTransport:
         return self._transport
 
-    async def call(
+    async def request(
         self,
         http_method: HttpMethod,
         api_interface_method: InterfaceMethod | str,
@@ -80,7 +82,7 @@ class SteamWebAPI:
         auth: bool = False,
     ) -> bytes | str | Any | None:
         """
-        Perform `Steam Web API` request.
+        Perform request.
 
         .. seealso:: https://steamapi.xpaw.me.
 
@@ -127,5 +129,7 @@ class SteamWebAPI:
 
         return r.content
 
-    def close(self) -> Coro[None]:
+    # "call" name method is reserved for future implementation with api endpoint specs
+
+    def close(self) -> Awaitable[None]:
         return self._transport.close()

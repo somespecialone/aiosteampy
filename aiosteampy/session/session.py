@@ -44,11 +44,7 @@ LOGIN_URL = URL("https://login.steampowered.com")
 SESSION_ID_COOKIE = "sessionid"
 
 
-# replace this with mobile_platform[F] syntax after updating python to 3.12
-_F = TypeVar("_F", bound=Callable[..., Any])
-
-
-def mobile_platform(func: _F) -> _F:
+def mobile_platform[F = Callable[..., Any]](func: F) -> F:
     @wraps(func)
     def wrapper(self: "SteamSession", *args, **kwargs):
         if not self.is_mobile:

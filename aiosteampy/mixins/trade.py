@@ -445,8 +445,8 @@ class TradeMixin(SteamWebApiMixin, SteamCommunityPublicMixin):
             HistoryTradeOfferItem(
                 asset_id=int(a_data["assetid"]),
                 amount=int(a_data["amount"]),
-                new_asset_id=int(a_data["new_assetid"]),
-                new_context_id=int(a_data["new_contextid"]),
+                new_asset_id=int(a_data.get("new_assetid", a_data.get("assetid", 0))),
+                new_context_id=int(a_data.get("new_contextid", a_data.get("contextid", 0))),
                 app_context=AppContext((App(int(a_data["appid"])), int(a_data["contextid"]))),
                 description=item_descrs_map.get(
                     create_ident_code(

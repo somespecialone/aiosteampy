@@ -67,6 +67,11 @@ class SteamWebAPI:
     def transport(self) -> BaseSteamTransport:
         return self._transport
 
+    @property
+    def authenticated(self) -> bool:
+        """Whether this client has credentials to make authenticated requests."""
+        return self._access_token is not None or self._api_key is not None
+
     async def request(
         self,
         http_method: HttpMethod,
@@ -89,7 +94,7 @@ class SteamWebAPI:
         :param http_method: HTTP method.
         :param api_interface_method: API interface & method in format `Interface/Method`.
         :param api_version: API version.
-        :param auth: use authentication.
+        :param auth: send credentials in request body.
         :param params: query string parameters.
         :param data: `application/x-www-form-urlencoded` payload.
         :param multipart: multipart form data payload.
@@ -100,10 +105,10 @@ class SteamWebAPI:
         :raises EResultError: got response result code indicating error.
         """
 
-        params = {**params} if params is not None else {}
-
         if auth:
-            if self._api_key:  # prefer key over token
+            params = {**params} if params is not None else {}
+
+            if self._api_key:  # prefer key over token as more specific
                 params["key"] = self._api_key
             elif self._access_token:
                 params["access_token"] = self._access_token

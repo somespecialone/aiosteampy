@@ -1,16 +1,11 @@
 import asyncio
-import hashlib
-import hmac
-import struct
 from base64 import b64encode
 from collections.abc import Awaitable
 from datetime import datetime
 from functools import wraps
-from typing import Callable, Literal
+from typing import Any, Callable, Literal, TypeVar
 
 from betterproto2 import Message
-from rsa import PublicKey
-from rsa import encrypt as rsa_encrypt
 from yarl import URL
 
 from ..constants import STEAM_URL
@@ -27,7 +22,7 @@ from ..web_api import HttpMethod, SteamWebAPI
 from .exceptions import *
 from .models import SteamJWT
 from .protobuf import *
-from .utils import generate_session_id, parse_qr_challenge_url
+from .utils import encrypt_password, generate_session_id, parse_qr_challenge_url
 
 API_HEADERS = {
     "Accept": "application/json, text/plain, */*",
@@ -49,7 +44,11 @@ LOGIN_URL = URL("https://login.steampowered.com")
 SESSION_ID_COOKIE = "sessionid"
 
 
-def mobile_platform(func):
+# replace this with mobile_platform[F] syntax after updating python to 3.12
+_F = TypeVar("_F", bound=Callable[..., Any])
+
+
+def mobile_platform(func: _F) -> _F:
     @wraps(func)
     def wrapper(self: "SteamSession", *args, **kwargs):
         if not self.is_mobile:
@@ -403,36 +402,28 @@ class SteamSession:
         return CAuthenticationGetAuthSessionInfoResponse.parse(r)
 
     @mobile_platform
-    async def perform_session_mobile_confirmation(
+    async def update_session_with_mobile_confirmation(
         self,
-        qr_challenge_url: URL | str,
-        shared_secret: str,
+        version: int,
+        client_id: int,
+        signature: bytes,
         *,
         confirm: bool = True,
         persistence: bool = True,
     ):
         """
-        Perform mobile confirmation of the other `login session`.
-        Equivalent of scanning auth QR with Steam App on a mobile device and tapping "Approve" or "Decline" button
-        as the next step.
+        Send other `login session` confirmation to `Steam`.
 
-        :param qr_challenge_url: qr url of session to perform confirmation. Must be from the same account.
-        :param shared_secret: shared secret of authenticated account with enabled *Steam Guard*.
+        :param version: version. Can be extracted from challenge QR.
+        :param client_id: client id. Also can be extracted from challenge QR.
+        :param signature: required crypto signature. Can be made with ``TwoFactorSigner``.
         :param confirm: whether to confirm the session or not.
-        :param persistence: whether session should be persisted.
+        :param persistence: should `session` be persistent.
         :raises LoginError: for ordinary reasons.
         """
 
         if not self._steam_id:
-            raise ValueError("Current session is not initialized")
-
-        version, client_id = parse_qr_challenge_url(qr_challenge_url)
-
-        signature_data = bytearray(18)
-        struct.pack_into("<H", signature_data, 0, version)
-        struct.pack_into("<Q", signature_data, 2, client_id)
-        struct.pack_into("<Q", signature_data, 10, self._steam_id.id64)
-        signature = hmac.new(shared_secret.encode("utf-8"), bytes(signature_data), hashlib.sha256).digest()
+            raise ValueError("Current session must be authenticated")
 
         msg = CAuthenticationUpdateAuthSessionWithMobileConfirmationRequest(
             version=version,
@@ -448,77 +439,36 @@ class SteamSession:
         except Exception as e:
             raise LoginError("Could not update auth session with mobile confirmation") from e
 
-    @mobile_platform
-    async def approve_session(
-        self,
-        login_session: "SteamSession",
-        shared_secret: str,
-        *,
-        persistence: bool = True,
-    ):
-        """
-        Approve other login session.
-        Equivalent of scanning auth QR with `Steam App` on a mobile device
-        and tapping "Approve" button as the next step.
-        Passed session must **not be initialized** and will be finalized, authenticated and ready to use after approval.
-
-        :param login_session: session to approve. Must be from the same account and with non-mobile app platform type.
-        :param shared_secret: shared secret of current session authenticated account.
-        :param persistence: whether session should be persisted.
-        :raises LoginError: for ordinary reasons.
-        :raises ValueError: when passed session is already initialized or has non-mobile app platform type.
-        """
-
-        if login_session is self:
-            raise ValueError("Cannot approve own session")
-        if login_session._platform_type is EAuthTokenPlatformType.k_EAuthTokenPlatformType_MobileApp:
-            raise ValueError("Only session with non-mobile app platform type can be approved")
-        if login_session._steam_id:
-            raise ValueError("Passed session is already initialized")
-
-        qr_url, _ = await login_session.with_qr()
-        await self.perform_session_mobile_confirmation(qr_url, shared_secret, persistence=persistence)
-        await login_session.finalize()
-
     async def with_credentials(
         self,
         account_name: str,
         password: str,
-        persistence: bool = True,
         *,
+        persistence: bool = True,
         device_friendly_name: str | None = None,
-        device_steam_guard_code: str | Callable[[], str] | None = None,
     ):
         """
-        Begin authentication session with credentials.
-        Equivalent of entering username and password on `Steam` website login page and submitting after.
+        Begin authentication `session` with credentials.
+        If login attempt requires confirmation ``ConfirmationRequired`` exception will be raised.
+        ``finalize`` method must be called after.
 
-        .. note:: If ``device_steam_guard_code`` argument is provided,
-            `Steam Guard` code will be submitted automatically and session will be finalized after confirmation.
-            Otherwise, ``ConfirmationRequired`` exception will be raised
-            indicating that additional confirmation will be required.
+        Equivalent of entering ``username`` and ``password`` on `Steam` website login page and submitting after.
 
         :param account_name: username.
         :param password: password.
-        :param persistence: whether session should be persisted.
+        :param persistence: should `session` be persistent.
         :param device_friendly_name: name of the device used for authentication.
             Should be unique, identifiable, and human readable. Used when managing account sessions.
-        :param device_steam_guard_code: two-factor (TOTP) code from `Steam Guard`.
-            Can be generated using secrets or copied from the `Steam mobile app`.
-            Preferably should be a ``callable`` as the device code will be generated as close to the submission moment
-            as possible.
         :raises LoginError: for ordinary reasons.
         :raises ConfirmationRequired: when `Steam` requires performing  additional confirmation (email, device, etc.).
         """
 
         pub_mod, pub_exp, rsa_ts = await self._get_rsa_data(account_name)
-        encrypted_password = b64encode(rsa_encrypt(password.encode("utf-8"), PublicKey(pub_mod, pub_exp))).decode()
-
         website_id, device_details = self._get_platform_data(device_friendly_name)
 
         msg = CAuthenticationBeginAuthSessionViaCredentialsRequest(
             account_name=account_name,
-            encrypted_password=encrypted_password,
+            encrypted_password=encrypt_password(password, pub_mod, pub_exp),
             encryption_timestamp=rsa_ts,
             remember_login=persistence,
             persistence=ESessionPersistence(int(persistence)),
@@ -542,36 +492,67 @@ class SteamSession:
 
         allowed_guard_types = tuple(conf.confirmation_type for conf in res.allowed_confirmations)
 
-        if EAuthSessionGuardType.k_EAuthSessionGuardType_None in allowed_guard_types:  # confirmation isn't required
-            await self.finalize()
-            return
-
-        if (
-            EAuthSessionGuardType.k_EAuthSessionGuardType_DeviceCode in allowed_guard_types
-        ) and device_steam_guard_code is not None:
-            if callable(device_steam_guard_code):  # callback or factory
-                device_steam_guard_code = device_steam_guard_code()
-
-            await self.submit_device_code(device_steam_guard_code)
-            await self.finalize()
-
-        else:
+        if EAuthSessionGuardType.k_EAuthSessionGuardType_None not in allowed_guard_types:  # confirmation required
             raise ConfirmationRequired(res.allowed_confirmations, allowed_guard_types)
+
+    async def login_with_credentials(
+        self,
+        account_name: str,
+        password: str,
+        device_steam_guard_code: str | Callable[[], str],
+        *,
+        persistence: bool = True,
+        device_friendly_name: str | None = None,
+    ):
+        """
+        Perform full login process with credentials for account that requires `device code` confirmation.
+        Will ``finalize`` current `session` on success.
+
+        :param account_name: username.
+        :param password: password.
+        :param device_steam_guard_code: two-factor/auth code.
+            Can be generated using ``TwoFactorSigner`` or copied from the `Steam mobile app`.
+            A ``callable`` factory is preferred as the `device code` will be
+            generated as close to the submission moment as possible.
+        :param persistence: should `session` be persistent.
+        :param device_friendly_name: name of the device used for authentication.
+            Should be unique, identifiable, and human readable. Used when managing account sessions.
+        :raises LoginError: for ordinary reasons.
+        :raises ValueError: when `Steam` requires performing  additional confirmation (email, device, etc.).
+        """
+
+        try:
+            await self.with_credentials(
+                account_name,
+                password,
+                persistence=persistence,
+                device_friendly_name=device_friendly_name,
+            )
+        except ConfirmationRequired as e:
+            if e.device_code:
+                if callable(device_steam_guard_code):  # callback or factory
+                    device_steam_guard_code = device_steam_guard_code()
+
+                await self.submit_device_code(device_steam_guard_code)
+            else:
+                raise ValueError("Confirmation other than device Steam Guard code is required") from e
+
+        await self.finalize()  # if device code requested or nothing happens :)
 
     async def with_qr(
         self,
         device_friendly_name: str | None = None,
-    ) -> tuple[URL, list[CAuthenticationAllowedConfirmation]]:
+    ) -> tuple[int, int, list[CAuthenticationAllowedConfirmation], str]:
         """
-        Begin authentication session with auth QR.
+        Begin authentication `session` with auth QR.
         Produce QR auth url that needs to be scanned with `Steam App` on a mobile device
-        or using another login session (look at ``approve_session`` method).
+        or using another `login session` (look at ``approve_session`` method).
 
         :param device_friendly_name: name of the device used for authentication.
             Should be unique, identifiable, and human readable. Used when managing account sessions.
-        :return: QR challenge url.
+        :return: version, client id, list of allowed confirmations, QR challenge url.
         :raises LoginError: for ordinary reasons.
-        :raises ValueError: when session has mobile app platform type.
+        :raises ValueError: when `session` has mobile app platform type.
         """
 
         if self._platform_type is EAuthTokenPlatformType.k_EAuthTokenPlatformType_MobileApp:
@@ -590,7 +571,7 @@ class SteamSession:
 
         self._set_state(res.request_id, res.client_id, res.interval)
 
-        return URL(res.challenge_url), res.allowed_confirmations
+        return res.version, res.client_id, res.allowed_confirmations, res.challenge_url
 
     async def _get_status(self) -> CAuthenticationPollAuthSessionStatusResponse:
         """Get current session status."""
@@ -631,11 +612,11 @@ class SteamSession:
 
     async def finalize(self) -> tuple[SteamJWT, SteamJWT]:
         """
-        Finalize login process for current session by obtaining `tokens`.
+        Finalize login process for current `session` by obtaining `tokens`.
+        Fill ``steam_id`` if it was not provided during initialization.
 
         Must be called after a **performed action**
-        or after the current session has been **approved** by another login session.
-        Fill ``steam_id`` if it was not provided during initialization.
+        or after the current `session` has been **approved**.
 
         :return: `access` and `refresh` tokens.
         :raises LoginError: for ordinary reasons.

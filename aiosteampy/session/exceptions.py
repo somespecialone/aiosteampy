@@ -19,18 +19,22 @@ class ConfirmationRequired(LoginError):
 
     @property
     def device_code(self) -> bool:
+        """Requires device `Steam Guard` code."""
         return EAuthSessionGuardType.k_EAuthSessionGuardType_DeviceCode in self._allowed_guard_types
 
     @property
     def email_code(self) -> bool:
+        """Requires email `Steam Guard` code."""
         return EAuthSessionGuardType.k_EAuthSessionGuardType_EmailCode in self._allowed_guard_types
 
     @property
     def device_conf(self) -> bool:
+        """Requires device confirmation."""
         return EAuthSessionGuardType.k_EAuthSessionGuardType_DeviceConfirmation in self._allowed_guard_types
 
     @property
     def email_conf(self) -> bool:
+        """Requires email confirmation."""
         return EAuthSessionGuardType.k_EAuthSessionGuardType_EmailConfirmation in self._allowed_guard_types
 
     # machine token and legacy machine auth guard types should never be received so no need to handle them

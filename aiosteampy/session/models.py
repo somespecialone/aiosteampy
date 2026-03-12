@@ -119,4 +119,4 @@ class SteamJWT:
     @property
     def for_web(self):
         """Issued for `web` (browser) platform."""
-        return not self.for_mobile and not self.for_client and "web" in self.audiences
+        return not self.for_mobile and not self.for_client

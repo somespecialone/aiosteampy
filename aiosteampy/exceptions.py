@@ -1,4 +1,5 @@
 from datetime import datetime
+from typing import Mapping
 
 from .constants import EResult
 
@@ -24,10 +25,13 @@ class EResultError(SteamError):
         if (eresult := EResult(data.get("success", 0))) is not EResult.OK:
             raise cls(eresult, data.get("message", def_msg))
 
+    @classmethod
+    def check_headers(cls, headers: Mapping[str, str], def_msg: str = ""):
+        """Check if ``headers`` contains error response from `Steam` API and raise ``EResultError`` if needed."""
 
-# https://github.com/DoctorMcKay/node-steamcommunity/blob/d3e90f6fd3bea65b1ebc1bdaec754f99dcc8ddb3/components/http.js#L100
-class SessionExpired(SteamError):
-    """Session is expired. *Login* or *refresh of access tokens* needed."""
+        if (eres := EResult(int(headers.get("X-eresult", 0)))) is not EResult.OK:
+            err_msg = headers.get("X-error_message", def_msg)
+            raise EResultError(eres, err_msg)
 
 
 # TODO probably better option is to reduce next to single exception

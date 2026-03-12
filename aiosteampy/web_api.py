@@ -108,10 +108,10 @@ class SteamWebAPI:
         if auth:
             params = {**params} if params is not None else {}
 
-            if self._api_key:  # prefer key over token as more specific
-                params["key"] = self._api_key
-            elif self._access_token:
+            if self._access_token:  # prefer access token over api key as wider scoped
                 params["access_token"] = self._access_token
+            elif self._api_key:
+                params["key"] = self._api_key
             else:
                 raise ValueError("Auth was requested but no access token or api key is set")
 

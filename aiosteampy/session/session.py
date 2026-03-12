@@ -145,10 +145,19 @@ class SteamSession:
         self._steam_id = SteamID()
 
         if access_token is not None and refresh_token is not None:
+            # parse tokens
+            if not isinstance(access_token, SteamJWT):
+                access_token = SteamJWT.parse(access_token)
+            if not isinstance(refresh_token, SteamJWT):
+                refresh_token = SteamJWT.parse(refresh_token)
+
             if (access_token.for_web and refresh_token.for_mobile) or (
                 access_token.for_mobile and refresh_token.for_web
             ):
                 raise ValueError("Access token and refresh token are for different platforms")
+
+            if access_token.subject != refresh_token.subject:
+                raise ValueError("Access token and refresh token are for different accounts")
 
         if access_token is not None:
             if not isinstance(access_token, SteamJWT):
@@ -166,6 +175,9 @@ class SteamSession:
                 platform_type = EAuthTokenPlatformType.k_EAuthTokenPlatformType_MobileApp
             else:  # client
                 raise ValueError("Access token issued for Steam Client platform which is not supported")
+
+            self._steam_id = access_token.subject
+            self._set_access_token(access_token)
 
         if refresh_token is not None:
             if not isinstance(refresh_token, SteamJWT):
@@ -867,6 +879,19 @@ class SteamSession:
 
         await self._generate_access_token_for_app(True)
         return self._refresh_token
+
+    # invalidate access token
+    # https://github.com/dyc3/steamguard-cli/blob/a7b6aaed1729f26c68413e7316ea5fd9a89d34c7/steamguard/src/steamapi/authentication.rs#L156
+    # https://steamapi.xpaw.me/#IAuthenticationService/RevokeToken
+    # invalidate refresh token
+    # https://github.com/dyc3/steamguard-cli/blob/a7b6aaed1729f26c68413e7316ea5fd9a89d34c7/steamguard/src/steamapi/authentication.rs#L143
+    # https://steamapi.xpaw.me/#IAuthenticationService/RevokeRefreshToken
+
+    # invalidate session/logout
+
+    # migrate session ??
+    # https://github.com/dyc3/steamguard-cli/blob/a7b6aaed1729f26c68413e7316ea5fd9a89d34c7/steamguard/src/steamapi/authentication.rs#L117
+    # https://steamapi.xpaw.me/#IAuthenticationService/MigrateMobileSession
 
     def close(self) -> Awaitable[None]:
         return self._api.transport.close()

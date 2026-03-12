@@ -1,6 +1,6 @@
 [project]
 name = "aiosteampy"
-version = "0.7.20"
+version = "0.7.21"
 description = "Trade and interact with steam market, webapi, guard"
 license = "MIT"
 authors = [{ name = "Dmytro Tkachenko", email = "itsme@somespecial.one" }]
@@ -22,6 +22,7 @@ classifiers = [
     "Programming Language :: Python :: 3.11",
     "Programming Language :: Python :: 3.12",
     "Programming Language :: Python :: 3.13",
+    "Programming Language :: Python :: 3.14",
     "Typing :: Typed",
 ]
 requires-python = ">=3.10"

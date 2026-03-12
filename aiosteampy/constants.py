@@ -1,8 +1,11 @@
 """"""
 
 from enum import IntEnum, StrEnum
+from importlib.metadata import version
 
 from yarl import URL
+
+LIB_ID = f"Aiosteampy/{version('aiosteampy')}"
 
 
 class Currency(IntEnum):  # already params serializable
@@ -163,17 +166,17 @@ class TradeOfferStatus(IntEnum):
 
 
 # TODO need rework
-# Steam domains
 class STEAM_URL:
+    # domains with dedicated access tokens
     COMMUNITY = URL("https://steamcommunity.com")
     STORE = URL("https://store.steampowered.com")
-    LOGIN = URL("https://login.steampowered.com")
     HELP = URL("https://help.steampowered.com")
-    STATIC = URL("https://community.akamai.steamstatic.com")
-    CHECKOUT = URL("https://checkout.steampowered.com")
     TV = URL("https://steam.tv/")
-    # specific
+    CHECKOUT = URL("https://checkout.steampowered.com")
+
+    STATIC = URL("https://community.akamai.steamstatic.com")
     TRADE = COMMUNITY / "tradeoffer"  # TODO remove after trade comp
+    WEB_API = URL("https://api.steampowered.com")
 
 
 class EResult(IntEnum):

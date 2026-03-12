@@ -2,10 +2,11 @@
 
 from http.cookies import BaseCookie, Morsel
 
-from yarl import URL
 from aiohttp import ClientSession, JsonPayload, MultipartWriter
+from yarl import URL
 
-from .base import Cookie, TransportResponse, BaseSteamTransport
+from ..constants import LIB_ID
+from .base import BaseSteamTransport, Cookie, TransportResponse
 
 
 class AiohttpSteamTransport(BaseSteamTransport):
@@ -29,6 +30,8 @@ class AiohttpSteamTransport(BaseSteamTransport):
             proxy = None
 
         self._session = ClientSession(proxy=proxy, connector=connector)
+
+        self.user_agent = LIB_ID
 
     @property
     def proxy(self) -> URL | None:

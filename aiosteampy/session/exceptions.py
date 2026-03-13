@@ -1,5 +1,5 @@
 from ..exceptions import SteamError
-from .protobuf import CAuthenticationAllowedConfirmation, EAuthSessionGuardType
+from ..webapi.services.protobufs import CAuthenticationAllowedConfirmation, EAuthSessionGuardType
 
 
 class LoginError(SteamError):

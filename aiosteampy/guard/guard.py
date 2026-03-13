@@ -35,7 +35,7 @@ class SteamGuard:
 
         self._session = session
 
-        signer = TwoFactorSigner(session.steam_id, shared_secret, identity_secret, session.web_api, time_offset)
+        signer = TwoFactorSigner(session.steam_id, shared_secret, identity_secret, session.webapi, time_offset)
         self._conf = SteamConfirmations(session, signer, device_id)
 
     @property
@@ -67,7 +67,6 @@ class SteamGuard:
         :param obj: QR challenge url of `session` or tuple of version and client id.
         :param confirm: confirm the `session` or not.
         :param persistence: should `session` be persistent.
-        :raises LoginError: for ordinary reasons.
         """
 
         if isinstance(obj, (str, URL)):
@@ -77,9 +76,10 @@ class SteamGuard:
 
         signature = self._conf.signer.sign_auth_request(version, client_id)
 
-        return self._session.update_session_with_mobile_confirmation(
+        return self._session.service.update_auth_session_with_mobile_confirmation(
             version,
             client_id,
+            self._session.steam_id,
             signature,
             confirm=confirm,
             persistence=persistence,
@@ -138,7 +138,7 @@ class SteamGuard:
         #     "revocation_code": revocation_code,
         #     "steamguard_scheme": 1,
         # }
-        # r: dict[str, dict] = await self._session.web_api.request(
+        # r: dict[str, dict] = await self._session.webapi.request(
         #     "POST",
         #     "ITwoFactorService/RemoveAuthenticator",
         #     multipart=data,

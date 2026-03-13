@@ -5,6 +5,7 @@ from datetime import datetime
 from typing import Self, TypedDict
 
 from ..id import SteamID
+from ..webapi.services.auth import Platform
 
 ALTCHARS = b"-_"
 COOKIE_SEP = "%7C%7C"
@@ -44,8 +45,20 @@ class SteamJWT:
     subject: SteamID = field(init=False)
     """Parsed token subject."""
 
+    platform: Platform = field(init=False)
+
     def __post_init__(self):
         self.subject = SteamID(self.claims["sub"])
+
+        if "mobile" in self.audiences:
+            self.platform = Platform.MOBILE
+        else:  # web by default
+            self.platform = Platform.WEB
+
+        if self.for_client:
+            import warnings
+
+            warnings.warn("Client tokens are not supported", UserWarning)
 
     @property
     def audiences(self) -> list[str]:
@@ -109,14 +122,14 @@ class SteamJWT:
     @property
     def for_mobile(self) -> bool:
         """Issued for `mobile app` platform."""
-        return "mobile" in self.audiences
-
-    @property
-    def for_client(self) -> bool:
-        """Issued for `Steam Client` platform."""
-        return "client" in self.audiences
+        return self.platform is Platform.MOBILE
 
     @property
     def for_web(self):
         """Issued for `web` (browser) platform."""
-        return not self.for_mobile and not self.for_client
+        return self.platform is Platform.WEB
+
+    @property
+    def for_client(self) -> bool:
+        """Issued for `Steam Client` platform (not supported)."""
+        return "client" in self.audiences

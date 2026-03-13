@@ -1,14 +1,19 @@
-"""A module for interacting with the `Steam Web API`."""
-
 from collections.abc import Awaitable
 from typing import Any, Literal
 
-from .constants import STEAM_URL
-from .exceptions import EResultError
-from .transport import AiohttpSteamTransport, BaseSteamTransport, Headers, Params, Payload, ResponseMode, TransportError
+from ..constants import STEAM_URL
+from ..exceptions import EResultError
+from ..transport import (
+    AiohttpSteamTransport,
+    BaseSteamTransport,
+    Headers,
+    Params,
+    Payload,
+    ResponseMode,
+    TransportError,
+)
 
 HttpMethod = Literal["GET", "POST"]
-# TODO rewrite to specs with dot notation
 # can be generated from https://steamapi.xpaw.me/#ISteamWebAPIUtil/GetSupportedAPIList
 InterfaceMethod = Literal[
     # IEconService
@@ -18,7 +23,7 @@ InterfaceMethod = Literal[
     "IEconService/GetTradeOffers",
     "IEconService/GetTradeOffersSummary",
     "IEconService/GetTradeStatus",
-    # IAuthenticationService
+    # IAuthenticationService, client implemented
     "IAuthenticationService/BeginAuthSessionViaCredentials",
     "IAuthenticationService/BeginAuthSessionViaQR",
     "IAuthenticationService/GetPasswordRSAPublicKey",
@@ -27,16 +32,20 @@ InterfaceMethod = Literal[
     "IAuthenticationService/GenerateAccessTokenForApp",
     "IAuthenticationService/GetAuthSessionInfo",
     "IAuthenticationService/UpdateAuthSessionWithMobileConfirmation",
+    "IAuthenticationService/EnumerateTokens",
+    "IAuthenticationService/GetAuthSessionsForAccount",
+    "IAuthenticationService/RevokeRefreshToken",
+    "IAuthenticationService/RevokeToken",
     # ITwoFactorService
     "ITwoFactorService/AddAuthenticator",
     "ITwoFactorService/FinalizeAddAuthenticator",
     "ITwoFactorService/RemoveAuthenticator",
     "ITwoFactorService/QueryTime",
 ]
-Version = Literal["v1"]
+Version = Literal["v1", "v2"]  # IEconItems_730/GetSchema, IEconItems_730/GetSchemaURL has v2
 
 
-class SteamWebAPI:
+class SteamWebAPIClient:
     __slots__ = ("_transport", "_access_token", "_api_key")
 
     def __init__(

@@ -4,6 +4,5 @@
 
 from .exceptions import ConfirmationRequired, LoginError
 from .models import SteamJWT
-from .protobuf import EAuthSessionGuardType, EAuthTokenPlatformType
-from .session import SteamSession
+from .session import Platform, SteamSession
 from .utils import generate_session_id, parse_qr_challenge_url

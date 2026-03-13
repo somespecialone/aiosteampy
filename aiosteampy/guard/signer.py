@@ -1,7 +1,7 @@
 import time
 
 from ..id import SteamID
-from ..web_api import SteamWebAPI
+from ..webapi import SteamWebAPIClient
 from .models import ServerTime
 from .utils import generate_auth_code, generate_confirmation_key, generate_device_id, sing_auth_request
 
@@ -14,7 +14,7 @@ class TwoFactorSigner:
         steam_id: SteamID,
         shared_secret: str,
         identity_secret: str,
-        web_api: SteamWebAPI | None = None,
+        webapi: SteamWebAPIClient | None = None,
         time_offset: int = 0,
     ):
         """
@@ -22,11 +22,11 @@ class TwoFactorSigner:
 
         :param shared_secret: shared secret of account.
         :param identity_secret: identity secret of account.
-        :param web_api: `SteamWebAPI` client instance.
+        :param webapi: client instance to make requests to.
         :param time_offset: known offset in seconds from server time.
         """
 
-        self._api = web_api or SteamWebAPI()
+        self._api = webapi or SteamWebAPIClient()
 
         self._steam_id = steam_id
         self._shared_secret = shared_secret
@@ -38,7 +38,8 @@ class TwoFactorSigner:
         """Whether time offset is synced with `Steam` servers."""
 
     @property
-    def web_api(self) -> SteamWebAPI:
+    def webapi(self) -> SteamWebAPIClient:
+        """`Steam Web API` client."""
         return self._api
 
     async def get_server_time(self) -> ServerTime:

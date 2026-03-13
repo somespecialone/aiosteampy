@@ -1,14 +1,9 @@
-// Necessary protobufs for lib carefully collected/copied by author
-
-// https://github.com/SteamDatabase/Protobufs/blob/master/steam/enums.proto
-
-enum ESessionPersistence {
-  k_ESessionPersistence_Invalid = -1;
-  k_ESessionPersistence_Ephemeral = 0;
-  k_ESessionPersistence_Persistent = 1;
-}
-
 // https://github.com/SteamDatabase/Protobufs/blob/master/steam/steammessages_auth.steamclient.proto
+
+syntax = "proto2";
+
+import "protobufs/enums.proto";
+
 
 enum EAuthTokenPlatformType {
   k_EAuthTokenPlatformType_Unknown = 0;
@@ -165,6 +160,8 @@ message CAuthentication_UpdateAuthSessionWithMobileConfirmation_Request {
   optional .ESessionPersistence persistence = 6 [default = k_ESessionPersistence_Persistent];
 }
 
+// CAuthentication_UpdateAuthSessionWithMobileConfirmation_Response {}
+
 enum ETokenRenewalType {
   k_ETokenRenewalType_None = 0;
   k_ETokenRenewalType_Allow = 1;
@@ -180,3 +177,30 @@ message CAuthentication_AccessToken_GenerateForApp_Response {
   optional string access_token = 1;
   optional string refresh_token = 2;
 }
+
+enum EAuthTokenRevokeAction {
+  k_EAuthTokenRevokeLogout = 0;
+  k_EAuthTokenRevokePermanent = 1;
+  k_EAuthTokenRevokeReplaced = 2;
+  k_EAuthTokenRevokeSupport = 3;
+  k_EAuthTokenRevokeConsume = 4;
+  k_EAuthTokenRevokeNonRememberedLogout = 5;
+  k_EAuthTokenRevokeNonRememberedPermanent = 6;
+  k_EAuthTokenRevokeAutomatic = 7;
+}
+
+message CAuthentication_Token_Revoke_Request {
+  optional string token = 1;
+  optional .EAuthTokenRevokeAction revoke_action = 2 [default = k_EAuthTokenRevokePermanent];
+}
+
+//message CAuthentication_Token_Revoke_Response {}
+
+message CAuthentication_RefreshToken_Revoke_Request {
+  optional fixed64 token_id = 1;
+  optional fixed64 steamid = 2;
+  optional .EAuthTokenRevokeAction revoke_action = 3 [default = k_EAuthTokenRevokePermanent];
+  optional bytes signature = 4;
+}
+
+//message CAuthentication_RefreshToken_Revoke_Response {}

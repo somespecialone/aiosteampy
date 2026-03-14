@@ -3,6 +3,7 @@
 syntax = "proto2";
 
 import "protobufs/enums.proto";
+import "protobufs/base.proto";
 
 
 enum EAuthTokenPlatformType {
@@ -204,3 +205,63 @@ message CAuthentication_RefreshToken_Revoke_Request {
 }
 
 //message CAuthentication_RefreshToken_Revoke_Response {}
+
+enum EAuthenticationType {
+  k_EAuthenticationType_Unknown = 0;
+  k_EAuthenticationType_Password = 1;
+  k_EAuthenticationType_QR = 2;
+  k_EAuthenticationType_AccountCreation = 3;
+  k_EAuthenticationType_GuestAccount = 4;
+}
+
+enum EAuthTokenState {
+  k_EAuthTokenState_Invalid = 0;
+  k_EAuthTokenState_New = 1;
+  k_EAuthTokenState_Confirmed = 2;
+  k_EAuthTokenState_Issued = 3;
+  k_EAuthTokenState_Denied = 4;
+  k_EAuthTokenState_LoggedOut = 5;
+  k_EAuthTokenState_Consumed = 6;
+  k_EAuthTokenState_Revoked = 99;
+}
+
+message CAuthentication_RefreshToken_Enumerate_Request {
+  optional bool include_revoked = 1 [default = false];
+}
+
+message CAuthentication_RefreshToken_Enumerate_Response {
+  message TokenUsageEvent {
+    optional uint32 time = 1;
+    optional .CMsgIPAddress ip = 2;
+    optional string locale = 3;
+    optional string country = 4;
+    optional string state = 5;
+    optional string city = 6;
+  }
+
+  message RefreshTokenDescription {
+    optional fixed64 token_id = 1;
+    optional string token_description = 2;
+    optional uint32 time_updated = 3;
+    optional .EAuthTokenPlatformType platform_type = 4 [default = k_EAuthTokenPlatformType_Unknown];
+    optional bool logged_in = 5;
+    optional uint32 os_platform = 6;
+    optional uint32 auth_type = 7;
+    optional uint32 gaming_device_type = 8;
+    optional .CAuthentication_RefreshToken_Enumerate_Response.TokenUsageEvent first_seen = 9;
+    optional .CAuthentication_RefreshToken_Enumerate_Response.TokenUsageEvent last_seen = 10;
+    optional int32 os_type = 11;
+    optional .EAuthenticationType authentication_type = 12 [default = k_EAuthenticationType_Unknown];
+    optional .EAuthTokenState effective_token_state = 13 [default = k_EAuthTokenState_Invalid];
+  }
+
+  repeated .CAuthentication_RefreshToken_Enumerate_Response.RefreshTokenDescription refresh_tokens = 1;
+  optional fixed64 requesting_token = 2;
+}
+
+message CAuthentication_GetAuthSessionsForAccount_Request {
+}
+
+message CAuthentication_GetAuthSessionsForAccount_Response {
+  repeated uint64 client_ids = 1;
+}

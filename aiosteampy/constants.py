@@ -6,6 +6,7 @@ from importlib.metadata import version
 from yarl import URL
 
 LIB_ID = f"Aiosteampy/{version('aiosteampy')}"
+"""Library identifier."""
 
 
 class Currency(IntEnum):  # already params serializable

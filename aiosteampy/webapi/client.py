@@ -1,11 +1,16 @@
+from base64 import b64encode
 from collections.abc import Awaitable
+from enum import Enum, auto
 from typing import Any, Literal
+
+from betterproto2 import Message
 
 from ..constants import STEAM_URL
 from ..exceptions import EResultError
 from ..transport import (
     AiohttpSteamTransport,
     BaseSteamTransport,
+    Cookie,
     Headers,
     Params,
     Payload,
@@ -45,11 +50,30 @@ InterfaceMethod = Literal[
 Version = Literal["v1", "v2"]  # IEconItems_730/GetSchema, IEconItems_730/GetSchemaURL has v2
 
 
+API_HEADERS = {
+    "Accept": "application/json, text/plain, */*",
+    "Sec-Fetch-Dest": "empty",
+    "Sec-Fetch-Mode": "cors",
+    "Sec-Fetch-Site": "cross-site",
+}
+
+BROWSER_HEADERS = {
+    "Referer": str(STEAM_URL.COMMUNITY) + "/",
+    "Origin": str(STEAM_URL.COMMUNITY),
+}
+
+
+class Platform(Enum):
+    WEB = auto()
+    MOBILE = auto()
+
+
 class SteamWebAPIClient:
-    __slots__ = ("_transport", "_access_token", "_api_key")
+    __slots__ = ("_platform", "_transport", "_access_token", "_api_key")
 
     def __init__(
         self,
+        platform: Platform = Platform.WEB,
         transport: BaseSteamTransport | None = None,
         proxy: str | None = None,
         access_token: str | None = None,
@@ -58,6 +82,8 @@ class SteamWebAPIClient:
         """
         `Steam Web API` client.
 
+        :param platform: platform type for which client is being initialized.
+            If `mobile` type is specified, specific headers and cookies will be added to transport.
         :param transport: custom transport.
         :param proxy: proxy to use.
         :param access_token: access token to use for authenticated requests.
@@ -67,14 +93,37 @@ class SteamWebAPIClient:
         if transport is not None and proxy is not None:
             raise ValueError("Proxy is not supported for custom transport")
 
+        self._platform = platform
+
         self._transport: BaseSteamTransport = transport or AiohttpSteamTransport(proxy=proxy)
 
         self._access_token = access_token
         self._api_key = api_key
 
+        if self.is_mobile:  # add mobile app specific user agent and cookie
+            # self._transport.user_agent = "okhttp/4.9.2"
+            self._transport.add_cookie(Cookie("mobileClientVersion", "777777 3.10.3", STEAM_URL.WEB_API.host))
+            self._transport.add_cookie(Cookie("mobileClient", "android", STEAM_URL.WEB_API.host))
+
     @property
     def transport(self) -> BaseSteamTransport:
+        """HTTP transport instance in use to make requests."""
         return self._transport
+
+    @property
+    def platform(self) -> Platform:
+        """Platform type for which this client is initialized."""
+        return self._platform
+
+    @property
+    def is_web(self) -> bool:
+        """Whether this client is configured for web platform."""
+        return self._platform is Platform.WEB
+
+    @property
+    def is_mobile(self) -> bool:
+        """Whether this client is configured for mobile platform."""
+        return self._platform is Platform.MOBILE
 
     @property
     def authenticated(self) -> bool:
@@ -90,7 +139,8 @@ class SteamWebAPIClient:
         params: Params | None = None,
         data: Payload | None = None,
         # there is no api methods that accept json data supposedly
-        multipart: Payload | None = None,
+        urlencoded: Payload | None = None,
+        protobuf: Message | None = None,
         headers: Headers | None = None,
         response_mode: ResponseMode = "json",
         auth: bool = False,
@@ -105,8 +155,10 @@ class SteamWebAPIClient:
         :param api_version: API version.
         :param auth: send credentials in request body.
         :param params: query string parameters.
-        :param data: `application/x-www-form-urlencoded` payload.
-        :param multipart: multipart form data payload.
+        :param data: `multipart/form-data` payload.
+        :param urlencoded: `application/x-www-form-urlencoded` data payload.
+        :param protobuf: protobuf payload. If specified, will be merged with ``data`` or ``urlencoded`` payload.
+            Also, ``response_mode`` will be set to ``bytes`` if it is not ``meta``.
         :param headers: specific HTTP headers for this request.
         :param response_mode: return response body in specified format.
         :return: response body in specified format.
@@ -124,12 +176,38 @@ class SteamWebAPIClient:
             else:
                 raise ValueError("Auth was requested but no access token or api key is set")
 
+        get_method = http_method == "GET"
+
+        if get_method:
+            params = {**params} if params is not None else {}
+            # https://github.com/DoctorMcKay/node-steam-session/blob/3ac0f34fd964b3f886ba18ef4824ac43c942e030/src/transports/WebApiTransport.ts#L48
+            if self.is_mobile:
+                params["origin"] = "SteamMobile"
+            else:  # web
+                params["origin"] = BROWSER_HEADERS["Origin"]
+
+        if protobuf is not None:
+            if response_mode != "meta":
+                response_mode = "bytes"
+            protobuf = b64encode(bytes(protobuf)).decode()
+            if get_method:
+                params["input_protobuf_encoded"] = protobuf
+            else:  # POST
+                if data is not None:  # send with multipart
+                    data = {**data, "input_protobuf_encoded": protobuf}
+                else:
+                    urlencoded = {**(urlencoded or {}), "input_protobuf_encoded": protobuf}
+
+        headers = {**(headers or {}), **API_HEADERS}
+        if self.is_web:
+            headers |= BROWSER_HEADERS
+
         r = await self._transport.request(
             http_method,
             STEAM_URL.WEB_API / f"{api_interface_method}/{api_version}",
             params=params,
-            data=data,
-            multipart=multipart,
+            data=urlencoded,
+            multipart=data,
             headers=headers,
             redirects=False,
             raise_for_status=True,

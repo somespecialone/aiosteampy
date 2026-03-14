@@ -29,9 +29,12 @@ class EResultError(SteamError):
     def check_headers(cls, headers: Mapping[str, str], def_msg: str = ""):
         """Check if ``headers`` contains error response from `Steam` API and raise ``EResultError`` if needed."""
 
-        if (eres := EResult(int(headers.get("X-eresult", 0)))) is not EResult.OK:
+        # Valves will not be Valves if they not to forgot send header in some API endpoints
+        # So OK by default if not present
+        res = EResult(int(headers.get("X-eresult", 1)))
+        if res is not EResult.OK:
             err_msg = headers.get("X-error_message", def_msg)
-            raise EResultError(eres, err_msg)
+            raise EResultError(res, err_msg)
 
 
 # TODO probably better option is to reduce next to single exception

@@ -15,9 +15,8 @@ from ..transport import (
     format_http_date,
 )
 from ..webapi import SteamWebAPIClient
+from ..webapi.client import API_HEADERS, BROWSER_HEADERS
 from ..webapi.services.auth import (
-    API_HEADERS,
-    BROWSER_HEADERS,
     AuthenticationServiceClient,
     CAuthenticationGetAuthSessionInfoResponse,
     CAuthenticationPollAuthSessionStatusResponse,
@@ -119,8 +118,8 @@ class SteamSession:
         :raises ValueError: If unsupported platform type is used or invalid argument combinations are provided.
         """
 
-        api = SteamWebAPIClient(transport=transport, proxy=proxy)
-        self._service = AuthenticationServiceClient(api, platform=platform)
+        api = SteamWebAPIClient(platform=platform, transport=transport, proxy=proxy)
+        self._service = AuthenticationServiceClient(api)
 
         self._account_name: str | None = None
         self._access_token: SteamJWT | None = None
@@ -279,22 +278,6 @@ class SteamSession:
 
             self._service.webapi.transport.add_cookie(cookie)
 
-    def _get_platform_data(self, device_name: str = LIB_ID) -> tuple[str, dict]:
-        """Get platform data for `Steam` authentication request. Return `website id` and `device details`."""
-
-        if self.is_web:
-            return "Community", {
-                "device_friendly_name": device_name,
-                "platform_type": self._platform,
-            }
-        else:
-            return "Mobile", {
-                "device_friendly_name": device_name,
-                "platform_type": self._platform,
-                "os_type": -500,  # Android Unknown from EOSType,
-                "gaming_device_type": 528,
-            }
-
     async def _get_rsa_data(self, account_name: str) -> tuple[int, int, int]:
         """Get rsa data (pub. key mod, pub. key exp, ts) from `Steam`."""
 
@@ -378,7 +361,6 @@ class SteamSession:
         """
 
         pub_mod, pub_exp, rsa_ts = await self._get_rsa_data(account_name)
-        website_id, device_details = self._get_platform_data(device_friendly_name)
 
         try:
             resp = await self._service.begin_auth_session_via_credentials(
@@ -386,8 +368,7 @@ class SteamSession:
                 encrypt_password(password, pub_mod, pub_exp),
                 rsa_ts,
                 persistence,
-                website_id,
-                device_details,
+                device_friendly_name,
             )
         except Exception as e:
             raise LoginError("Could not begin auth session via credentials") from e
@@ -466,10 +447,8 @@ class SteamSession:
         if self.is_mobile:
             raise ValueError("This method is not supported for mobile app platform type")
 
-        _, device_details = self._get_platform_data(device_friendly_name)
-
         try:
-            resp = await self._service.begin_auth_session_via_qr(device_details)
+            resp = await self._service.begin_auth_session_via_qr(device_friendly_name)
         except Exception as e:
             raise LoginError("Could not start auth session via qr") from e
 

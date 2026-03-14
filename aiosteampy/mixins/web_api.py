@@ -1,3 +1,5 @@
+import json as _json
+
 from re import compile
 from typing import overload, Literal
 
@@ -9,7 +11,9 @@ from ..exceptions import EResultError, SteamError, SessionExpired
 from .confirmation import ConfirmationMixin
 
 API_KEY_RE = compile(r"<p>Key: (?P<api_key>[0-9A-F]+)</p>")
-STEAM_GUARD_REQ_CHECK_RE = compile(r"Your account requires (<a [^>]+>)?Steam Guard Mobile Authenticator")
+STEAM_GUARD_REQ_CHECK_RE = compile(
+    r"Your account requires (<a [^>]+>)?Steam Guard Mobile Authenticator"
+)
 
 
 class SteamWebApiMixin(ConfirmationMixin):
@@ -33,8 +37,7 @@ class SteamWebApiMixin(ConfirmationMixin):
         params: T_PARAMS = ...,
         use_api_key: bool = ...,
         headers: T_HEADERS = ...,
-    ) -> dict[str, ...]:
-        ...
+    ) -> dict[str, ...]: ...
 
     @overload
     async def call_web_api(
@@ -45,8 +48,7 @@ class SteamWebApiMixin(ConfirmationMixin):
         use_api_key: bool = ...,
         headers: T_HEADERS = ...,
         method: Literal["POST"],
-    ) -> dict[str, ...]:
-        ...
+    ) -> dict[str, ...]: ...
 
     @overload
     async def call_web_api(
@@ -57,8 +59,7 @@ class SteamWebApiMixin(ConfirmationMixin):
         use_api_key: bool = ...,
         headers: T_HEADERS = ...,
         method: Literal["POST"],
-    ) -> dict[str, ...]:
-        ...
+    ) -> dict[str, ...]: ...
 
     # https://github.com/DoctorMcKay/node-steam-tradeoffer-manager/blob/7d27ae16642ad810a44d1aed7837872b92392daf/lib/webapi.js#L7
     async def call_web_api(
@@ -90,27 +91,41 @@ class SteamWebApiMixin(ConfirmationMixin):
         params = params.copy()
         if use_api_key:
             if not self._api_key:
-                raise AttributeError("You must set an `_api_key` before use this method with `use_api_key=True`")
+                raise AttributeError(
+                    "You must set an `_api_key` before use this method with `use_api_key=True`"
+                )
             params["key"] = self._api_key
         else:
             params["access_token"] = self.access_token
 
         try:
-            r = await self.session.request(method, url, params=params, data=data, json=json, headers=headers)
+            r = await self.session.request(
+                method, url, params=params, data=data, json=json, headers=headers
+            )
         except ClientResponseError as e:
             if e.status == 403:
                 if not use_api_key and self.is_access_token_expired:
                     raise SessionExpired from e
                 else:
-                    raise SteamError(f"{'Steam Web API key' if use_api_key else 'Access token'} is invalid") from e
+                    raise SteamError(
+                        f"{'Steam Web API key' if use_api_key else 'Access token'} is invalid"
+                    ) from e
             else:
                 raise e
 
         result = EResult(int(r.headers["X-Eresult"]))
-        rj: dict | None = await r.json()  # read & parse content regardless of result
+        raw = await r.read()
+        text = raw.decode("utf-8", errors="ignore")
+        rj: dict | None = (
+            _json.loads(text) if text else None
+        )  # read & parse content regardless of result
 
         # https://github.com/DoctorMcKay/node-steam-tradeoffer-manager/blob/7d27ae16642ad810a44d1aed7837872b92392daf/lib/webapi.js#L56
-        if result is EResult.FAIL and rj is not None and (len(rj) > 1 or len(rj.get("response", ())) > 0):
+        if (
+            result is EResult.FAIL
+            and rj is not None
+            and (len(rj) > 1 or len(rj.get("response", ())) > 0)
+        ):
             result = EResult.OK
 
         if result is not EResult.OK:
@@ -129,11 +144,20 @@ class SteamWebApiMixin(ConfirmationMixin):
 
         # https://github.com/DoctorMcKay/node-steamcommunity/blob/b58745c8b74963eae808d33e558dbba6840c7053/components/webapi.js#L18
         # force english
-        r = await self.session.get(STEAM_URL.COMMUNITY / "dev/apikey", params={"l": "english"}, allow_redirects=False)
+        r = await self.session.get(
+            STEAM_URL.COMMUNITY / "dev/apikey",
+            params={"l": "english"},
+            allow_redirects=False,
+        )
         rt = await r.text()
 
-        if "You must have a validated email address to create a Steam Web API key" in rt:
-            raise SteamError("Validated email address required to create a Steam Web API key")
+        if (
+            "You must have a validated email address to create a Steam Web API key"
+            in rt
+        ):
+            raise SteamError(
+                "Validated email address required to create a Steam Web API key"
+            )
         elif STEAM_GUARD_REQ_CHECK_RE.search(rt):
             # for practically impossible case when `shared_secret` is "" and mobile authenticator disabled
             raise SteamError("Steam Guard Mobile Authenticator is required")
@@ -154,7 +178,9 @@ class SteamWebApiMixin(ConfirmationMixin):
             "sessionid": self.session_id,
             "Revoke": "Revoke My Steam Web API Key",  # whatever
         }
-        await self.session.post(STEAM_URL.COMMUNITY / "dev/revokekey", data=data, allow_redirects=False)
+        await self.session.post(
+            STEAM_URL.COMMUNITY / "dev/revokekey", data=data, allow_redirects=False
+        )
         self._api_key = None
 
     async def register_new_api_key(self, domain: str) -> str:
@@ -187,7 +213,9 @@ class SteamWebApiMixin(ConfirmationMixin):
             success = EResult(rj.get("success"))
 
         if success is not EResult.OK or not rj["api_key"]:
-            raise EResultError(rj.get("message", "Failed to register Steam Web API Key"), success, rj)
+            raise EResultError(
+                rj.get("message", "Failed to register Steam Web API Key"), success, rj
+            )
 
         self._api_key = rj["api_key"]
         return self._api_key

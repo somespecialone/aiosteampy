@@ -19,36 +19,6 @@ from ..transport import (
 )
 
 HttpMethod = Literal["GET", "POST"]
-# can be generated from https://steamapi.xpaw.me/#ISteamWebAPIUtil/GetSupportedAPIList
-InterfaceMethod = Literal[
-    # IEconService
-    "IEconService/GetTradeHistory",
-    "IEconService/GetTradeHoldDurations",
-    "IEconService/GetTradeOffer",
-    "IEconService/GetTradeOffers",
-    "IEconService/GetTradeOffersSummary",
-    "IEconService/GetTradeStatus",
-    # IAuthenticationService, client implemented
-    "IAuthenticationService/BeginAuthSessionViaCredentials",
-    "IAuthenticationService/BeginAuthSessionViaQR",
-    "IAuthenticationService/GetPasswordRSAPublicKey",
-    "IAuthenticationService/UpdateAuthSessionWithSteamGuardCode",
-    "IAuthenticationService/PollAuthSessionStatus",
-    "IAuthenticationService/GenerateAccessTokenForApp",
-    "IAuthenticationService/GetAuthSessionInfo",
-    "IAuthenticationService/UpdateAuthSessionWithMobileConfirmation",
-    "IAuthenticationService/EnumerateTokens",
-    "IAuthenticationService/GetAuthSessionsForAccount",
-    "IAuthenticationService/RevokeRefreshToken",
-    "IAuthenticationService/RevokeToken",
-    # ITwoFactorService
-    "ITwoFactorService/AddAuthenticator",
-    "ITwoFactorService/FinalizeAddAuthenticator",
-    "ITwoFactorService/RemoveAuthenticator",
-    "ITwoFactorService/QueryTime",
-]
-Version = Literal["v1", "v2"]  # IEconItems_730/GetSchema, IEconItems_730/GetSchemaURL has v2
-
 
 API_HEADERS = {
     "Accept": "application/json, text/plain, */*",
@@ -133,14 +103,15 @@ class SteamWebAPIClient:
     async def request(
         self,
         http_method: HttpMethod,
-        api_interface_method: InterfaceMethod | str,
-        api_version: Version = "v1",
+        interface: str,
+        method: str,
+        version: int = 1,
         *,
         params: Params | None = None,
-        data: Payload | None = None,
+        data: Payload | None = None,  # multipart by default
         # there is no api methods that accept json data supposedly
         urlencoded: Payload | None = None,
-        protobuf: Message | None = None,
+        protobuf: Message | bytes | None = None,
         headers: Headers | None = None,
         response_mode: ResponseMode = "json",
         auth: bool = False,
@@ -151,8 +122,9 @@ class SteamWebAPIClient:
         .. seealso:: https://steamapi.xpaw.me.
 
         :param http_method: HTTP method.
-        :param api_interface_method: API interface & method in format `Interface/Method`.
-        :param api_version: API version.
+        :param interface: API interface.
+        :param method: API method.
+        :param version: API version.
         :param auth: send credentials in request body.
         :param params: query string parameters.
         :param data: `multipart/form-data` payload.
@@ -204,7 +176,7 @@ class SteamWebAPIClient:
 
         r = await self._transport.request(
             http_method,
-            STEAM_URL.WEB_API / f"{api_interface_method}/{api_version}",
+            STEAM_URL.WEB_API / f"{interface}/{method}/v{version}",
             params=params,
             data=urlencoded,
             multipart=data,
@@ -220,8 +192,6 @@ class SteamWebAPIClient:
         EResultError.check_headers(r.headers, "Error calling Steam Web Api")
 
         return r.content
-
-    # "call" name method is reserved for future implementation with api endpoint specs
 
     def close(self) -> Awaitable[None]:
         return self._transport.close()

@@ -1,3 +1,3 @@
 """Module for interacting with the `Steam Web API`."""
 
-from .client import InterfaceMethod, SteamWebAPIClient
+from .client import SteamWebAPIClient

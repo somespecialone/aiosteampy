@@ -259,8 +259,7 @@ message CAuthentication_RefreshToken_Enumerate_Response {
   optional fixed64 requesting_token = 2;
 }
 
-message CAuthentication_GetAuthSessionsForAccount_Request {
-}
+//message CAuthentication_GetAuthSessionsForAccount_Request {}
 
 message CAuthentication_GetAuthSessionsForAccount_Response {
   repeated uint64 client_ids = 1;

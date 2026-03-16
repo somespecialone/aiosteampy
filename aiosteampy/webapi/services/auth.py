@@ -17,13 +17,11 @@ class AuthenticationServiceClient(SteamWebApiServiceBase):
 
     __slots__ = ("_api",)
 
+    SERVICE_NAME = "IAuthenticationService"
+
     async def get_password_rsa_public_key(self, account_name: str) -> CAuthenticationGetPasswordRsaPublicKeyResponse:
         msg = CAuthenticationGetPasswordRsaPublicKeyRequest(account_name=account_name)
-        r = await self._api.request(
-            "GET",
-            "IAuthenticationService/GetPasswordRSAPublicKey",
-            protobuf=msg,
-        )
+        r = await self._call("GetPasswordRSAPublicKey", msg, http_method="GET")
         return CAuthenticationGetPasswordRsaPublicKeyResponse.parse(r)
 
     async def update_auth_session_with_steam_guard_code(
@@ -41,21 +39,12 @@ class AuthenticationServiceClient(SteamWebApiServiceBase):
             if code_type == "device"
             else EAuthSessionGuardType.k_EAuthSessionGuardType_EmailCode,
         )
-
-        r = await self._api.request(
-            "POST",
-            "IAuthenticationService/UpdateAuthSessionWithSteamGuardCode",
-            protobuf=msg,
-        )
+        r = await self._call("UpdateAuthSessionWithSteamGuardCode", msg)
         return CAuthenticationUpdateAuthSessionWithSteamGuardCodeResponse.parse(r)
 
     async def get_auth_session_info(self, client_id: int) -> CAuthenticationGetAuthSessionInfoResponse:
         msg = CAuthenticationGetAuthSessionInfoRequest(client_id=client_id)
-        r = await self._api.request(
-            "POST",
-            "IAuthenticationService/GetAuthSessionInfo",
-            protobuf=msg,
-        )
+        r = await self._call("GetAuthSessionInfo", msg)
         return CAuthenticationGetAuthSessionInfoResponse.parse(r)
 
     def update_auth_session_with_mobile_confirmation(
@@ -75,12 +64,7 @@ class AuthenticationServiceClient(SteamWebApiServiceBase):
             confirm=confirm,
             persistence=ESessionPersistence(int(persistence)),
         )
-        return self._api.request(
-            "POST",
-            "IAuthenticationService/UpdateAuthSessionWithMobileConfirmation",
-            protobuf=msg,
-            response_mode="meta",
-        )
+        return self._call("UpdateAuthSessionWithMobileConfirmation", msg, response_mode="meta")
 
     def _get_platform_data(self, device_name: str) -> tuple[str, CAuthenticationDeviceDetails]:
         """Get platform data for `Steam` authentication request. Return `website id` and `device details`."""
@@ -118,11 +102,7 @@ class AuthenticationServiceClient(SteamWebApiServiceBase):
             # language=0,
             # qos_level=2,
         )
-        r = await self._api.request(
-            "POST",
-            "IAuthenticationService/BeginAuthSessionViaCredentials",
-            protobuf=msg,
-        )
+        r = await self._call("BeginAuthSessionViaCredentials", msg)
         return CAuthenticationBeginAuthSessionViaCredentialsResponse.parse(r)
 
     async def begin_auth_session_via_qr(
@@ -131,11 +111,7 @@ class AuthenticationServiceClient(SteamWebApiServiceBase):
     ) -> CAuthenticationBeginAuthSessionViaQrResponse:
         _, device_details = self._get_platform_data(device_name)
         msg = CAuthenticationBeginAuthSessionViaQrRequest(device_details=device_details)
-        r = await self._api.request(
-            "POST",
-            "IAuthenticationService/BeginAuthSessionViaQR",
-            protobuf=msg,
-        )
+        r = await self._call("BeginAuthSessionViaQR", msg)
         return CAuthenticationBeginAuthSessionViaQrResponse.parse(r)
 
     async def poll_auth_session_status(
@@ -144,11 +120,7 @@ class AuthenticationServiceClient(SteamWebApiServiceBase):
         request_id: bytes,
     ) -> CAuthenticationPollAuthSessionStatusResponse:
         msg = CAuthenticationPollAuthSessionStatusRequest(client_id=client_id, request_id=request_id)
-        r = await self._api.request(
-            "POST",
-            "IAuthenticationService/PollAuthSessionStatus",
-            protobuf=msg,
-        )
+        r = await self._call("PollAuthSessionStatus", msg)
         return CAuthenticationPollAuthSessionStatusResponse.parse(r)
 
     async def generate_access_token_for_app(
@@ -164,31 +136,16 @@ class AuthenticationServiceClient(SteamWebApiServiceBase):
             if renew_refresh_token
             else ETokenRenewalType.k_ETokenRenewalType_None,
         )
-        r = await self._api.request(
-            "POST",
-            "IAuthenticationService/GenerateAccessTokenForApp",
-            protobuf=msg,
-        )
+        r = await self._call("GenerateAccessTokenForApp", msg)
         return CAuthenticationAccessTokenGenerateForAppResponse.parse(r)
 
     async def enumerate_tokens(self, include_revoked: bool) -> CAuthenticationRefreshTokenEnumerateResponse:
         msg = CAuthenticationRefreshTokenEnumerateRequest(include_revoked=include_revoked)
-        r = await self._api.request(
-            "POST",
-            "IAuthenticationService/EnumerateTokens",
-            protobuf=msg,
-            auth=True,
-        )
+        r = await self._call("EnumerateTokens", msg, auth=True)
         return CAuthenticationRefreshTokenEnumerateResponse.parse(r)
 
     async def get_auth_sessions_for_account(self) -> CAuthenticationGetAuthSessionsForAccountResponse:
-        msg = CAuthenticationGetAuthSessionsForAccountRequest()  # need to send empty message to receive response
-        r = await self._api.request(
-            "GET",
-            "IAuthenticationService/GetAuthSessionsForAccount",
-            protobuf=msg,
-            auth=True,
-        )
+        r = await self._call("GetAuthSessionsForAccount", http_method="GET", auth=True)
         return CAuthenticationGetAuthSessionsForAccountResponse.parse(r)
 
     def revoke_refresh_token(
@@ -204,13 +161,7 @@ class AuthenticationServiceClient(SteamWebApiServiceBase):
             signature=signature,
             revoke_action=revoke_action,
         )
-        return self._api.request(
-            "POST",
-            "IAuthenticationService/RevokeRefreshToken",
-            auth=True,
-            protobuf=msg,
-            response_mode="meta",
-        )
+        return self._call("RevokeRefreshToken", msg, auth=True, response_mode="meta")
 
     def revoke_token(
         self,
@@ -218,13 +169,7 @@ class AuthenticationServiceClient(SteamWebApiServiceBase):
         revoke_action: EAuthTokenRevokeAction = EAuthTokenRevokeAction.k_EAuthTokenRevokeLogout,
     ) -> Awaitable[None]:
         msg = CAuthenticationTokenRevokeRequest(token=token, revoke_action=revoke_action)
-        return self._api.request(
-            "POST",
-            "IAuthenticationService/RevokeToken",
-            auth=True,
-            protobuf=msg,
-            response_mode="meta",
-        )
+        return self._call("RevokeToken", msg, auth=True, response_mode="meta")
 
     def close(self) -> Awaitable[None]:
         return self._api.close()

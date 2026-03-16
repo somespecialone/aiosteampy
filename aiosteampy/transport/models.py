@@ -4,12 +4,13 @@ from datetime import datetime
 from http.cookies import Morsel
 from typing import Any, Literal, Self
 
+from yarl import URL
+
 from .types import JSON_SAFE_COOKIE_DICT, Headers
-from .utils import format_http_date
+from .utils import format_http_date, parse_http_date
 
 
-# TODO date fields better be datetime
-@dataclass(slots=True, eq=False)
+@dataclass(slots=True)
 class Cookie:
     """Universal cookie data model. **RFC 6265**."""
 
@@ -22,7 +23,7 @@ class Cookie:
     path: str = "/"  # safe default
     host_only: bool = False  # if True cookie has been set with an empty domain, so it needs to be sent only to host
 
-    expires: str | None = None  # transport should convert it from max-age if that has precedence
+    expires: datetime | None = None  # transport should convert it from max-age if that has precedence
 
     # also safe defaults
     http_only: bool = False
@@ -34,8 +35,8 @@ class Cookie:
 
     # meta
     comment: str = ""
-    created_at: str | None = field(default_factory=lambda: format_http_date(datetime.now()))
-    last_accessed_at: str | None = None
+    created_at: datetime | None = field(default_factory=lambda: datetime.now())
+    last_accessed_at: datetime | None = None
 
     # non‑standard attributes or future RFCs
     extensions: dict[str, Any] = field(default_factory=dict)
@@ -43,7 +44,14 @@ class Cookie:
     def to_dict(self) -> JSON_SAFE_COOKIE_DICT:
         """Convert current model to a json-safe dict."""
 
-        return asdict(self)
+        data = asdict(self)
+        if self.expires is not None:
+            data["expires"] = format_http_date(self.expires)
+        if self.created_at is not None:
+            data["created_at"] = format_http_date(self.created_at)
+        if self.last_accessed_at is not None:
+            data["last_accessed_at"] = format_http_date(self.last_accessed_at)
+        return data
 
     @classmethod
     def from_dict(cls, cookie: JSON_SAFE_COOKIE_DICT) -> Self:
@@ -57,10 +65,15 @@ class Cookie:
             extensions=cookie.pop("extensions").copy(),
         )
 
+        # safely set attr from dict if their fields are present at Cookie model
         does_not_exist = ()  # :)
         for name, value in cookie.items():
             if getattr(inst, name, does_not_exist) is not does_not_exist:
                 setattr(inst, name, value)
+
+        inst.expires = parse_http_date(inst.expires) if inst.expires else None
+        inst.created_at = parse_http_date(inst.created_at) if inst.created_at else None
+        inst.last_accessed_at = parse_http_date(inst.last_accessed_at) if inst.last_accessed_at else None
 
         return inst
 
@@ -74,7 +87,7 @@ class Cookie:
             m["domain"],
             m["path"],
             host_only=host_only,
-            expires=m["expires"],
+            expires=parse_http_date(m["expires"]),
             http_only=m["httponly"],
             secure=m["secure"],
             same_site=m["samesite"],
@@ -82,13 +95,15 @@ class Cookie:
         )
 
 
-@dataclass(slots=True, eq=False)
+@dataclass(slots=True)
 class TransportResponse:
-    """HTTP response model."""
+    """Minimalistic HTTP response model."""
 
+    url: URL
+    """Requested URL."""
     status: int
     """HTTP status code."""
-    status_message: str | None = None
+    reason: str | None = None
     """HTTP status message, if any."""
 
     headers: Headers = field(default_factory=dict)
@@ -96,6 +111,9 @@ class TransportResponse:
 
     content: str | bytes | Any | None = None  # decoded text, body bytes, parsed json, None in case of no read
     """Response content."""
+
+    redirects: tuple[Self, ...] = ()
+    """Sequence of redirect responses if applicable."""
 
     @property
     def ok(self) -> bool:

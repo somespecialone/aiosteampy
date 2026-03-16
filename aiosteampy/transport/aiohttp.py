@@ -2,17 +2,19 @@
 
 from http.cookies import BaseCookie, Morsel
 
-from aiohttp import ClientSession, JsonPayload, MultipartWriter
+from aiohttp import ClientConnectionError, ClientSession, JsonPayload, MultipartWriter
 from yarl import URL
 
 from ..constants import LIB_ID
 from .base import BaseSteamTransport, Cookie, TransportResponse
+from .exceptions import NetworkError
+from .utils import parse_http_date
 
 
 class AiohttpSteamTransport(BaseSteamTransport):
     __slots__ = ("_session",)
 
-    def __init__(self, proxy: str | URL | None = None):
+    def __init__(self, proxy: str | URL | None = None, **kwargs):
         connector = None
 
         if proxy is not None and proxy.startswith("socks"):
@@ -29,7 +31,7 @@ class AiohttpSteamTransport(BaseSteamTransport):
             connector = ProxyConnector.from_url(proxy)
             proxy = None
 
-        self._session = ClientSession(proxy=proxy, connector=connector)
+        self._session = ClientSession(proxy=proxy, connector=connector, **kwargs)
 
         self.user_agent = LIB_ID
 
@@ -72,7 +74,7 @@ class AiohttpSteamTransport(BaseSteamTransport):
             m["domain"] = cookie.domain
 
         m["path"] = cookie.path
-        m["expires"] = cookie.expires
+        m["expires"] = parse_http_date(cookie.expires)
         m["secure"] = cookie.secure
         m["httponly"] = cookie.http_only
         m["samesite"] = cookie.same_site
@@ -91,50 +93,54 @@ class AiohttpSteamTransport(BaseSteamTransport):
     def close(self):
         return self._session.close()
 
-    async def _request(
-        self,
-        method,
-        url,
-        *,
-        params,
-        data,
-        json,
-        multipart,
-        headers,
-        redirects,
-        response_mode,
-    ):
+    async def _request(self, method, url, *, params, data, json, multipart, headers, redirects, response_mode):
         if multipart is not None:
             data = MultipartWriter("form-data")
             for k, val in multipart.items():
                 part = data.append(val)
                 part.set_content_disposition("form-data", name=k)
 
-        aiohttp_resp = await self._session.request(
-            method,
-            url,
-            params=params,
-            data=data,
-            json=json,
-            headers=headers,
-            allow_redirects=redirects,
-            raise_for_status=False,
-        )
+        try:
+            r = await self._session.request(
+                method,
+                url,
+                params=params,
+                data=data,
+                json=json,
+                headers=headers,
+                allow_redirects=redirects,
+                raise_for_status=False,
+            )
+
+        except ClientConnectionError as e:
+            raise NetworkError from e
 
         if response_mode == "meta":  # body is not needed
             content = None
         elif response_mode == "text":
-            content = await aiohttp_resp.text()
+            content = await r.text()
         elif response_mode == "json":
-            content = await aiohttp_resp.json(content_type=None)  # force to parse as json
+            content = await r.json(content_type=None)  # force to parse as json
         else:  # bytes by default
-            content = await aiohttp_resp.read()
+            content = await r.read()
 
-        resp = TransportResponse(
-            status=aiohttp_resp.status,
-            headers={**aiohttp_resp.headers},  # hope there will be no problems with multi headers
+        history = ()
+        if redirects:
+            history = tuple(
+                TransportResponse(
+                    url=hr.url,
+                    status=hr.status,
+                    headers={**hr.headers},
+                    reason=hr.reason,
+                )
+                for hr in r.history
+            )
+
+        return TransportResponse(
+            url=r.url,
+            status=r.status,
+            headers={**r.headers},  # hope there will be no problems with multi headers
             content=content,
-            status_message=aiohttp_resp.reason,
+            reason=r.reason,
+            redirects=history,
         )
-
-        return resp

@@ -1,16 +1,25 @@
 from datetime import datetime
 
 from ..exceptions import SteamError
-
 from .models import TransportResponse
 
 
-# TODO __str__
 class TransportError(Exception):
-    """Connection, os, proxy, unexpected response status, etc."""
+    """Generic transport error."""
 
-    def __init__(self, response: TransportResponse | None = None):
+
+class NetworkError(TransportError):
+    """Unspecific network error."""
+
+
+class TransportResponseError(TransportError):
+    """Bad response status code."""
+
+    def __init__(self, response: TransportResponse):
         self.response = response
+
+    def __str__(self):
+        return f"Got {self.response.status} - {self.response.reason}."
 
 
 class RateLimitExceeded(SteamError):
@@ -19,6 +28,9 @@ class RateLimitExceeded(SteamError):
     # In hope that Steam will response with Retry-After or custom header sometime in future
     def __init__(self, response: TransportResponse):
         self.response = response
+
+    def __str__(self):
+        return "Rest a bit."
 
 
 class ResourceNotModified(SteamError):
@@ -32,4 +44,4 @@ class ResourceNotModified(SteamError):
         self.expires = expires
 
     def __str__(self):
-        return ""
+        return f"Resource not modified. Last modified: {self.last_modified}, Expires: {self.expires}."

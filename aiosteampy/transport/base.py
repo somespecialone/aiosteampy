@@ -3,7 +3,7 @@ from typing import overload
 
 from yarl import URL
 
-from .exceptions import RateLimitExceeded, ResourceNotModified, TransportError
+from .exceptions import RateLimitExceeded, ResourceNotModified, TransportError, TransportResponseError
 from .models import Cookie, TransportResponse
 from .types import Headers, HttpMethod, Params, Payload, ResponseMode
 from .utils import parse_http_date
@@ -209,14 +209,15 @@ class BaseSteamTransport(metaclass=ABCMeta):
         :param raise_for_status: raise exception if response status indicates error.
         :param response_mode: return response body (as ``TransportResponse.content`` attribute) in specified format.
         :return: filled ``TransportResponse`` object.
-        :raises TransportError: unable to process response.
-        :raises SessionExpired: current login session is expired.
+        :raises TransportError: ordinary reasons.
+        :raises NetworkError: for network-related issues.
+        :raises ResourceNotModified: 304 status code.
+        :raises RateLimitExceeded: rate limit has been hit.
+        :raises TransportResponseError: bad error code.
         """
 
         if sum(map(bool, (data, json, multipart))) > 1:
             raise ValueError("`data`, `json` and `multipart` args are mutually exclusive")
-
-        # we can check access token expiration here and raise SessionExpired early
 
         try:
             resp = await self._request(
@@ -232,7 +233,7 @@ class BaseSteamTransport(metaclass=ABCMeta):
             )
 
         except TransportError:
-            raise
+            raise  # re-raise transport errors deliberately
         except Exception as e:
             raise TransportError from e
 
@@ -247,7 +248,7 @@ class BaseSteamTransport(metaclass=ABCMeta):
             raise RateLimitExceeded(resp)
 
         if raise_for_status and not resp.ok:  # handle other >=400 codes
-            raise TransportError(resp)
+            raise TransportResponseError(resp)
 
         return resp
 

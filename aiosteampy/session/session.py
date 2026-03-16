@@ -5,7 +5,8 @@ from typing import Any, Callable
 
 from yarl import URL
 
-from ..constants import LIB_ID, STEAM_URL
+from ..constants import LIB_ID, STEAM_URL, EResult
+from ..exceptions import EResultError
 from ..id import SteamID
 from ..transport import (
     BaseSteamTransport,
@@ -33,7 +34,10 @@ STEAM_REFRESH_TOKEN_COOKIE = "steamRefresh_steam"
 LOGIN_URL = URL("https://login.steampowered.com")
 SESSION_ID_COOKIE = "sessionid"
 
+QRChallengeUrl = URL | str | tuple[int, int]
 
+
+# https://typing.python.org/en/latest/guides/libraries.html#annotating-decorators
 def mobile_platform[F: Callable[..., Any]](func: F) -> F:
     @wraps(func)
     def wrapper(self: "SteamSession", *args, **kwargs):
@@ -115,7 +119,6 @@ class SteamSession:
         :param transport: A custom transport instance implementing the required
             HTTP communication interface. If provided, ``proxy`` cannot also be set.
         :param proxy: A proxy URL to route HTTP requests through when using the *default HTTP transport*.
-        :raises ValueError: If unsupported platform type is used or invalid argument combinations are provided.
         """
 
         api = SteamWebAPIClient(platform=platform, transport=transport, proxy=proxy)
@@ -269,7 +272,7 @@ class SteamSession:
                 STEAM_REFRESH_TOKEN_COOKIE,
                 token.cookie_value,
                 LOGIN_URL.host,
-                expires=format_http_date(token.expires_at),  # token expire value instead of 400 days from browser
+                expires=token.expires_at,  # token expire value instead of 400 days from browser
                 host_only=True,
                 http_only=True,
                 secure=True,
@@ -281,12 +284,7 @@ class SteamSession:
     async def _get_rsa_data(self, account_name: str) -> tuple[int, int, int]:
         """Get rsa data (pub. key mod, pub. key exp, ts) from `Steam`."""
 
-        try:
-            resp = await self._service.get_password_rsa_public_key(account_name)
-
-        except Exception as e:
-            raise LoginError("Could not obtain rsa data from Steam") from e
-
+        resp = await self._service.get_password_rsa_public_key(account_name)
         return (
             int(resp.publickey_mod, 16),
             int(resp.publickey_exp, 16),
@@ -300,41 +298,37 @@ class SteamSession:
 
         :param auth_code: `Steam Guard` two-factor (TOTP) code.
         :param code_type: type of `Steam Guard` code to submit.
-        :raises LoginError: for ordinary reasons.
-        :raises ValueError: when session is not initialized.
+        :raises TransportError: ordinary reasons.
         """
 
         if not self._client_id or not self._steam_id:
             raise ValueError("Session is not initialized")
 
-        try:
-            await self._service.update_auth_session_with_steam_guard_code(
-                self._client_id,
-                self._steam_id,
-                auth_code,
-                code_type,
-            )
-        except Exception as e:
-            raise LoginError("Could not update auth session with Steam Guard code") from e
+        await self._service.update_auth_session_with_steam_guard_code(
+            self._client_id,
+            self._steam_id,
+            auth_code,
+            code_type,
+        )
 
     @mobile_platform
-    async def get_session_info(self, qr_challenge_url: URL | str) -> CAuthenticationGetAuthSessionInfoResponse:
+    async def get_session_info(self, qr: QRChallengeUrl) -> CAuthenticationGetAuthSessionInfoResponse:
         """
         Get info of the other login session from `Steam`.
         Equivalent of scanning QR with `Steam App` on a mobile device,
         therefore, *must be used only from session with mobile app platform type*.
 
-        :param qr_challenge_url: url from QR of session to get info. Must be from the same account.
+        :param qr: url from QR of session to get info. Must be from the same account.
         :return: session info.
-        :raises LoginError: for ordinary reasons.
+        :raises TransportError: ordinary reasons.
         """
 
-        _, client_id = parse_qr_challenge_url(qr_challenge_url)
+        if isinstance(qr, (URL, str)):
+            _, client_id = parse_qr_challenge_url(qr)
+        else:
+            _, client_id = qr
 
-        try:
-            return await self._service.get_auth_session_info(client_id)
-        except Exception as e:
-            raise LoginError("Could not get auth session info") from e
+        return await self._service.get_auth_session_info(client_id)
 
     async def with_credentials(
         self,
@@ -356,7 +350,10 @@ class SteamSession:
         :param persistence: should `session` be persistent.
         :param device_friendly_name: name of the device used for authentication.
             Should be unique, identifiable, and human readable. Used when managing account sessions.
-        :raises LoginError: for ordinary reasons.
+        :raises TransportError: ordinary reasons.
+        :raises LoginError: ordinary reasons.
+        :raises BadCredentials: when `Steam` rejects credentials.
+        :raises TooManyAttempts: when `Steam` rejects credentials due to too many attempts.
         :raises ConfirmationRequired: when `Steam` requires performing  additional confirmation (email, device, etc.).
         """
 
@@ -370,8 +367,14 @@ class SteamSession:
                 persistence,
                 device_friendly_name,
             )
-        except Exception as e:
-            raise LoginError("Could not begin auth session via credentials") from e
+        except EResultError as e:
+            match e.result:
+                case EResult.INVALID_PASSWORD:
+                    raise BadCredentials
+                case EResult.RATE_LIMIT_EXCEEDED:
+                    raise TooManyAttempts
+                case unknown:
+                    raise LoginError(f"Unknown EResult: {unknown.name}") from e
 
         if not resp.allowed_confirmations:
             raise LoginError("No allowed confirmations!")
@@ -406,7 +409,10 @@ class SteamSession:
         :param persistence: should `session` be persistent.
         :param device_friendly_name: name of the device used for authentication.
             Should be unique, identifiable, and human readable. Used when managing account sessions.
-        :raises LoginError: for ordinary reasons.
+        :raises TransportError: ordinary reasons.
+        :raises BadCredentials: when `Steam` rejects credentials.
+        :raises TooManyAttempts: when `Steam` rejects credentials due to too many attempts.
+        :raises LoginError: ordinary reasons.
             When `Steam` requires performing  additional confirmation (email, device, etc.).
         """
 
@@ -440,8 +446,10 @@ class SteamSession:
         :param device_friendly_name: name of the device used for authentication.
             Should be unique, identifiable, and human readable. Used when managing account sessions.
         :return: version, client id, list of allowed confirmations, QR challenge url.
-        :raises LoginError: for ordinary reasons.
-        :raises ValueError: when `session` has mobile app platform type.
+        :raises TransportError: ordinary reasons.
+        :raises LoginError: ordinary reasons.
+        :raises BadCredentials: when `Steam` rejects credentials.
+        :raises TooManyAttempts: when `Steam` rejects credentials due to too many attempts.
         """
 
         if self.is_mobile:
@@ -449,8 +457,14 @@ class SteamSession:
 
         try:
             resp = await self._service.begin_auth_session_via_qr(device_friendly_name)
-        except Exception as e:
-            raise LoginError("Could not start auth session via qr") from e
+        except EResultError as e:
+            match e.result:
+                case EResult.INVALID_PASSWORD:
+                    raise BadCredentials
+                case EResult.RATE_LIMIT_EXCEEDED:
+                    raise TooManyAttempts
+                case unknown:
+                    raise LoginError(f"Unknown EResult: {unknown.name}") from e
 
         self._set_state(resp.request_id, resp.client_id, resp.interval)
 
@@ -458,11 +472,7 @@ class SteamSession:
 
     async def _get_status(self) -> CAuthenticationPollAuthSessionStatusResponse:
         """Get current session status."""
-
-        try:
-            return await self._service.poll_auth_session_status(self._client_id, self._request_id)
-        except Exception as e:
-            raise LoginError("Could not get auth session status") from e
+        return await self._service.poll_auth_session_status(self._client_id, self._request_id)
 
     async def _poll_status(self):
         """
@@ -489,7 +499,7 @@ class SteamSession:
             end = loop.time()
             await asyncio.sleep(self._poll_interval - (end - start))  # respect steam interval and avoid drift
 
-    async def finalize(self) -> tuple[SteamJWT, SteamJWT]:
+    async def finalize(self, timeout: float | None = None) -> tuple[SteamJWT, SteamJWT]:
         """
         Finalize login process for current `session` by obtaining `tokens`.
         Fill ``steam_id`` if it was not provided during initialization.
@@ -498,22 +508,21 @@ class SteamSession:
         or after the current `session` has been **approved**.
 
         :return: `access` and `refresh` tokens.
-        :raises LoginError: for ordinary reasons.
-        :raises RuntimeError: when session is not ready for finalization.
+        :raises LoginError: timeout has been exceeded when polling for refresh token.
         """
 
         if not self._client_id or not self._request_id:
             raise RuntimeError("Session is not ready for finalization")
 
-        # Let's assume that Steam need some time to process things, just to be safe
-        timeout = (self._poll_interval * 2) + 0.1
+        if not timeout:
+            # Let's assume that Steam need some time to process things, just to be safe
+            n = 3
+            timeout = (self._poll_interval * n) + (0.1 * n)
 
         try:
             await asyncio.wait_for(self._poll_status(), timeout)
         except asyncio.TimeoutError:
-            raise LoginError("Failed to get session status") from None
-        except Exception:
-            raise
+            raise LoginError(f"Timeout ({timeout}s) has been exceeded") from None
 
         self._set_state()  # clear state as unneeded
 
@@ -554,7 +563,7 @@ class SteamSession:
         )
         rj: dict = r.content
         if rj and (error_msg := rj.get("error")):
-            raise LoginError(f"Get error response when performing login finalization: {error_msg}")
+            raise LoginError(f"Get error response when performing login finalization", error_msg)
         if not rj or not rj.get("transfer_info") or not rj.get("steamID"):
             raise LoginError("Malformed login response", rj)
 
@@ -614,7 +623,7 @@ class SteamSession:
             STEAM_ACCESS_TOKEN_COOKIE,
             self._access_token.cookie_value,
             domain.host,
-            expires=format_http_date(self._access_token.expires_at),
+            expires=self._access_token.expires_at,
             host_only=True,
             http_only=True,
             secure=True,
@@ -633,6 +642,8 @@ class SteamSession:
         Store resulting cookies in the underlying ``transport`` cookie jar.
 
         :return: list of auth cookies including session id.
+        :raises TransportError: ordinary reasons.
+        :raises LoginError: ordinary reasons.
         """
 
         if self._session_id is None:  # generate session id by ourselves to avoid another request
@@ -676,8 +687,6 @@ class SteamSession:
         If ``renew_refresh_token`` is set, renewal of `refresh` token will be requested.
         Whether a new `refresh` token will be actually issued is at the `Steam` discretion.
         Existed tokens will be overwritten.
-
-        :return: `access` and `refresh` tokens.
         """
 
         res = await self._service.generate_access_token_for_app(
@@ -692,7 +701,12 @@ class SteamSession:
 
     @refresh_token_required
     async def refresh_access_token(self) -> SteamJWT:
-        """Request new `access` token from `Steam`."""
+        """
+        Request new `access` token from `Steam`.
+
+        :return: `access` token.
+        :raises TransportError: ordinary reasons.
+        """
 
         if self.is_web:
             await self._generate_access_token_for_web()
@@ -711,6 +725,7 @@ class SteamSession:
         Existed tokens will be overwritten.
 
         :return: `refresh` token.
+        :raises TransportError: ordinary reasons.
         """
 
         await self._generate_access_token_for_app(True)

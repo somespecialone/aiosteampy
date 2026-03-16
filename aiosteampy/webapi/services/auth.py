@@ -44,7 +44,7 @@ class AuthenticationServiceClient(SteamWebApiServiceBase):
 
     async def get_auth_session_info(self, client_id: int) -> CAuthenticationGetAuthSessionInfoResponse:
         msg = CAuthenticationGetAuthSessionInfoRequest(client_id=client_id)
-        r = await self._call("GetAuthSessionInfo", msg)
+        r = await self._call("GetAuthSessionInfo", msg, auth=True)
         return CAuthenticationGetAuthSessionInfoResponse.parse(r)
 
     def update_auth_session_with_mobile_confirmation(

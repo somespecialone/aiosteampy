@@ -9,7 +9,7 @@ class SteamError(Exception):
 
 
 class EResultError(SteamError):
-    """`Steam` API response with error."""
+    """`Steam` response with error result code."""
 
     def __init__(self, result: EResult, msg: str):
         self.result = result
@@ -37,7 +37,6 @@ class EResultError(SteamError):
             raise EResultError(res, err_msg)
 
 
-# TODO probably better option is to reduce next to single exception
 class NeedConfirmation(SteamError):
     """Confirmation is required to complete market or trade action."""
 
@@ -49,6 +48,5 @@ class NeedMobileConfirmation(NeedConfirmation):
         self.conf_key = conf_key
 
 
-# Honestly, don't know how this will work
 class NeedEmailConfirmation(NeedConfirmation):
     """Email confirmation is required."""

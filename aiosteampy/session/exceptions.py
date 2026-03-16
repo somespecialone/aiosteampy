@@ -6,6 +6,14 @@ class LoginError(SteamError):
     """Problem with login process has been occurred."""
 
 
+class BadCredentials(LoginError):
+    """Provided credentials are invalid."""
+
+
+class TooManyAttempts(LoginError):
+    """Too many failed login attempts."""
+
+
 class ConfirmationRequired(LoginError):
     """User action (confirmation) is required to complete login process."""
 

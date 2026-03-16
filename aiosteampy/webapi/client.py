@@ -134,7 +134,7 @@ class SteamWebAPIClient:
         :param headers: specific HTTP headers for this request.
         :param response_mode: return response body in specified format.
         :return: response body in specified format.
-        :raises TransportError: unable to process response.
+        :raises TransportError: ordinary reasons.
         :raises EResultError: got response result code indicating error.
         """
 

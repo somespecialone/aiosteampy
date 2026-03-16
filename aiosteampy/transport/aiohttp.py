@@ -125,8 +125,8 @@ class AiohttpSteamTransport(BaseSteamTransport):
             content = None
         elif response_mode == "text":
             content = await aiohttp_resp.text()
-        elif response_mode == "json" and "json" in aiohttp_resp.content_type:  # bytes if content-type doesn't match
-            content = await aiohttp_resp.json()
+        elif response_mode == "json":
+            content = await aiohttp_resp.json(content_type=None)  # force to parse as json
         else:  # bytes by default
             content = await aiohttp_resp.read()
 

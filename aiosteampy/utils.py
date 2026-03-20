@@ -458,22 +458,24 @@ def attribute_required(attr: str, msg: str = None):
     return decorator
 
 
-@overload
-def make_inspect_url(*, owner_id: int, asset_id: int, d_id: int) -> str:
-    ...
+# @overload
+# def make_inspect_url(*, owner_id: int, asset_id: int, d_id: int) -> str:
+#     ...
 
 
-@overload
-def make_inspect_url(*, market_id: int, asset_id: int, d_id: int) -> str:
-    ...
+# @overload
+# def make_inspect_url(*, market_id: int, asset_id: int, d_id: int) -> str:
+#     ...
 
 
-def make_inspect_url(*, market_id: int = None, owner_id: int = None, asset_id: int, d_id: int) -> str:
-    if market_id:
-        return f"steam://rungame/730/76561202255233023/+csgo_econ_action_preview%20M{market_id}A{asset_id}D{d_id}"
-    else:
-        return f"steam://rungame/730/76561202255233023/+csgo_econ_action_preview%20S{owner_id}A{asset_id}D{d_id}"
+# def make_inspect_url(*, market_id: int = None, owner_id: int = None, asset_id: int, d_id: int) -> str:
+#     if market_id:
+#         return f"steam://rungame/730/76561202255233023/+csgo_econ_action_preview%20M{market_id}A{asset_id}D{d_id}"
+#     else:
+#         return f"steam://rungame/730/76561202255233023/+csgo_econ_action_preview%20S{owner_id}A{asset_id}D{d_id}"
 
+def make_inspect_url(*, d_id: str) -> str:
+    return f"steam://run/730//+csgo_econ_action_preview%20{d_id}"
 
 def add_cookie_to_session(
     session: ClientSession,

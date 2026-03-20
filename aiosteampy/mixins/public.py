@@ -133,58 +133,62 @@ class SteamCommunityPublicMixin(SteamHTTPTransportMixin):
 
     @classmethod
     def _parse_inventory(
-        cls,
-        data: dict[str, list[dict]],
-        steam_id: int,
-        descrs_map: dict[str, ItemDescription],
+            cls,
+            data: dict[str, list[dict]],
+            steam_id: int,
+            descrs_map: dict[str, dict],
     ) -> list[EconItem]:
-        for d_data in data["descriptions"]:
-            key = create_ident_code(d_data["instanceid"], d_data["classid"], d_data["appid"])
-            if key not in descrs_map:
-                descrs_map[key] = cls._create_item_descr(d_data)
 
+        # Build properties map
         properties_map: dict[str, tuple[AssetProperty, ...]] = {}
         for properties_data in data.get("asset_properties", ()):
             properties_list: list[AssetProperty] = []
             for prop_data in (properties_data["asset_properties"] or ()):
-                prop_data: dict[str, int | str]
-
-                float_value = None
-                int_value = None
-                value = None
+                float_value = int_value = value = None
 
                 if "float_value" in prop_data:
-                    float_value = float(prop_data["float_value"])
-                    value = float_value
+                    value = float_value = float(prop_data["float_value"])
                 elif "int_value" in prop_data:
-                    int_value = int(prop_data["int_value"])
-                    value = int_value
+                    value = int_value = int(prop_data["int_value"])
                 elif "string_value" in prop_data:
                     value = prop_data["string_value"]
-                else:
-                    value = None  # there is definitely a value, but we neglect it
 
                 properties_list.append(AssetProperty(
                     prop_data["propertyid"],
                     prop_data.get("name", ""),
-                    value,
-                    float_value,
-                    int_value
+                    value, float_value, int_value,
                 ))
 
             properties_map[properties_data["assetid"]] = tuple(properties_list)
 
-        return [
-            EconItem(
-                asset_id=int(a_data["assetid"]),
+        for d_data in data["descriptions"]:
+            key = create_ident_code(d_data["instanceid"], d_data["classid"], d_data["appid"])
+            descrs_map.setdefault(key, d_data)
+
+        items: list[EconItem] = []
+        for a_data in data["assets"]:
+            asset_id = a_data["assetid"]
+            indent_code = create_ident_code(a_data["instanceid"], a_data["classid"], a_data["appid"])
+            description = descrs_map[indent_code]
+            properties = properties_map.get(asset_id, ())
+
+            # Patch inspect link if property id=6 exists
+            inspect_prop = next((p for p in reversed(properties) if p.id == 6), None)
+            if inspect_prop is not None:
+                inspect_link = f"steam://run/730//+csgo_econ_action_preview%20{inspect_prop.value}"
+                description["actions"][0]["link"] = inspect_link
+                description["market_actions"][0]["link"] = inspect_link
+
+            items.append(EconItem(
+                asset_id=int(asset_id),
                 owner_id=steam_id,
                 amount=int(a_data["amount"]),
-                description=descrs_map[create_ident_code(a_data["instanceid"], a_data["classid"], a_data["appid"])],
+                description=cls._create_item_descr(description),
                 app_context=AppContext((App(int(a_data["appid"])), int(a_data["contextid"]))),
-                properties=properties_map.get(a_data["assetid"], ()),
-            )
-            for a_data in data["assets"]
-        ]
+                properties=properties,
+            ))
+
+        return items
 
     @staticmethod
     def _create_item_actions(actions: list[dict]) -> tuple[ItemAction, ...]:

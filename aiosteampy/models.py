@@ -57,7 +57,7 @@ class ItemDescription:
     class_id: int
     instance_id: int
 
-    d_id: int | None = field(init=False, default=None)  # optional CSGO inspect id
+    d_id: str | None = field(init=False, default=None)  # optional CSGO inspect id
 
     app: App
 
@@ -101,7 +101,7 @@ class ItemDescription:
     def _set_d_id(self):
         if self.app is App.CS2:
             if (i_action := next(filter(lambda a: "Inspect" in a.name, self.actions), None)) is not None:
-                object.__setattr__(self, "d_id", int(i_action.link.split("%D")[1]))
+                object.__setattr__(self, "d_id", i_action.link.split("%20")[1])
 
     @property
     def ident_code(self) -> str:
@@ -183,7 +183,7 @@ class EconItem:
     @property
     def inspect_url(self) -> str | None:
         if self.description.d_id:
-            return make_inspect_url(owner_id=self.owner_id, asset_id=self.asset_id, d_id=self.description.d_id)
+            return make_inspect_url(d_id=self.description.d_id)
 
     def __eq__(self, other):
         if isinstance(other, EconItem):
@@ -248,7 +248,7 @@ class MarketListingItem(EconItem):
     @property
     def inspect_url(self) -> str | None:
         if self.description.d_id:
-            return make_inspect_url(market_id=self.market_id, asset_id=self.asset_id, d_id=self.description.d_id)
+            return make_inspect_url(d_id=self.description.d_id)
 
 
 @dataclass(eq=False, slots=True)
@@ -427,7 +427,7 @@ class BaseTradeOfferItem(EconItem):
     @property
     def inspect_url(self) -> str | None:
         if self.description is not None and self.description.d_id:  # can't do super().inspect_url due to an error
-            return make_inspect_url(owner_id=self.owner_id, asset_id=self.asset_id, d_id=self.description.d_id)
+            return make_inspect_url(d_id=self.description.d_id)
 
 
 @dataclass(eq=False, slots=True, kw_only=True)

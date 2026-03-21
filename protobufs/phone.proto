@@ -40,3 +40,9 @@ message CPhone_VerifyAccountPhoneWithCode_Request {
 }
 
 //message CPhone_VerifyAccountPhoneWithCode_Response {}
+
+// self written
+message CPhone_AccountPhoneStatus_Response {
+  optional bool verified_phone = 1;
+  optional bool can_add_two_factor_phone = 2 [default = false];
+}

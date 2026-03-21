@@ -15,7 +15,7 @@ GuardCodeTypes = Literal["email", "device"]
 class AuthenticationServiceClient(SteamWebApiServiceBase):
     """Authentication service client."""
 
-    __slots__ = ("_api",)
+    __slots__ = ()
 
     SERVICE_NAME = "IAuthenticationService"
 
@@ -53,8 +53,8 @@ class AuthenticationServiceClient(SteamWebApiServiceBase):
         client_id: int,
         steam_id: SteamID,
         signature: bytes,
-        confirm: bool,
-        persistence: bool,
+        confirm: bool = True,
+        persistence: bool = True,
     ) -> Awaitable[None]:
         msg = CAuthenticationUpdateAuthSessionWithMobileConfirmationRequest(
             version=version,
@@ -64,7 +64,7 @@ class AuthenticationServiceClient(SteamWebApiServiceBase):
             confirm=confirm,
             persistence=ESessionPersistence(int(persistence)),
         )
-        return self._call("UpdateAuthSessionWithMobileConfirmation", msg, response_mode="meta")
+        return self._call("UpdateAuthSessionWithMobileConfirmation", msg, auth=True, response_mode="meta")
 
     def _get_platform_data(self, device_name: str) -> tuple[str, CAuthenticationDeviceDetails]:
         """Get platform data for `Steam` authentication request. Return `website id` and `device details`."""
@@ -87,8 +87,11 @@ class AuthenticationServiceClient(SteamWebApiServiceBase):
         account_name: str,
         encrypted_password: str,
         encryption_timestamp: int,
-        persistence: bool,
+        persistence: bool = True,
         device_name: str = LIB_ID,
+        # https://github.com/dyc3/steamguard-cli/blob/a7b6aaed1729f26c68413e7316ea5fd9a89d34c7/steamguard/src/userlogin.rs#L136
+        language: int = 0,
+        qos_level: int = 2,
     ) -> CAuthenticationBeginAuthSessionViaCredentialsResponse:
         website_id, device_details = self._get_platform_data(device_name)
         msg = CAuthenticationBeginAuthSessionViaCredentialsRequest(
@@ -99,8 +102,8 @@ class AuthenticationServiceClient(SteamWebApiServiceBase):
             persistence=ESessionPersistence(int(persistence)),
             website_id=website_id,
             device_details=device_details,
-            # language=0,
-            # qos_level=2,
+            language=language,
+            qos_level=qos_level,
         )
         r = await self._call("BeginAuthSessionViaCredentials", msg)
         return CAuthenticationBeginAuthSessionViaCredentialsResponse.parse(r)
@@ -127,19 +130,17 @@ class AuthenticationServiceClient(SteamWebApiServiceBase):
         self,
         refresh_token: str,
         steam_id: SteamID,
-        renew_refresh_token: bool,
+        renew_refresh_token: bool = False,
     ) -> CAuthenticationAccessTokenGenerateForAppResponse:
         msg = CAuthenticationAccessTokenGenerateForAppRequest(
             refresh_token=refresh_token,
             steamid=steam_id.id64,
-            renewal_type=ETokenRenewalType.k_ETokenRenewalType_Allow
-            if renew_refresh_token
-            else ETokenRenewalType.k_ETokenRenewalType_None,
+            renewal_type=ETokenRenewalType(renew_refresh_token),
         )
         r = await self._call("GenerateAccessTokenForApp", msg)
         return CAuthenticationAccessTokenGenerateForAppResponse.parse(r)
 
-    async def enumerate_tokens(self, include_revoked: bool) -> CAuthenticationRefreshTokenEnumerateResponse:
+    async def enumerate_tokens(self, include_revoked: bool = False) -> CAuthenticationRefreshTokenEnumerateResponse:
         msg = CAuthenticationRefreshTokenEnumerateRequest(include_revoked=include_revoked)
         r = await self._call("EnumerateTokens", msg, auth=True)
         return CAuthenticationRefreshTokenEnumerateResponse.parse(r)

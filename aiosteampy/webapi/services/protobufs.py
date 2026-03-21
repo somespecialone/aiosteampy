@@ -31,6 +31,7 @@ __all__ = (
     "CAuthenticationUpdateAuthSessionWithSteamGuardCodeRequest",
     "CAuthenticationUpdateAuthSessionWithSteamGuardCodeResponse",
     "CMsgIpAddress",
+    "CPhoneAccountPhoneStatusResponse",
     "CPhoneAddPhoneToAccountResponse",
     "CPhoneConfirmAddPhoneToAccountRequest",
     "CPhoneIsAccountWaitingForEmailConfirmationResponse",
@@ -443,6 +444,18 @@ class CMsgIpAddress(betterproto2.Message):
 
     v4: "int | None" = betterproto2.field(1, betterproto2.TYPE_FIXED32, optional=True, group="ip")
     v6: "bytes | None" = betterproto2.field(2, betterproto2.TYPE_BYTES, optional=True, group="ip")
+
+
+@dataclass(eq=False, repr=False)
+class CPhoneAccountPhoneStatusResponse(betterproto2.Message):
+    """
+    message CPhone_VerifyAccountPhoneWithCode_Response {}
+
+    self written
+    """
+
+    verified_phone: "bool" = betterproto2.field(1, betterproto2.TYPE_BOOL)
+    can_add_two_factor_phone: "bool" = betterproto2.field(2, betterproto2.TYPE_BOOL)
 
 
 @dataclass(eq=False, repr=False)

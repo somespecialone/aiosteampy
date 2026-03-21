@@ -12,7 +12,7 @@ from .protobufs import *
 class PhoneServiceClient(SteamWebApiServiceBase):
     """Phone service client."""
 
-    __slots__ = ("_api",)
+    __slots__ = ()
 
     SERVICE_NAME = "IPhoneService"
 
@@ -22,7 +22,7 @@ class PhoneServiceClient(SteamWebApiServiceBase):
         return CPhoneAddPhoneToAccountResponse.parse(r)
 
     async def is_account_waiting_for_email_confirmation(self) -> CPhoneIsAccountWaitingForEmailConfirmationResponse:
-        r = await self._call("IsAccountWaitingForEmailConfirmation")
+        r = await self._call("IsAccountWaitingForEmailConfirmation", auth=True)
         return CPhoneIsAccountWaitingForEmailConfirmationResponse.parse(r)
 
     def send_phone_verification_code(self, language: int = 0) -> Awaitable[None]:
@@ -35,9 +35,13 @@ class PhoneServiceClient(SteamWebApiServiceBase):
         phone_country_code: str,
     ) -> CPhoneSetAccountPhoneNumberResponse:
         msg = CPhoneSetAccountPhoneNumberRequest(phone_number=phone_number, phone_country_code=phone_country_code)
-        r = await self._call("SetAccountPhoneNumber", msg)
+        r = await self._call("SetAccountPhoneNumber", msg, auth=True)
         return CPhoneSetAccountPhoneNumberResponse.parse(r)
 
     def verify_account_phone_with_code(self, code: str) -> Awaitable[None]:
         msg = CPhoneVerifyAccountPhoneWithCodeRequest(code=code)
         return self._call("VerifyAccountPhoneWithCode", msg)
+
+    async def account_phone_status(self) -> CPhoneAccountPhoneStatusResponse:
+        r = await self._call("AccountPhoneStatus", auth=True)
+        return CPhoneAccountPhoneStatusResponse.parse(r)

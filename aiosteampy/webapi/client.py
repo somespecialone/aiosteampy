@@ -15,7 +15,7 @@ from ..transport import (
     Params,
     Payload,
     ResponseMode,
-    TransportError,
+    TransportResponseError,
 )
 
 HttpMethod = Literal["GET", "POST"]
@@ -187,9 +187,9 @@ class SteamWebAPIClient:
         )
 
         if r.status < 200 or r.status >= 300:  # redirect means error
-            raise TransportError(r)
+            raise TransportResponseError(r)
 
-        EResultError.check_headers(r.headers, "Error calling Steam Web Api")
+        EResultError.check_headers(r.headers, r.content)
 
         return r.content
 

@@ -8,7 +8,7 @@ from yarl import URL
 from ..constants import LIB_ID
 from .base import BaseSteamTransport, Cookie, TransportResponse
 from .exceptions import NetworkError
-from .utils import parse_http_date
+from .utils import format_http_date
 
 
 class AiohttpSteamTransport(BaseSteamTransport):
@@ -74,7 +74,7 @@ class AiohttpSteamTransport(BaseSteamTransport):
             m["domain"] = cookie.domain
 
         m["path"] = cookie.path
-        m["expires"] = parse_http_date(cookie.expires)
+        m["expires"] = format_http_date(cookie.expires) if cookie.expires is not None else None
         m["secure"] = cookie.secure
         m["httponly"] = cookie.http_only
         m["samesite"] = cookie.same_site

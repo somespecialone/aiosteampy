@@ -2,7 +2,7 @@
 
 from .aiohttp import AiohttpSteamTransport  # export default transport
 from .base import BaseSteamTransport, Cookies
-from .exceptions import RateLimitExceeded, ResourceNotModified, TransportError
+from .exceptions import NetworkError, RateLimitExceeded, ResourceNotModified, TransportError, TransportResponseError
 from .models import Cookie, TransportResponse
-from .types import Headers, HttpMethod, Params, Payload, ResponseMode
+from .types import Content, Headers, HttpMethod, Params, Payload, ResponseMode
 from .utils import format_http_date, parse_http_date

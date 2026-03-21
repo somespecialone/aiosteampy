@@ -6,7 +6,7 @@ from typing import Any, Literal, Self
 
 from yarl import URL
 
-from .types import JSON_SAFE_COOKIE_DICT, Headers
+from .types import Content, Headers
 from .utils import format_http_date, parse_http_date
 
 
@@ -41,7 +41,7 @@ class Cookie:
     # non‑standard attributes or future RFCs
     extensions: dict[str, Any] = field(default_factory=dict)
 
-    def to_dict(self) -> JSON_SAFE_COOKIE_DICT:
+    def to_dict(self) -> dict:
         """Convert current model to a json-safe dict."""
 
         data = asdict(self)
@@ -54,7 +54,7 @@ class Cookie:
         return data
 
     @classmethod
-    def from_dict(cls, cookie: JSON_SAFE_COOKIE_DICT) -> Self:
+    def from_dict(cls, cookie: dict) -> Self:
         """Create ``Cookie`` from json-safe dict."""
 
         cookie = cookie.copy()
@@ -109,7 +109,8 @@ class TransportResponse:
     headers: Headers = field(default_factory=dict)
     """Parsed HTTP headers of response."""
 
-    content: str | bytes | Any | None = None  # decoded text, body bytes, parsed json, None in case of no read
+    # decoded text, body bytes, parsed json, None in case of no read
+    content: Content = None
     """Response content."""
 
     redirects: tuple[Self, ...] = ()

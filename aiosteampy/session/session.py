@@ -282,7 +282,7 @@ class SteamSession:
             self._service.webapi.transport.add_cookie(cookie)
 
     async def _get_rsa_data(self, account_name: str) -> tuple[int, int, int]:
-        """Get rsa data (pub. key mod, pub. key exp, ts) from `Steam`."""
+        """Get rsa data (public key modulus, public key exponent, ts) from `Steam`."""
 
         resp = await self._service.get_password_rsa_public_key(account_name)
         return (
@@ -299,20 +299,34 @@ class SteamSession:
         :param auth_code: `Steam Guard` two-factor (TOTP) code.
         :param code_type: type of `Steam Guard` code to submit.
         :raises TransportError: ordinary reasons.
+        :raises LoginError: ordinary reasons.
+        :raises BadCredentials: when `Steam` rejects auth code.
+        :raises AuthCodeExpired: when `Steam` rejects auth code due to expiration.
         """
 
         if not self._client_id or not self._steam_id:
             raise ValueError("Session is not initialized")
-
-        await self._service.update_auth_session_with_steam_guard_code(
-            self._client_id,
-            self._steam_id,
-            auth_code,
-            code_type,
-        )
+        try:
+            await self._service.update_auth_session_with_steam_guard_code(
+                self._client_id,
+                self._steam_id,
+                auth_code,
+                code_type,
+            )
+        except EResultError as e:
+            match e.result:
+                case EResult.INVALID_LOGIN_AUTH_CODE | EResult.TWO_FACTOR_CODE_MISMATCH:
+                    raise BadCredentials
+                case EResult.EXPIRED_LOGIN_AUTH_CODE | EResult.EXPIRED:
+                    raise AuthCodeExpired
+                # https://github.com/SteamRE/SteamKit/blob/1061d28668437be68ed6e627f7c3024022cd33f3/SteamKit2/SteamKit2/Steam/Authentication/CredentialsAuthSession.cs#L46
+                case EResult.DUPLICATE_REQUEST:
+                    pass
+                case other:
+                    raise LoginError(f"Unknown EResult: {other.name}") from e
 
     @mobile_platform
-    async def get_session_info(self, qr: QRChallengeUrl) -> CAuthenticationGetAuthSessionInfoResponse:
+    def get_session_info(self, qr: QRChallengeUrl) -> Awaitable[CAuthenticationGetAuthSessionInfoResponse]:
         """
         Get info of the other login session from `Steam`.
         Equivalent of scanning QR with `Steam App` on a mobile device,
@@ -328,7 +342,7 @@ class SteamSession:
         else:
             _, client_id = qr
 
-        return await self._service.get_auth_session_info(client_id)
+        return self._service.get_auth_session_info(client_id)
 
     async def with_credentials(
         self,
@@ -340,7 +354,7 @@ class SteamSession:
     ):
         """
         Begin authentication `session` with credentials.
-        If login attempt requires confirmation ``ConfirmationRequired`` exception will be raised.
+        If login attempt requires confirmation ``GuardConfirmationRequired`` exception will be raised.
         ``finalize`` method must be called after.
 
         Equivalent of entering ``username`` and ``password`` on `Steam` website login page and submitting after.
@@ -354,7 +368,7 @@ class SteamSession:
         :raises LoginError: ordinary reasons.
         :raises BadCredentials: when `Steam` rejects credentials.
         :raises TooManyAttempts: when `Steam` rejects credentials due to too many attempts.
-        :raises ConfirmationRequired: when `Steam` requires performing  additional confirmation (email, device, etc.).
+        :raises GuardConfirmationRequired: when `Steam` requires performing  additional confirmation (email, device, etc.).
         """
 
         pub_mod, pub_exp, rsa_ts = await self._get_rsa_data(account_name)
@@ -385,7 +399,7 @@ class SteamSession:
         allowed_guard_types = tuple(conf.confirmation_type for conf in resp.allowed_confirmations)
 
         if EAuthSessionGuardType.k_EAuthSessionGuardType_None not in allowed_guard_types:  # confirmation required
-            raise ConfirmationRequired(resp.allowed_confirmations, allowed_guard_types)
+            raise GuardConfirmationRequired(resp.allowed_confirmations, allowed_guard_types)
 
     async def login_with_credentials(
         self,
@@ -423,7 +437,7 @@ class SteamSession:
                 persistence=persistence,
                 device_friendly_name=device_friendly_name,
             )
-        except ConfirmationRequired as e:
+        except GuardConfirmationRequired as e:
             if e.device_code:
                 if callable(device_steam_guard_code):  # callback or factory
                     device_steam_guard_code = device_steam_guard_code()
@@ -459,8 +473,6 @@ class SteamSession:
             resp = await self._service.begin_auth_session_via_qr(device_friendly_name)
         except EResultError as e:
             match e.result:
-                case EResult.INVALID_PASSWORD:
-                    raise BadCredentials
                 case EResult.RATE_LIMIT_EXCEEDED:
                     raise TooManyAttempts
                 case unknown:
@@ -470,9 +482,9 @@ class SteamSession:
 
         return resp.version, resp.client_id, resp.allowed_confirmations, resp.challenge_url
 
-    async def _get_status(self) -> CAuthenticationPollAuthSessionStatusResponse:
+    def _get_status(self) -> Awaitable[CAuthenticationPollAuthSessionStatusResponse]:
         """Get current session status."""
-        return await self._service.poll_auth_session_status(self._client_id, self._request_id)
+        return self._service.poll_auth_session_status(self._client_id, self._request_id)
 
     async def _poll_status(self):
         """
@@ -664,7 +676,7 @@ class SteamSession:
 
             return cookies
 
-    async def _generate_access_token_for_web(self):
+    async def _generate_access_token_for_web(self) -> SteamJWT:
         """Request new `access` token for web platform."""
 
         r = await self._service.webapi.transport.request(
@@ -681,7 +693,9 @@ class SteamSession:
         cookie = self._service.webapi.transport.get_cookie(location.with_path("/"), STEAM_ACCESS_TOKEN_COOKIE)
         self._set_access_token(SteamJWT.from_cookie_value(cookie.value))
 
-    async def _generate_access_token_for_app(self, renew_refresh_token: bool = False):
+        return self._access_token
+
+    async def _generate_access_token_for_app(self, renew_refresh_token: bool = False) -> SteamJWT:
         """
         Request new `access` token.
         If ``renew_refresh_token`` is set, renewal of `refresh` token will be requested.
@@ -699,8 +713,10 @@ class SteamSession:
         if res.refresh_token and res.refresh_token != self._refresh_token.raw:
             self._set_refresh_token(res.refresh_token)
 
+        return self._access_token
+
     @refresh_token_required
-    async def refresh_access_token(self) -> SteamJWT:
+    def refresh_access_token(self) -> Awaitable[SteamJWT]:
         """
         Request new `access` token from `Steam`.
 
@@ -709,16 +725,13 @@ class SteamSession:
         """
 
         if self.is_web:
-            await self._generate_access_token_for_web()
-
+            return self._generate_access_token_for_web()
         else:
-            await self._generate_access_token_for_app(False)
-
-        return self._access_token
+            return self._generate_access_token_for_app(False)
 
     @mobile_platform
     @refresh_token_required
-    async def renew_refresh_token(self) -> SteamJWT:
+    def renew_refresh_token(self) -> Awaitable[SteamJWT]:
         """
         Request new `refresh` token alongside with `access` token.
         Whether a new token will be actually issued is at the `Steam` discretion.
@@ -728,8 +741,7 @@ class SteamSession:
         :raises TransportError: ordinary reasons.
         """
 
-        await self._generate_access_token_for_app(True)
-        return self._refresh_token
+        return self._generate_access_token_for_app(True)
 
     def close(self) -> Awaitable[None]:
         return self._service.webapi.transport.close()

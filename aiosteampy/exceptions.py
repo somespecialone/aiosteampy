@@ -1,7 +1,10 @@
 from datetime import datetime
-from typing import Mapping
+from typing import TYPE_CHECKING, Any, Mapping
 
 from .constants import EResult
+
+if TYPE_CHECKING:
+    from .transport import Content, Headers
 
 
 class SteamError(Exception):
@@ -11,42 +14,43 @@ class SteamError(Exception):
 class EResultError(SteamError):
     """`Steam` response with error result code."""
 
-    def __init__(self, result: EResult, msg: str):
+    def __init__(self, result: EResult, msg: str | None, data: "Content" = None):
         self.result = result
         self.msg = msg
+        self.data = data
 
     def __str__(self):
-        return f"{self.result}: {self.msg}"
+        return f"{self.result.value} - {self.msg or self.result.name}"
 
     @classmethod
-    def check_data(cls, data: dict, def_msg: str = ""):
+    def check_data(cls, data: dict):
         """Check if ``data`` contains error response from `Steam` API and raise ``EResultError`` if needed."""
 
-        if (eresult := EResult(data.get("success", 0))) is not EResult.OK:
-            raise cls(eresult, data.get("message", def_msg))
+        if (res := EResult(data.get("success", 0))) is not EResult.OK:
+            raise cls(res, data.get("message"), data)
 
     @classmethod
-    def check_headers(cls, headers: Mapping[str, str], def_msg: str = ""):
+    def check_headers(cls, headers: "Headers", data: "Content" = None):
         """Check if ``headers`` contains error response from `Steam` API and raise ``EResultError`` if needed."""
 
         # Valves will not be Valves if they not to forgot send header in some API endpoints
         # So OK by default if not present
         res = EResult(int(headers.get("X-eresult", 1)))
         if res is not EResult.OK:
-            err_msg = headers.get("X-error_message", def_msg)
-            raise EResultError(res, err_msg)
+            raise cls(res, headers.get("X-error_message"), data)
 
 
-class NeedConfirmation(SteamError):
-    """Confirmation is required to complete market or trade action."""
+class ConfirmationRequired(SteamError):
+    """Any confirmation is required to continue."""
 
 
-class NeedMobileConfirmation(NeedConfirmation):
+# TODO those two need to be refactored
+class NeedMobileConfirmation(ConfirmationRequired):
     """Mobile confirmation is required."""
 
     def __init__(self, conf_key: int | str):
         self.conf_key = conf_key
 
 
-class NeedEmailConfirmation(NeedConfirmation):
+class NeedEmailConfirmation(ConfirmationRequired):
     """Email confirmation is required."""

@@ -184,10 +184,7 @@ class EResult(IntEnum):
     """
     Possible/known `Steam` result codes.
 
-    .. seealso::
-        * https://steamerrors.com.
-        * https://github.com/DoctorMcKay/node-steam-session/blob/master/src/enums-steam/EResult.ts.
-        * https://github.com/DoctorMcKay/node-steamcommunity/blob/master/resources/EResult.js.
+    .. seealso:: https://steamerrors.com.
     """
 
     INVALID = 0  # False
@@ -274,7 +271,7 @@ class EResult(IntEnum):
     RESTRICTED_DEVICE = 82
     REGION_LOCKED = 83
     RATE_LIMIT_EXCEEDED = 84
-    ACCOUNT_LOGIN_DENIED_NEED_TWO_FACTOR = 85
+    ACCOUNT_LOGON_DENIED_NEED_TWO_FACTOR = 85
     ITEM_DELETED = 86
     ACCOUNT_LOGIN_DENIED_THROTTLE = 87
     TWO_FACTOR_CODE_MISMATCH = 88
@@ -303,9 +300,19 @@ class EResult(IntEnum):
     ACCOUNT_NOT_FRIENDS = 111
     LIMITED_USER_ACCOUNT = 112
     CANT_REMOVE_ITEM = 113
-    ACCOUNT_HAS_BEEN_DELETED = 114
-    ACCOUNT_HAS_AN_EXISTING_USER_CANCELLED_LICENSE = 115
-    DENIED_DUE_TO_COMMUNITY_COOLDOWN = 116
+    ACCOUNT_DELETED = 114
+    EXISTING_USER_CANCELLED_LICENSE = 115
+    COMMUNITY_COOLDOWN = 116
     NO_LAUNCHER_SPECIFIED = 117
     MUST_AGREE_TO_SSA = 118
-    CLIENT_NO_LONGER_SUPPORTED = 119
+    LAUNCHER_MIGRATED = 119
+    STEAM_REALM_MISMATCH = 120
+    INVALID_SIGNATURE = 121
+    PARSE_FAILURE = 122
+    NO_VERIFIED_PHONE = 123
+    INSUFFICIENT_BATTERY = 124
+    CHARGER_REQUIRED = 125
+    CACHED_CREDENTIAL_INVALID = 126
+    PHONE_NUMBER_IS_VOIP = 127
+    NOT_SUPPORTED = 128
+    FAMILY_SIZE_LIMIT_EXCEEDED = 129

@@ -1,4 +1,4 @@
-from ..exceptions import SteamError
+from ..exceptions import ConfirmationRequired, SteamError
 from ..webapi.services.protobufs import CAuthenticationAllowedConfirmation, EAuthSessionGuardType
 
 
@@ -10,12 +10,16 @@ class BadCredentials(LoginError):
     """Provided credentials are invalid."""
 
 
+class AuthCodeExpired(BadCredentials):
+    """Provided `Steam Guard` code has expired."""
+
+
 class TooManyAttempts(LoginError):
     """Too many failed login attempts."""
 
 
-class ConfirmationRequired(LoginError):
-    """User action (confirmation) is required to complete login process."""
+class GuardConfirmationRequired(ConfirmationRequired):
+    """Confirmation is required to complete login process."""
 
     def __init__(
         self,

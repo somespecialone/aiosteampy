@@ -133,3 +133,6 @@ class SteamJWT:
     def for_client(self) -> bool:
         """Issued for `Steam Client` platform (not supported)."""
         return "client" in self.audiences
+
+    def __eq__(self, other):
+        return isinstance(other, SteamJWT) and self.raw == other.raw

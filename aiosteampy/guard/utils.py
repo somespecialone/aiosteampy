@@ -24,15 +24,14 @@ def generate_device_id(steam_id64: int) -> str:
     )
 
 
-def generate_auth_code(shared_secret: str, offset: int = 0) -> str:
+def generate_auth_code(shared_secret: str, timestamp: int) -> str:
     """
     Generate 5 character alphanumeric `Steam` two-factor (TOTP) auth code.
 
     :param shared_secret: shared secret of account.
-    :param offset: known offset in seconds from server time.
+    :param timestamp: timestamp to use.
     """
 
-    timestamp = int(time.time()) + offset
     time_buffer = struct.pack(">Q", timestamp // 30)  # pack as Big endian, uint64
     time_hmac = hmac.new(b64decode(shared_secret), time_buffer, digestmod=hashlib.sha1).digest()
     begin = ord(time_hmac[19:20]) & 0xF
@@ -47,16 +46,15 @@ def generate_auth_code(shared_secret: str, offset: int = 0) -> str:
     return code
 
 
-def generate_confirmation_key(identity_secret: str, tag: str, offset: int = 0) -> str:
+def generate_confirmation_key(identity_secret: str, tag: str, timestamp) -> str:
     """
     Generate confirmation key.
 
     :param identity_secret: identity secret of account.
     :param tag: confirmation tag.
-    :param offset: known offset in seconds from server time.
+    :param timestamp: timestamp to use.
     """
 
-    timestamp = int(time.time()) + offset
     buff = struct.pack(">Q", timestamp) + tag.encode("ascii")
     return b64encode(hmac.new(b64decode(identity_secret), buff, digestmod=hashlib.sha1).digest()).decode()
 

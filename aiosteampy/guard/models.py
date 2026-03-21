@@ -1,19 +1,24 @@
+from base64 import b64encode
 from dataclasses import dataclass
 from datetime import datetime
 from enum import IntEnum
-from typing import NamedTuple, Self, TypedDict
+from typing import NotRequired, Self, TypedDict
 
+from ..id import SteamID
+from ..session import SteamJWT
 from ..utils import create_ident_code
 
 
-class maFileSession(TypedDict):
+class MaFileSession(TypedDict):
     SteamID: int  # 64
     AccessToken: str
     RefreshToken: str
     SessionID: str
 
 
-class maFile(TypedDict):
+class MaFile(TypedDict):
+    """`Steam Desktop Authenticator` file data."""
+
     shared_secret: str
     serial_number: str
     revocation_code: str
@@ -25,23 +30,78 @@ class maFile(TypedDict):
     secret_1: str
     status: int
     device_id: str
+    phone_number_hint: NotRequired[str]
+    confirm_type: NotRequired[int]
     fully_enrolled: bool
-    Session: maFileSession
+    Session: MaFileSession
 
 
-class ServerTime(NamedTuple):
-    server_time: int
-    skew_tolerance_seconds: int
-    large_time_jink: int
-    probe_frequency_seconds: int
-    adjusted_time_probe_frequency_seconds: int
-    hint_probe_frequency_seconds: int
-    sync_timeout: int
-    try_again_seconds: int
-    max_attempts: int
+@dataclass(slots=True)
+class SteamGuardAccount:
+    """`Steam Guard` data representation."""
+
+    account_name: str
+    steam_id: SteamID
+    device_id: str
+
+    # base64 encoded
+    shared_secret: str
+    identity_secret: str
+    secret_1: str
+
+    revocation_code: str
+
+    uri: str
+    serial_number: int
+    token_gid: str
+
+    finalized: bool
+    """Whether represents data of activated (enrolled) `Steam Guard` account."""
+
+    def to_dict(self) -> dict[str, str]:
+        """Export account data as JSON-safe dict."""
+
+        return {
+            "account_name": self.account_name,
+            "steam_id": str(self.steam_id),
+            "device_id": self.device_id,
+            "shared_secret": self.shared_secret,
+            "identity_secret": self.identity_secret,
+            "secret_1": self.secret_1,
+            "revocation_code": self.revocation_code,
+            "uri": self.uri,
+            "serial_number": str(self.serial_number),
+            "token_gid": self.token_gid,
+            "finalized": self.finalized,
+        }
+
+    @classmethod
+    def from_dict(cls, data: dict[str, str]) -> Self:
+        """Import account data from JSON-safe dict."""
+
+        data = {**data, "steam_id": SteamID(data["steam_id"]), "serial_number": int(data["serial_number"])}
+        return cls(**data)
+
+    # just in case
+    @classmethod
+    def from_mafile(cls, mafile: MaFile) -> Self:
+        cls(
+            account_name=mafile["account_name"],
+            steam_id=SteamID(mafile["Session"]["SteamID"]),
+            device_id=mafile["device_id"],
+            shared_secret=mafile["shared_secret"],
+            identity_secret=mafile["identity_secret"],
+            secret_1=mafile["secret_1"],
+            revocation_code=mafile["revocation_code"],
+            uri=mafile["uri"],
+            serial_number=int(mafile["serial_number"]),
+            token_gid=mafile["token_gid"],
+            finalized=mafile["fully_enrolled"],
+        )
 
 
 # https://github.com/DoctorMcKay/node-steamcommunity/blob/master/resources/EConfirmationType.js
+# TODO docstrings
 class ConfirmationType(IntEnum):
     UNKNOWN = 1
     TRADE = 2
@@ -58,7 +118,7 @@ class ConfirmationType(IntEnum):
 
 
 # https://github.com/DoctorMcKay/node-steamcommunity/wiki/CConfirmation
-@dataclass(eq=False, slots=True)
+@dataclass(slots=True)
 class Confirmation:
     """Representation of confirmation entity."""
 

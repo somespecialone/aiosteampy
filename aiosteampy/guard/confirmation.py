@@ -31,19 +31,13 @@ class SteamConfirmations:
         self._device_id = generate_device_id(self._session.steam_id.id64) if device_id is None else device_id
 
     @property
-    def session(self) -> SteamSession:
-        return self._session
-
-    @property
     def signer(self) -> TwoFactorSigner:
+        """Crypto signer."""
         return self._signer
 
     @property
-    def steam_id(self) -> SteamID:
-        return self._session.steam_id
-
-    @property
     def device_id(self) -> str:
+        """Mobile device id."""
         return self._device_id
 
     def _create_confirmation_params(self, tag: str) -> dict:
@@ -67,8 +61,7 @@ class SteamConfirmations:
         :param obj: ``Confirmation`` or confirmation id.
         :return: dict with details.
         :raises EResultError: ordinary reasons.
-        :raises TransportError: arbitrary reasons.
-        :raises ValueError: confirmation type is not listing or details are not available.
+        :raises TransportError: ordinary reasons.
         """
 
         if isinstance(obj, Confirmation):
@@ -105,7 +98,7 @@ class SteamConfirmations:
             Required to map ``Confirmation`` to market listing.
         :return: list of ``Confirmation``.
         :raises EResultError: ordinary reasons.
-        :raises TransportError: arbitrary reasons.
+        :raises TransportError: ordinary reasons.
         """
 
         tag = "getlist"
@@ -149,7 +142,7 @@ class SteamConfirmations:
             Required to map ``Confirmation`` to market listing.
         :return: ``Confirmation`` or ``None`` if not found.
         :raises EResultError: ordinary reasons.
-        :raises TransportError: arbitrary reasons.
+        :raises TransportError: ordinary reasons.
         """
 
         confs = await self.get_confirmations(details_for_listing_type=details_for_listing_type)
@@ -162,7 +155,7 @@ class SteamConfirmations:
         :param conf: ``Confirmation`` that you want to proceed.
         :param tag: string literal of confirmation tag. Can be ``"allow"`` or ``"cancel"``.
         :raises EResultError: ordinary reasons.
-        :raises TransportError: arbitrary reasons.
+        :raises TransportError: ordinary reasons.
         """
 
         params = self._create_confirmation_params(tag)
@@ -190,7 +183,7 @@ class SteamConfirmations:
         :param confs: iterable with confirmations that you wand to proceed.
         :param tag: ``"allow"`` or ``"cancel"`` tag.
         :raises EResultError: ordinary reasons.
-        :raises TransportError: arbitrary reasons.
+        :raises TransportError: ordinary reasons.
         """
 
         data = self._create_confirmation_params(tag)
@@ -218,7 +211,7 @@ class SteamConfirmations:
 
         :return: list of processed confirmations.
         :raises EResultError: ordinary reasons.
-        :raises TransportError: arbitrary reasons.
+        :raises TransportError: ordinary reasons.
         """
 
         # Is there are limit on confs count?
@@ -233,7 +226,7 @@ class SteamConfirmations:
 
         :return: list of processed confirmations.
         :raises EResultError: ordinary reasons.
-        :raises TransportError: arbitrary reasons.
+        :raises TransportError: ordinary reasons.
         """
 
         confs = await self.get_confirmations()

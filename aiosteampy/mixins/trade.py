@@ -830,14 +830,13 @@ class TradeMixin(SteamWebApiMixin, SteamCommunityPublicMixin):
 
         if isinstance(obj, TradeOffer):
             offer_id = obj.trade_offer_id
-            to_give_updated = [*obj.items_to_give, *to_give]
-            to_receive_updated = [*obj.items_to_receive, *to_receive]
             if obj.is_our_offer:
                 raise TypeError("You can't counter your offer!")
         else:  # trade offer id
             offer_id = obj
-            to_give_updated = to_give
-            to_receive_updated = to_receive
+
+        to_give_updated = to_give
+        to_receive_updated = to_receive
 
         return self.make_trade_offer(
             partner_id,

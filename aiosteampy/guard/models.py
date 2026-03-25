@@ -1,3 +1,5 @@
+import json
+import re
 from base64 import b64encode
 from dataclasses import dataclass
 from datetime import datetime
@@ -7,6 +9,8 @@ from typing import NotRequired, Self, TypedDict
 from ..id import SteamID
 from ..session import SteamJWT
 from ..utils import create_ident_code
+
+ITEM_INFO_RE = re.compile(r"'confiteminfo', (.+), UserYou")  # lang safe
 
 
 class MaFileSession(TypedDict):
@@ -100,14 +104,29 @@ class SteamGuardAccount:
         )
 
 
-# https://github.com/DoctorMcKay/node-steamcommunity/blob/master/resources/EConfirmationType.js
-# TODO docstrings
+# https://github.com/SteamRE/SteamKit/blob/cd995a14075c17f749919ccf91f56edf883d35c0/Resources/SteamLanguage/enums.steamd#L1720
 class ConfirmationType(IntEnum):
-    UNKNOWN = 1
+    UNKNOWN = -1
+    """Unknown type that used in special cases. Normally should not be present."""
+
+    INVALID = 0
+    TEST = 1
     TRADE = 2
-    LISTING = 3
-    # API_KEY = 4  # Probably
-    PURCHASE = 12
+    """Required to confirm trade offer."""
+    MARKET_LISTING = 3
+    """Required to sell item on market."""
+    FEATURE_OPT_OUT = 4
+    PHONE_NUMBER_CHANGE = 5
+    """Required to remove phone number."""
+    ACCOUNT_RECOVERY = 6
+    BUILD_CHANGE_REQUEST = 7
+    ADD_USER = 8
+    REGISTER_API_KEY = 9
+    """Required to create a new `Web API` key."""
+    INVITE_TO_FAMILY_GROUP = 10
+    JOIN_FAMILY_GROUP = 11
+    MARKET_PURCHASE = 12
+    REQUEST_REFUND = 13
 
     @classmethod
     def get(cls, v: int) -> Self:
@@ -123,26 +142,44 @@ class Confirmation:
     """Representation of confirmation entity."""
 
     id: int
-    nonce: str  # conf key
-    creator_id: int  # trade/listing id
+    """Unique id."""
+    nonce: str
+    """Unique key."""
+    creator_id: int
+    """Id of the creator. Can be ``TradeOffer`` or ``MarketListing`` id."""
     creation_time: datetime
-
+    """Server time when was created."""
     type: ConfirmationType
 
-    icon: str
+    accept: str
+    cancel: str
+
+    icon: str | None
     multi: bool  # ?
     headline: str
-    summary: str
+    summary: list[str]
     warn: str | None  # ?
 
-    details: dict | None = None
+    _details: str | None = None
+    _ident_code: str | None = None
+
+    @property
+    def details(self) -> str | None:
+        """String contains HTML details."""
+        return self._details
+
+    @details.setter
+    def details(self, value: str | None):
+        self._details = value
+
+        if self.type is ConfirmationType.MARKET_LISTING and value:
+            data: dict = json.loads(ITEM_INFO_RE.search(value).group(1))
+            self._ident_code = create_ident_code(data["id"], data["contextid"], data["appid"])
 
     @property
     def listing_item_ident_code(self) -> str | None:
-        """``MarketListingItem`` ident code if ``details`` is present."""
-
-        if self.details is not None:
-            return create_ident_code(self.details["id"], self.details["contextid"], self.details["appid"])
+        """``MarketListingItem`` ident code."""
+        return self._ident_code
 
     def __hash__(self):
         return self.id

@@ -1,7 +1,7 @@
-import json
-import re
+import asyncio
 from collections.abc import Awaitable, Iterable
 from datetime import datetime
+from itertools import batched
 from typing import Literal
 
 from ..constants import STEAM_URL, EResult
@@ -13,8 +13,11 @@ from .signer import TwoFactorSigner
 from .utils import generate_device_id
 
 CONF_URL = STEAM_URL.COMMUNITY / "mobileconf"
-ITEM_INFO_RE = re.compile(r"'confiteminfo', (.+), UserYou")  # lang safe
-ConfirmationTags = Literal["allow", "cancel"]
+GET_ALL_URL = CONF_URL / "getlist"
+SEND_URL = CONF_URL / "ajaxop"
+SEND_MULTI_URL = CONF_URL / "multiajaxop"
+
+DetailsMode = Literal["none", "listing", "all"]
 
 
 # no need to check session auth as this component will be used in client
@@ -47,28 +50,23 @@ class SteamConfirmations:
             "a": self._session.steam_id.id64,
             "k": conf_key,
             "t": ts,
-            "m": "android",  # react
+            "m": "react",  # or mobile?
             "tag": tag,
         }
 
-    # TODO type
-    # html for other types
-    async def get_confirmation_details(self, obj: Confirmation | int) -> dict[str, ...]:
+    async def get_confirmation_details(self, obj: Confirmation | int) -> str:
         """
-        Get details for **listing type confirmation**.
-        If ``obj`` is ``Confirmation`` then details will be updated.
+        Get details for ``obj``.
+        Details will be attached to ``Confirmation`` if passed.
 
         :param obj: ``Confirmation`` or confirmation id.
-        :return: dict with details.
+        :return: details as string containing html.
         :raises EResultError: ordinary reasons.
         :raises TransportError: ordinary reasons.
         """
 
         if isinstance(obj, Confirmation):
             conf_id = obj.id
-            if obj.type is not ConfirmationType.LISTING:
-                # in future we can get details for other conf types
-                raise ValueError("Confirmation details are available only for listing confirmations")
         else:
             conf_id = obj
 
@@ -84,127 +82,166 @@ class SteamConfirmations:
 
         EResultError.check_data(rj)
 
-        details = json.loads(ITEM_INFO_RE.search(rj["html"]).group(1))
+        details = rj["html"]
         if isinstance(obj, Confirmation):
             obj.details = details
 
         return details
 
-    async def get_confirmations(self, *, details_for_listing_type: bool = True) -> list[Confirmation]:
+    async def get_all(self, details: DetailsMode = "none") -> list[Confirmation]:
         """
         Get all standing confirmations.
 
-        :param details_for_listing_type: update ``Confirmation`` details if it has listing type.
-            Required to map ``Confirmation`` to market listing.
+        .. note:: Details is needed to identify for which ``MarketListing`` conf. belongs.
+
+        :param details: whether to update ``Confirmation`` details.
+            Possible values are:
+            ``"none"`` - no details will be fetched;
+            ``"listing"`` - will update only for ``ConfirmationType.MARKET_LISTING``;
+            ``"all"`` - will update for all types.
         :return: list of ``Confirmation``.
         :raises EResultError: ordinary reasons.
         :raises TransportError: ordinary reasons.
+        :raises RuntimeError: when auth token is invalid or session expired.
         """
 
-        tag = "getlist"
-        params = self._create_confirmation_params(tag)
+        params = self._create_confirmation_params("getlist")
 
-        r = await self._session.transport.request("GET", CONF_URL / tag, params=params, response_mode="json")
+        r = await self._session.transport.request("GET", GET_ALL_URL, params=params, response_mode="json")
         rj: dict = r.content
+
+        # TODO hmm, maybe we can return SessionExpired or similar exception back?
+        if rj.get("needauth"):
+            raise RuntimeError("Invalid auth token or session expired.")
 
         EResultError.check_data(rj)
 
-        confs = []
-        if "conf" in rj:
-            for conf_data in rj["conf"]:
-                conf = Confirmation(
-                    id=int(conf_data["id"]),
-                    nonce=conf_data["nonce"],
-                    creator_id=int(conf_data["creator_id"]),
-                    creation_time=datetime.fromtimestamp(conf_data["creation_time"]),
-                    type=ConfirmationType.get(conf_data["type"]),
-                    icon=conf_data["icon"],
-                    multi=conf_data["multi"],
-                    headline=conf_data["headline"],
-                    summary=conf_data["summary"][0],
-                    warn=conf_data["warn"],
+        confs: list[Confirmation] = []
+        requiring_details: list[Confirmation] = []
+        for conf_data in rj.get("conf", ()):
+            conf_data: dict
+            conf = Confirmation(
+                id=int(conf_data["id"]),
+                nonce=conf_data["nonce"],
+                creator_id=int(conf_data["creator_id"]),
+                creation_time=datetime.fromtimestamp(conf_data["creation_time"]),
+                type=ConfirmationType.get(conf_data["type"]),
+                accept=conf_data["accept"],
+                cancel=conf_data["cancel"],
+                icon=conf_data["icon"],
+                multi=conf_data["multi"],
+                headline=conf_data["headline"],
+                summary=conf_data["summary"],
+                warn=conf_data["warn"],
+            )
+
+            if conf.type is ConfirmationType.UNKNOWN:
+                import warnings
+
+                warnings.warn(
+                    f"Unknown confirmation type: {conf.type} for {conf.id}. "
+                    "Normally this should never happen. Please report to maintainers",
+                    RuntimeWarning,
                 )
 
-                if details_for_listing_type and conf.type is ConfirmationType.LISTING:
-                    await self.get_confirmation_details(conf)  # get details so we can find confirmation for listing
+            if details == "all":
+                requiring_details.append(conf)
+            elif details == "listing" and conf.type is ConfirmationType.MARKET_LISTING:
+                requiring_details.append(conf)
 
-                confs.append(conf)
+            confs.append(conf)
+
+        for chunk in batched(requiring_details, 10):  # concurrently get details with limit
+            async with asyncio.TaskGroup() as tg:
+                for conf in chunk:
+                    tg.create_task(self.get_confirmation_details(conf))
 
         return confs
 
-    async def get_confirmation(self, key: str | int, *, details_for_listing_type: bool = True) -> Confirmation | None:
+    async def get(self, key: str | int, details: DetailsMode = "listing") -> Confirmation | None:
         """
-        Get standing ``Confirmation`` by ``MarketListingItem`` ident code,
-        trade offer id or, generally, request id.
+        Get standing ``Confirmation``.
 
-        :param key: ``MarketListingItem`` ident code, `TradeOffer` id or request id.
-        :param details_for_listing_type: update ``Confirmation`` details if it has listing type.
-            Required to map ``Confirmation`` to market listing.
+        .. note::
+            Details is required to identify for which ``MarketListing`` conf. belongs.
+            So ``details`` need to be ``"listing"`` or ``"all"`` if ``key`` is ``MarketListingItem`` ident code.
+
+        :param key: confirmation creator id. Can be a ``MarketListingItem`` ident code,
+            ``TradeOffer`` id or, more broad, `request id`.
+        :param details: whether to update ``Confirmation`` details.
+            Possible values are:
+            ``"none"`` - no details will be fetched;
+            ``"listing"`` - will update only for ``ConfirmationType.MARKET_LISTING``;
+            ``"all"`` - will update for all types.
         :return: ``Confirmation`` or ``None`` if not found.
         :raises EResultError: ordinary reasons.
         :raises TransportError: ordinary reasons.
+        :raises RuntimeError: when auth token is invalid or session expired.
         """
 
-        confs = await self.get_confirmations(details_for_listing_type=details_for_listing_type)
+        confs = await self.get_all(details)  # unfortunately we need details for all confs. to map to listing
         return next(filter(lambda c: c.creator_id == key or c.listing_item_ident_code == key, confs), None)
 
-    async def send_confirmation(self, conf: Confirmation, tag: ConfirmationTags):
+    async def send(self, conf: Confirmation, accept: bool = True):
         """
         Perform action with confirmation.
 
         :param conf: ``Confirmation`` that you want to proceed.
-        :param tag: string literal of confirmation tag. Can be ``"allow"`` or ``"cancel"``.
+        :param accept: ``True`` if you want to accept confirmation, ``False`` otherwise.
         :raises EResultError: ordinary reasons.
         :raises TransportError: ordinary reasons.
         """
 
-        params = self._create_confirmation_params(tag)
-        params |= {"op": tag, "cid": conf.id, "ck": conf.nonce}
+        op = "allow" if accept else "cancel"
+        params = self._create_confirmation_params(op)
+        # mutating is slightly faster than updating with new
+        params["op"] = op
+        params["cid"] = conf.id
+        params["ck"] = conf.nonce
 
-        r = await self._session.transport.request("GET", CONF_URL / "ajaxop", params=params, response_mode="json")
+        r = await self._session.transport.request("GET", SEND_URL, params=params, response_mode="json")
         rj: dict = r.content
 
         EResultError.check_data(rj)
 
-    def allow_confirmation(self, conf: Confirmation) -> Awaitable[None]:
-        """Allow single confirmation."""
+    def accept(self, conf: Confirmation) -> Awaitable[None]:
+        """Accept single confirmation."""
+        return self.send(conf, True)
 
-        return self.send_confirmation(conf, "allow")
+    def deny(self, conf: Confirmation) -> Awaitable[None]:
+        """Deny single confirmation."""
+        return self.send(conf, False)
 
-    def cancel_confirmation(self, conf: Confirmation) -> Awaitable[None]:
-        """Cancel single confirmation."""
-
-        return self.send_confirmation(conf, "cancel")
-
-    async def send_multiple_confirmations(self, confs: Iterable[Confirmation], tag: ConfirmationTags):
+    async def send_multiple(self, confs: Iterable[Confirmation], accept: bool = True):
         """
         Perform batch action with multiple confirmations.
 
         :param confs: iterable with confirmations that you wand to proceed.
-        :param tag: ``"allow"`` or ``"cancel"`` tag.
+        :param accept: ``True`` if you want to accept confirmation, ``False`` otherwise.
         :raises EResultError: ordinary reasons.
         :raises TransportError: ordinary reasons.
         """
 
+        tag = "allow" if accept else "cancel"
         data = self._create_confirmation_params(tag)
-        data |= {"op": tag, "cid[]": [conf.id for conf in confs], "ck[]": [conf.nonce for conf in confs]}
+        data["op"] = tag
+        data["cid[]"] = [conf.id for conf in confs]
+        data["ck[]"] = [conf.nonce for conf in confs]
 
-        r = await self._session.transport.request("POST", CONF_URL / "multiajaxop", data=data, response_mode="json")
+        r = await self._session.transport.request("POST", SEND_MULTI_URL, data=data, response_mode="json")
         rj: dict = r.content
 
         EResultError.check_data(rj)
 
-    def allow_multiple_confirmations(self, confs: Iterable[Confirmation]) -> Awaitable[None]:
-        """Allow multiple confirmations."""
+    def accept_multiple(self, confs: Iterable[Confirmation]) -> Awaitable[None]:
+        """Accept multiple confirmations."""
+        return self.send_multiple(confs, True)
 
-        return self.send_multiple_confirmations(confs, "allow")
-
-    def cancel_multiple_confirmations(self, confs: Iterable[Confirmation]) -> Awaitable[None]:
+    def deny_multiple(self, confs: Iterable[Confirmation]) -> Awaitable[None]:
         """Cancel multiple confirmations."""
+        return self.send_multiple(confs, False)
 
-        return self.send_multiple_confirmations(confs, "cancel")
-
-    async def allow_all_confirmations(self) -> list[Confirmation]:
+    async def accept_all(self) -> list[Confirmation]:
         """
         Perform action with ``"allow"`` tag for all standing confirmations.
         In other words, **allow all confirmations**.
@@ -212,14 +249,15 @@ class SteamConfirmations:
         :return: list of processed confirmations.
         :raises EResultError: ordinary reasons.
         :raises TransportError: ordinary reasons.
+        :raises RuntimeError: when auth token is invalid or session expired.
         """
 
         # Is there are limit on confs count?
-        confs = await self.get_confirmations()
-        confs and await self.allow_multiple_confirmations(confs)
+        confs = await self.get_all()
+        confs and await self.accept_multiple(confs)
         return confs
 
-    async def cancel_all_confirmations(self) -> list[Confirmation]:
+    async def deny_all(self) -> list[Confirmation]:
         """
         Perform action with ``"cancel"`` tag for all standing confirmations.
         In other words, **cancel all confirmations**.
@@ -227,8 +265,9 @@ class SteamConfirmations:
         :return: list of processed confirmations.
         :raises EResultError: ordinary reasons.
         :raises TransportError: ordinary reasons.
+        :raises RuntimeError: when auth token is invalid or session expired.
         """
 
-        confs = await self.get_confirmations()
-        confs and await self.cancel_multiple_confirmations(confs)
+        confs = await self.get_all()
+        confs and await self.deny_multiple(confs)
         return confs

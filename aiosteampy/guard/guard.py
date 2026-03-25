@@ -1,7 +1,7 @@
 import time
 from base64 import b64encode
 from collections.abc import Awaitable
-from typing import Self
+from typing import cast
 
 from yarl import URL
 
@@ -92,7 +92,11 @@ class SteamGuard:
 
     @property
     def confirmations(self) -> SteamConfirmations | None:
-        """Confirmation manager."""
+        """`Steam` mobile confirmations manager."""
+
+        if self._conf is not None and not self._session.cookies_are_valid:
+            raise RuntimeError("Confirmations are not available without valid cookies. Obtain cookies first")
+
         return self._conf
 
     @property
@@ -118,7 +122,7 @@ class SteamGuard:
     @property
     def transport(self) -> BaseSteamTransport:
         """HTTP transport instance."""
-        return self._session.webapi.transport
+        return self._session.transport
 
     def confirm_auth_request(
         self,
@@ -286,7 +290,7 @@ class SteamGuard:
                 validate_sms_code=self._2fa_resp.confirm_type == 1,  # if SMS were required
             )
 
-        except Exception as err:
+        except Exception as e:
             import warnings
 
             account_data = account.to_dict()
@@ -298,11 +302,11 @@ class SteamGuard:
             )
 
             warnings.warn(msg + str(account_data), RuntimeWarning)
-            raise RuntimeError(msg, account_data) from err
+            raise RuntimeError(msg, account_data) from e
 
         if r.success:  # seems most reliable way to check activation status
-            self._conf = SteamConfirmations(self._session, signer, self._device_id)
             self._2fa_finalized = True
+            self._conf = SteamConfirmations(self._session, signer, self._device_id)
             return
 
         # EResult.OK in header even if activation failed, we cannot believe Steam even in that.
@@ -341,6 +345,11 @@ class SteamGuard:
         if not r.success:
             raise AuthenticatorError(f"Unknown error", r)
 
+        self._2fa_resp = None
+        self._2fa_finalized = False
+        self._conf = None
+        self._account_has_been_exported = False
+
     def get_status(self, include_last_usage: bool = False) -> Awaitable[CTwoFactorStatusResponse]:
         """Get current `Steam Guard` status."""
         return self._2fa.query_status(self._session.steam_id, include_last_usage)
@@ -373,33 +382,36 @@ class SteamGuard:
         """Export `Steam Guard` account as `Steam Desktop Authenticator` file (maFile)."""
 
         if account := self.export_account():
-            return {
-                "shared_secret": account.shared_secret,
-                "serial_number": str(account.serial_number),
-                "revocation_code": account.revocation_code,
-                "uri": account.uri,
-                "server_time": self._2fa_resp.server_time,
-                "account_name": account.account_name,
-                "token_gid": account.token_gid,
-                "identity_secret": account.identity_secret,
-                "secret_1": account.secret_1,
-                "status": self._2fa_resp.status,
-                "device_id": account.device_id,
-                "phone_number_hint": self._2fa_resp.phone_number_hint,
-                "confirm_type": self._2fa_resp.confirm_type,
-                "fully_enrolled": self._2fa_finalized,
-                "Session": {
-                    "SteamID": account.steam_id.id64,
-                    "AccessToken": self._session.access_token.raw,
-                    "RefreshToken": self._session.refresh_token.raw,
-                    # if we don't obtained web cookies before, session will not have session id
-                    "SessionID": self._session.session_id or generate_session_id(),
+            return cast(
+                MaFile,
+                {
+                    "shared_secret": account.shared_secret,
+                    "serial_number": str(account.serial_number),
+                    "revocation_code": account.revocation_code,
+                    "uri": account.uri,
+                    "server_time": self._2fa_resp.server_time,
+                    "account_name": account.account_name,
+                    "token_gid": account.token_gid,
+                    "identity_secret": account.identity_secret,
+                    "secret_1": account.secret_1,
+                    "status": self._2fa_resp.status,
+                    "device_id": account.device_id,
+                    "phone_number_hint": self._2fa_resp.phone_number_hint,
+                    "confirm_type": self._2fa_resp.confirm_type,
+                    "fully_enrolled": self._2fa_finalized,
+                    "Session": {
+                        "SteamID": account.steam_id.id64,
+                        "AccessToken": self._session.access_token.raw,
+                        "RefreshToken": self._session.refresh_token.raw,
+                        # if we don't obtained web cookies before, session will not have session id
+                        "SessionID": self._session.session_id or generate_session_id(),
+                    },
                 },
-            }
+            )
 
-    async def add_phone_number(self, country_code: str, phone_number: str):
-        """Add phone number to account."""
-        raise NotImplementedError
+    # async def add_phone_number(self, country_code: str, phone_number: str):
+    #     """Add phone number to account."""
+    #     raise NotImplementedError
 
     def close(self) -> Awaitable[None]:
         return self._session.close()

@@ -90,6 +90,9 @@ class AiohttpSteamTransport(BaseSteamTransport):
             Cookie.from_morsel(m, host_only=self._check_if_cookie_is_host_only(m)) for m in self._session.cookie_jar
         ]
 
+    def has_cookie(self, url, name):
+        return (url.host, url.path[1:]) in self._session.cookie_jar._cookies
+
     def close(self):
         return self._session.close()
 

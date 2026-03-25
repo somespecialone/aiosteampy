@@ -1,5 +1,6 @@
 import asyncio
 from collections.abc import Awaitable
+from datetime import datetime
 from functools import wraps
 from typing import Any, Callable
 
@@ -35,6 +36,8 @@ LOGIN_URL = URL("https://login.steampowered.com")
 SESSION_ID_COOKIE = "sessionid"
 
 QRChallengeUrl = URL | str | tuple[int, int]
+
+DOMAINS = (STEAM_URL.COMMUNITY, STEAM_URL.STORE, STEAM_URL.HELP, STEAM_URL.CHECKOUT, STEAM_URL.TV)
 
 
 # https://typing.python.org/en/latest/guides/libraries.html#annotating-decorators
@@ -599,16 +602,23 @@ class SteamSession:
 
         # rewrite sessionid, get auth cookies, set access token
         for url, d in zip(auth_urls, transfer_datas):
-            cookies.append(self._set_session_id_cookie(url))
+            url = url.with_path("/")
 
-            access_token_cookie = self._service.webapi.transport.get_cookie(
-                url.with_path("/"),
-                STEAM_ACCESS_TOKEN_COOKIE,
-            )
-            if access_token_cookie.domain == STEAM_URL.COMMUNITY.host:  # choose community token as main
-                self._set_access_token(SteamJWT.from_cookie_value(access_token_cookie.value))
+            cookies.append(self._set_session_id_cookie(url))  # set & add session id cookie
 
-            cookies.append(access_token_cookie)
+            # access token cookie flow
+            cookie = self.transport.get_cookie(url, STEAM_ACCESS_TOKEN_COOKIE)
+            token = SteamJWT.from_cookie_value(cookie.value)
+
+            # replace expiration date of cookie (~5 years) with token expiration
+            cookie.expires = token.expires_at
+
+            self.transport.add_cookie(cookie)
+
+            if cookie.domain == STEAM_URL.COMMUNITY.host:  # choose community token as main
+                self._set_access_token(token)
+
+            cookies.append(cookie)
 
         return cookies
 
@@ -670,11 +680,27 @@ class SteamSession:
 
             cookies = []
             # presumably urls from _finalize_login
-            for url in [STEAM_URL.COMMUNITY, STEAM_URL.STORE, STEAM_URL.HELP, STEAM_URL.CHECKOUT, STEAM_URL.TV]:
+            for url in DOMAINS:
                 cookies.append(self._set_session_id_cookie(url))
                 cookies.append(self._set_access_token_cookie(url))
 
             return cookies
+
+    @property
+    def cookies_are_valid(self) -> bool:
+        """Check whether auth web cookies are valid (set and not expired)."""
+
+        for url in DOMAINS:
+            access_token_cookie = self.transport.get_cookie(url, STEAM_ACCESS_TOKEN_COOKIE)
+            if access_token_cookie is None or (
+                access_token_cookie.expires
+                and access_token_cookie.expires < datetime.now(access_token_cookie.expires.tzinfo)
+            ):
+                return False
+            if self.transport.has_cookie(url, SESSION_ID_COOKIE) is None:
+                return False
+
+        return True
 
     async def _generate_access_token_for_web(self) -> SteamJWT:
         """Request new `access` token for web platform."""

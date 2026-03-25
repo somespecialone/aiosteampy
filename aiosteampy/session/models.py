@@ -1,7 +1,7 @@
 import json
 from base64 import b64decode
 from dataclasses import dataclass, field
-from datetime import datetime
+from datetime import UTC, datetime
 from typing import Self, TypedDict
 
 from ..id import SteamID
@@ -34,18 +34,20 @@ class SteamJWTClaims(TypedDict, total=False):
 @dataclass(slots=True)
 class SteamJWT:
     raw: str = field(repr=False)
-    """Raw encoded JWT token."""
+    """Raw encoded JWT."""
     header: JWTHeader
     """JWT header."""
     claims: SteamJWTClaims
-    """Known Steam JWT claims from token payload."""
+    """Known Steam JWT claims from payload."""
     signature: bytes = field(repr=False)
     """JWT signature."""
 
     subject: SteamID = field(init=False)
-    """Parsed token subject."""
-
+    """Parsed subject."""
     platform: Platform = field(init=False)
+    """For which platform was issued."""
+    expires_at: datetime = field(init=False)  # precompute as often used
+    """When expires."""
 
     def __post_init__(self):
         self.subject = SteamID(self.claims["sub"])
@@ -54,6 +56,8 @@ class SteamJWT:
             self.platform = Platform.MOBILE
         else:  # web by default
             self.platform = Platform.WEB
+
+        self.expires_at = datetime.fromtimestamp(self.claims["exp"], UTC)
 
         if self.for_client:
             import warnings
@@ -66,18 +70,14 @@ class SteamJWT:
         return self.claims["aud"]
 
     @property
-    def expires_at(self) -> datetime:
-        """Expiration ``datetime``."""
-        return datetime.fromtimestamp(self.claims["exp"])
-
-    @property
     def expired(self) -> bool:
         """If current token has been expired."""
-        return self.expires_at <= datetime.now()
+        return self.expires_at <= datetime.now(UTC)
 
     @property
     def issued_at(self) -> datetime:
-        return datetime.fromtimestamp(self.claims["iat"])
+        """When was issued."""
+        return datetime.fromtimestamp(self.claims["iat"], UTC)
 
     @property
     def cookie_value(self) -> str:
@@ -126,7 +126,7 @@ class SteamJWT:
 
     @property
     def for_web(self):
-        """Issued for `web` (browser) platform."""
+        """Issued for `web (browser)` platform."""
         return self.platform is Platform.WEB
 
     @property

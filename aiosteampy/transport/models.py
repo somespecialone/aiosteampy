@@ -1,6 +1,6 @@
 from collections.abc import Mapping
 from dataclasses import asdict, dataclass, field
-from datetime import datetime
+from datetime import datetime, UTC
 from http.cookies import Morsel
 from typing import Any, Literal, Self
 
@@ -35,7 +35,7 @@ class Cookie:
 
     # meta
     comment: str = ""
-    created_at: datetime | None = field(default_factory=lambda: datetime.now())
+    created_at: datetime | None = field(default_factory=lambda: datetime.now(UTC))
     last_accessed_at: datetime | None = None
 
     # non‑standard attributes or future RFCs

@@ -93,6 +93,10 @@ class BaseSteamTransport(metaclass=ABCMeta):
         if cookie := self.get_cookie(url, name):
             return cookie.value
 
+    def has_cookie(self, url: URL, name: str) -> bool:
+        """Check if HTTP cookie exists."""
+        return self.get_cookie(url, name) is not None
+
     @abstractmethod
     def get_cookies(self) -> Cookies:
         """Get all HTTP cookies from transport internal storage."""

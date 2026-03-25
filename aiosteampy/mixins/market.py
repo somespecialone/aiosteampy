@@ -225,7 +225,7 @@ class MarketMixin(ConfirmationMixin, SteamCommunityPublicMixin):
 
         :param obj: `EconItem` that you want to list on market or asset id
         :param app_context: `Steam` app+context
-        :param price: money that buyer must pay. Include fees
+        :param  : money that buyer must pay. Include fees
         :param to_receive: money that you want to receive
         :param fetch: make request and return a listing
         :param confirm: confirm listing or not if steam demands mobile confirmation

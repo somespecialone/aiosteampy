@@ -42,7 +42,8 @@ class SteamHTTPTransportMixin:
     @property
     def language(self) -> Language:
         """Language of Steam html pages, json info, descriptions, etc."""
-        return Language(get_cookie_value_from_session(self.session, STEAM_URL.COMMUNITY, LANG_COOKIE))
+        # return Language(get_cookie_value_from_session(self.session, STEAM_URL.COMMUNITY, LANG_COOKIE))
+        return Language.ENGLISH
 
     @language.setter
     def language(self, value: Language | None):

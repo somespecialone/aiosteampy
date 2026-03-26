@@ -8,6 +8,7 @@ from ..constants import STEAM_URL, EResult
 from ..exceptions import EResultError
 from ..id import SteamID
 from ..session import SteamSession
+from ..transport import Unauthenticated
 from .models import Confirmation, ConfirmationType
 from .signer import TwoFactorSigner
 from .utils import generate_device_id
@@ -102,7 +103,7 @@ class SteamConfirmations:
         :return: list of ``Confirmation``.
         :raises EResultError: ordinary reasons.
         :raises TransportError: ordinary reasons.
-        :raises RuntimeError: when auth token is invalid or session expired.
+        :raises Unauthenticated: when auth cookies are invalid or expired.
         """
 
         params = self._create_confirmation_params("getlist")
@@ -110,9 +111,8 @@ class SteamConfirmations:
         r = await self._session.transport.request("GET", GET_ALL_URL, params=params, response_mode="json")
         rj: dict = r.content
 
-        # TODO hmm, maybe we can return SessionExpired or similar exception back?
         if rj.get("needauth"):
-            raise RuntimeError("Invalid auth token or session expired.")
+            raise Unauthenticated
 
         EResultError.check_data(rj)
 

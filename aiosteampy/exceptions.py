@@ -46,11 +46,11 @@ class ConfirmationRequired(SteamError):
 
 # TODO those two need to be refactored
 class NeedMobileConfirmation(ConfirmationRequired):
-    """Mobile confirmation is required."""
+    """Mobile device confirmation is required."""
 
     def __init__(self, conf_key: int | str):
         self.conf_key = conf_key
 
 
-class NeedEmailConfirmation(ConfirmationRequired):
+class EmailConfirmationRequired(ConfirmationRequired):
     """Email confirmation is required."""

@@ -1,4 +1,4 @@
-from ..exceptions import ConfirmationRequired, SteamError
+from ..exceptions import ConfirmationRequired, EmailConfirmationRequired, SteamError
 
 
 class AuthenticatorError(SteamError):
@@ -14,10 +14,6 @@ class AuthenticatorAlreadyPresent(AuthenticatorError):
 
 class TooManyAttempts(AuthenticatorError):
     """Too many failed attempts."""
-
-
-class EmailConfirmationRequired(ConfirmationRequired):
-    """Email confirmation is required."""
 
 
 class SmsConfirmationRequired(ConfirmationRequired):

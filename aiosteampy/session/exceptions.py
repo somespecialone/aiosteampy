@@ -18,6 +18,7 @@ class TooManyAttempts(LoginError):
     """Too many failed login attempts."""
 
 
+# If we don't need allowed confs we can separate this to 4 different exceptions at library top level
 class GuardConfirmationRequired(ConfirmationRequired):
     """Confirmation is required to complete login process."""
 

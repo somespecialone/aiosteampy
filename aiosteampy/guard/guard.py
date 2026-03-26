@@ -9,7 +9,7 @@ from ..constants import EResult
 from ..exceptions import EResultError
 from ..session import SteamSession, generate_session_id, parse_qr_challenge_url
 from ..session.session import QRChallengeUrl
-from ..transport import BaseSteamTransport
+from ..transport import BaseSteamTransport, Unauthenticated
 from ..webapi import SteamWebAPIClient
 from ..webapi.services.phone import PhoneServiceClient
 from ..webapi.services.protobufs import CTwoFactorStatusResponse
@@ -26,6 +26,7 @@ class SteamGuard:
         "_session",
         "_device_id",
         "_conf",
+        "_cookies_valid",
         "_phone",
         "_2fa",
         "_2fa_resp",
@@ -75,6 +76,8 @@ class SteamGuard:
         else:
             self._conf = None
 
+        self._cookies_valid = False  # whether auth cookies are valid, avoiding excessive checks
+
         self._phone = PhoneServiceClient(session.webapi)
         self._2fa = TwoFactorServiceClient(session.webapi)
 
@@ -94,8 +97,12 @@ class SteamGuard:
     def confirmations(self) -> SteamConfirmations | None:
         """`Steam` mobile confirmations manager."""
 
-        if self._conf is not None and not self._session.cookies_are_valid:
-            raise RuntimeError("Confirmations are not available without valid cookies. Obtain cookies first")
+        # preventing user from accessing confirmations with missing cookies
+        if self._conf is not None and self._cookies_valid is False:
+            if self._session.cookies_are_valid:
+                self._cookies_valid = True
+            else:
+                raise Unauthenticated
 
         return self._conf
 

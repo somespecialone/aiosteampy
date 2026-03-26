@@ -14,6 +14,7 @@ from ..transport import (
     Cookie,
     TransportError,
     TransportResponse,
+    Unauthenticated,
     format_http_date,
 )
 from ..webapi import SteamWebAPIClient
@@ -705,16 +706,21 @@ class SteamSession:
     async def _generate_access_token_for_web(self) -> SteamJWT:
         """Request new `access` token for web platform."""
 
-        r = await self._service.webapi.transport.request(
-            "GET",
-            LOGIN_URL / "jwt/refresh",
-            params={"redir": str(STEAM_URL.COMMUNITY)},
-            headers={**API_HEADERS, **BROWSER_HEADERS},
-            redirects=False,
-        )
+        try:
+            r = await self._service.webapi.transport.request(
+                "GET",
+                LOGIN_URL / "jwt/refresh",
+                params={"redir": str(STEAM_URL.COMMUNITY)},
+                headers={**API_HEADERS, **BROWSER_HEADERS},
+                redirects=False,
+                response_mode="meta",
+            )
+        except Unauthenticated as e:
+            r = e.response
+
         location = URL(r.headers["Location"])
 
-        await self._service.webapi.transport.request("GET", location, redirects=False)
+        await self._service.webapi.transport.request("GET", location, redirects=False, response_mode="meta")
 
         cookie = self._service.webapi.transport.get_cookie(location.with_path("/"), STEAM_ACCESS_TOKEN_COOKIE)
         self._set_access_token(SteamJWT.from_cookie_value(cookie.value))

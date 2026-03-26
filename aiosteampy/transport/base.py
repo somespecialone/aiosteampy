@@ -3,7 +3,7 @@ from typing import overload
 
 from yarl import URL
 
-from .exceptions import RateLimitExceeded, ResourceNotModified, TransportError, TransportResponseError
+from .exceptions import RateLimitExceeded, ResourceNotModified, TransportError, TransportResponseError, Unauthenticated
 from .models import Cookie, TransportResponse
 from .types import Headers, HttpMethod, Params, Payload, ResponseMode
 from .utils import parse_http_date
@@ -35,6 +35,8 @@ class BaseSteamTransport(metaclass=ABCMeta):
     """
 
     __slots__ = ()
+
+    # TODO how to enforce constructor signature?
 
     @property
     @abstractmethod
@@ -241,12 +243,16 @@ class BaseSteamTransport(metaclass=ABCMeta):
         except Exception as e:
             raise TransportError from e
 
+        # Steam logic
         # resource not modified. We would get this when "If-Modified-Since" header is provided
         if resp.status == 304:
-            last_modified = parse_http_date(resp.headers["Last-Modified"])
-            expires = parse_http_date(resp.headers["Expires"])
+            raise ResourceNotModified(resp)
 
-            raise ResourceNotModified(last_modified, expires)
+        if (300 <= resp.status < 400) and "/login" in (resp.headers.get("Location") or ()):
+            raise Unauthenticated(resp)
+
+        if resp.status == 401:  # for web api
+            raise Unauthenticated(resp)
 
         if resp.status == 429:
             raise RateLimitExceeded(resp)

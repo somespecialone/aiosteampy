@@ -1,7 +1,7 @@
 from dataclasses import dataclass, field
-from enum import IntEnum, StrEnum
-from typing import NamedTuple, TYPE_CHECKING
 from datetime import datetime
+from enum import IntEnum, StrEnum
+from typing import TYPE_CHECKING, NamedTuple
 
 from yarl import URL
 
@@ -11,11 +11,12 @@ from .constants import (
     Currency,
     TradeOfferStatus,
 )
-from .utils import create_ident_code
 from .id import SteamID
+from .utils import create_ident_code
 
 if TYPE_CHECKING:
-    from .cs2 import DescriptionContext as CS2DescriptionContext, ItemContext as CS2ItemContext
+    from .cs2 import DescriptionContext as CS2DescriptionContext
+    from .cs2 import ItemContext as CS2ItemContext
 
 
 TRADABLE_AFTER_DATE_FORMAT = "%b %d, %Y (%H:%M:%S) %Z"
@@ -105,8 +106,10 @@ class ItemDescription(BaseEntityWithIdentCode):
     name_color: str | None = None  # hexadecimal
     background_color: str | None = None
 
-    icon: str
-    icon_large: str | None = None
+    icon_key: str
+    """Icon CDN asset key."""
+    icon_large_key: str | None = None
+    """Large icon CDN asset key."""
 
     # TODO do I need defaults here? Wait for trade, inventory methods
 
@@ -183,12 +186,16 @@ class ItemDescription(BaseEntityWithIdentCode):
             return self._cs2_ctx
 
     @property
-    def icon_url(self) -> URL:
-        return STEAM_URL.STATIC / f"economy/image/{self.icon}/96fx96f"
+    def icon(self) -> URL:
+        return STEAM_URL.STATIC / f"economy/image/{self.icon_key}/96fx96f"
 
     @property
-    def icon_large_url(self) -> URL | None:
-        return (STEAM_URL.STATIC / f"economy/image/{self.icon_large}/330x192") if self.icon_large is not None else None
+    def icon_large(self) -> URL | None:
+        return (
+            (STEAM_URL.STATIC / f"economy/image/{self.icon_large_key}/330x192")
+            if self.icon_large_key is not None
+            else None
+        )
 
     @property
     def market_url(self) -> URL:

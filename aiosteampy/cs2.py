@@ -1,34 +1,26 @@
 """`CS2` app specific context."""
 
 import re
-
 from dataclasses import dataclass
-from enum import StrEnum, IntEnum
-from typing import NamedTuple, Self, overload, TYPE_CHECKING
+from enum import IntEnum, StrEnum
+from typing import TYPE_CHECKING, NamedTuple, Self, overload
 
 from .app import App
 
-if TYPE_CHECKING:  # little dirty
-    from .models import AssetAccessory, ItemDescription, EconItem
+if TYPE_CHECKING:
     from .components.market.models import MarketListingItem
+    from .components.trade.models import TradeOfferItem
+    from .models import AssetAccessory, EconItem, ItemDescription
 
 
+INSPECT_LINK_BASE = "steam://run/730//+csgo_econ_action_preview%20%"
 # search sticker and charm data
 CS2_APPLICABLE_DATA_RE = re.compile(r'<img\s+[^>]*src="([^"]*)"[^>]*title="([^"]*)"[^>]*>')
 
 
-@overload
-def make_inspect_link(*, owner_id: int, asset_id: int, d_id: int) -> str: ...
-@overload
-def make_inspect_link(*, market_id: int, asset_id: int, d_id: int) -> str: ...
-def make_inspect_link(*, market_id: int = None, owner_id: int = None, asset_id: int, d_id: int) -> str:
+def make_inspect_link(inspect_key: str) -> str:
     """Create `Inspect in game` link for `CS2` item."""
-
-    base = "steam://rungame/730/76561202255233023/+csgo_econ_action_preview%20"
-    if market_id:
-        return f"{base}M{market_id}A{asset_id}D{d_id}"
-    else:
-        return f"{base}S{owner_id}A{asset_id}D{d_id}"
+    return INSPECT_LINK_BASE + inspect_key
 
 
 class AssetPropertyId(IntEnum):
@@ -37,7 +29,15 @@ class AssetPropertyId(IntEnum):
     CHARM_PATTERN_TEMPLATE = 3
     STICKER_WEAR_RATING = 4  # from asset accessories
     NAME_TAG = 5
-    ITEM_CERTIFICATE = 6  # what is this?
+    ITEM_CERTIFICATE = 6  # now we know what this is
+    """Inspect key of item."""
+
+    @classmethod
+    def get(cls, value: int) -> Self | None:
+        try:
+            return cls(value)
+        except KeyError:
+            return None
 
 
 class ItemAccessoryMeta(NamedTuple):
@@ -59,17 +59,31 @@ class ItemExterior(StrEnum):
         return cls(description.split(": ")[1])  # Exterior: <wear>
 
 
+class DescriptionDescriptionName(StrEnum):  # lol
+    Sticker = "sticker_info"
+    Charm = "keychain_info"
+    Collection = "itemset_name"
+    Exterior = "exterior_wear"
+    StattrakScore = "stattrak_score"
+    # Description = "description"  # not meaningful
+
+    @classmethod
+    def get(cls, value: str) -> Self | None:
+        try:
+            return cls(value)
+        except KeyError:
+            return None
+
+
 @dataclass(eq=False, slots=True)
 class DescriptionContext:
     """Representation of `CS2` specific ``ItemDescription`` data."""
 
     # from descriptions
-    inspect_id: int | None  # d id
-    """Special `inspect id`."""
     stickers: tuple[ItemAccessoryMeta, ...]
     """List of `stickers` metadata."""
     charm: ItemAccessoryMeta | None
-    """Charm metadata."""
+    """`Charm` metadata."""
     collection: str | None
     exterior: ItemExterior | None
 
@@ -87,36 +101,28 @@ class DescriptionContext:
     @classmethod
     def from_description(cls, descr: "ItemDescription") -> Self:
         if descr.app is not App.CS2:
-            raise ValueError("Passed description is not from `CS2` app.")
-
-        # find inspect action, language agnostic (safe) option
-        d_id = None
-        if (i_action := next(filter(lambda a: "action_preview" in a.link, descr.actions), None)) is not None:
-            d_id = int(i_action.link.split("%D")[1])
+            raise ValueError("Passed 'description' are not belong to 'CS2' app.")
 
         stickers = ()
-        if (s_descr := next(filter(lambda d: d.name == "sticker_info", descr.descriptions), None)) is not None:
-            stickers = tuple(ItemAccessoryMeta(t, s) for s, t in CS2_APPLICABLE_DATA_RE.findall(s_descr.value))
-
         charm = None
-        if (c_descr := next(filter(lambda d: d.name == "keychain_info", descr.descriptions), None)) is not None:
-            search = CS2_APPLICABLE_DATA_RE.search(c_descr.value)
-            charm = ItemAccessoryMeta(name=search.group(1), icon=search.group(2))
-
         collection = None
-        if (cl_descr := next(filter(lambda d: d.name == "itemset_name", descr.descriptions), None)) is not None:
-            collection = cl_descr.value
-
-        # safe to get from descriptions in any case
         exterior = None
-        if (e_descr := next(filter(lambda d: d.name == "exterior_wear", descr.descriptions), None)) is not None:
-            exterior = ItemExterior.from_description(e_descr.value)
-
         stattrak_score = None
-        if (s_descr := next(filter(lambda d: d.name == "stattrak_score", descr.descriptions), None)) is not None:
-            stattrak_score = int(s_descr.value.split(": ")[1])  # let's hope that this option is lang safe
+        for d in descr.descriptions:
+            match DescriptionDescriptionName.get(d.name):
+                case DescriptionDescriptionName.Sticker:
+                    stickers = tuple(ItemAccessoryMeta(t, s) for s, t in CS2_APPLICABLE_DATA_RE.findall(d.value))
+                case DescriptionDescriptionName.Charm:
+                    search = CS2_APPLICABLE_DATA_RE.search(d.value)
+                    charm = ItemAccessoryMeta(name=search.group(1), icon=search.group(2))
+                case DescriptionDescriptionName.Collection:
+                    collection = d.value
+                case DescriptionDescriptionName.Exterior:  # safe to get from descriptions in any case
+                    exterior = ItemExterior.from_description(d.value)
+                case DescriptionDescriptionName.StattrakScore:
+                    stattrak_score = int(d.value.split(": ")[1])  # let's hope that this option is lang safe
 
-        return cls(d_id, stickers, charm, collection, exterior, stattrak_score)
+        return cls(stickers, charm, collection, exterior, stattrak_score)
 
 
 @dataclass(eq=False, slots=True)
@@ -146,7 +152,8 @@ class ItemContext:
     charm: Charm | None
 
     inspect_link: str | None
-    wear_rating: float | None  # so called float value
+    wear_rating: float | None
+    """Wear rating of item skin, known as `float` or `floatvalue`."""
     pattern_template: int | None
     name_tag: str | None
 
@@ -160,26 +167,11 @@ class ItemContext:
         return Sticker(class_id=accessory.class_id, meta=sticker_meta, wear=float(w_prop.value))
 
     @classmethod
-    def from_item(cls, item: "EconItem | MarketListingItem") -> Self:
+    def from_item(cls, item: "EconItem | MarketListingItem | TradeOfferItem") -> Self:
         if item.description.app is not App.CS2:
-            raise ValueError("Passed `item` is not from `CS2` app.")
+            raise ValueError("Passed 'item' are not belong to 'CS2' app.")
 
         descr_ctx = item.description.cs2
-
-        inspect_link = None
-        if descr_ctx.inspect_id:
-            if market_id := getattr(item, "market_id", None) is not None:  # market listing
-                inspect_link = make_inspect_link(
-                    market_id=market_id,
-                    asset_id=item.asset_id,
-                    d_id=descr_ctx.inspect_id,
-                )
-            else:  # econ item
-                inspect_link = make_inspect_link(
-                    owner_id=item.owner_id.id64,
-                    asset_id=item.asset_id,
-                    d_id=descr_ctx.inspect_id,
-                )
 
         stickers = ()
         if item.accessories and descr_ctx.stickers:
@@ -199,37 +191,19 @@ class ItemContext:
 
             charm = Charm(class_id=accs.class_id, meta=descr_ctx.charm, pattern=int(p_prop.value))
 
+        inspect_link = None
         wear_rating = None
-        if (
-            w_prop := next(
-                filter(
-                    lambda p: AssetPropertyId(p.id) is AssetPropertyId.WEAR_RATING,
-                    item.properties,
-                ),
-                None,
-            )
-        ) is not None:
-            wear_rating = float(w_prop.value)  # will round to 16 digits from original 18
-
         pattern = None
-        if (
-            p_prop := next(
-                filter(
-                    lambda p: AssetPropertyId(p.id) is AssetPropertyId.PATTERN_TEMPLATE,
-                    item.properties,
-                ),
-                None,
-            )
-        ) is not None:
-            pattern = int(p_prop.value)
-
         name_tag = None
-        if (
-            t_prop := next(
-                filter(lambda p: AssetPropertyId(p.id) is AssetPropertyId.NAME_TAG, item.properties),
-                None,
-            )
-        ) is not None:
-            name_tag = t_prop.value
+        for prop in item.properties:
+            match AssetPropertyId.get(prop.id):
+                case AssetPropertyId.ITEM_CERTIFICATE:
+                    inspect_link = make_inspect_link(prop.value)
+                case AssetPropertyId.WEAR_RATING:
+                    wear_rating = float(prop.value)  # will round to 16 digits from original 18
+                case AssetPropertyId.PATTERN_TEMPLATE:
+                    pattern = int(prop.value)
+                case AssetPropertyId.NAME_TAG:
+                    name_tag = prop.value
 
         return cls(descr_ctx, stickers, charm, inspect_link, wear_rating, pattern, name_tag)

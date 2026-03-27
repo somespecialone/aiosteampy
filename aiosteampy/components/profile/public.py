@@ -1,11 +1,9 @@
 from datetime import datetime
 
-from ...transport import BaseSteamTransport
-from ...id import SteamID
 from ...constants import STEAM_URL
-
-from .models import ProfileAliasHistoryEntry, MiniProfileBadge, MiniProfileData
-from .utils import make_alias_profile_url, make_steam_id_profile_url
+from ...id import SteamID
+from ...transport import BaseSteamTransport
+from .models import MiniProfileBadge, MiniProfileData, ProfileAliasHistoryEntry
 
 PROFILE_ALIAS_TIME_FORMAT = "%d %b, %Y @ %I:%M%p"
 
@@ -23,8 +21,8 @@ class ProfilePublicComponent:
         Get user `miniprofile` data.
 
         :param user_id: ``SteamID`` of user.
-        :return: miniprofile data.
-        :raises TransportError: arbitrary reasons.
+        :return: `miniprofile` data.
+        :raises TransportError: ordinary reasons.
         """
 
         r = await self._transport.request(
@@ -56,15 +54,15 @@ class ProfilePublicComponent:
         """
         Get nickname history of user.
 
-        :param obj: ``SteamID`` or profile alias.
-        :return: list of profile alias history.
-        :raises TransportError: arbitrary reasons.
+        :param obj: ``SteamID`` or profile `alias`.
+        :return: list of profile `alias` history.
+        :raises TransportError: ordinary reasons.
         """
 
         if isinstance(obj, str):  # alias
-            url = make_alias_profile_url(obj)
+            url = STEAM_URL.COMMUNITY / f"id/{obj}"
         else:
-            url = make_steam_id_profile_url(obj)
+            url = STEAM_URL.COMMUNITY / f"profiles/{obj.id64}"
 
         r = await self._transport.request("GET", url / "ajaxaliases", redirects=True, response_mode="json")
 

@@ -39,7 +39,3 @@ def create_ident_code(*args, sep=":"):
     """
 
     return sep.join(reversed(list(str(i) for i in filter(lambda i: i is not None, args))))
-
-
-def extract_icon_hash_from_app_icon_link(link: str) -> str:
-    return link.split(".jpg")[0].rsplit("/", 1)[-1]

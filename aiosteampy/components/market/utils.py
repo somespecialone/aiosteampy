@@ -89,15 +89,19 @@ def buyer_pays_to_receive(
     return s_fee, p_fee, int(v - s_fee - p_fee)
 
 
-def calc_market_listing_fee(price: int, *, wallet_fee=0.05, publisher_fee=0.10, minimal_fee=1) -> int:
+def calc_market_listing_fee(price: int, *, steam_fee=0.05, publisher_fee=0.10, wallet_fee_min=1) -> int:
     """
     Calculate total market fee for listing.
 
     :param price: price of market listing without fee ala `subtotal` in cents.
-    :param wallet_fee: `Steam` fee.
+    :param steam_fee: `Steam` fee.
     :param publisher_fee: app publisher fee.
-    :param minimal_fee: minimal fee value in cents.
+    :param wallet_fee_min: minimal fee value in cents.
     :return: calculated fee of price in cents.
     """
 
-    return (floor(price * wallet_fee) or minimal_fee) + (floor(price * publisher_fee) or minimal_fee)
+    return (floor(price * steam_fee) or wallet_fee_min) + (floor(price * publisher_fee) or wallet_fee_min)
+
+
+def extract_icon_hash_from_app_icon_link(link: str) -> str:
+    return link.split(".jpg")[0].rsplit("/", 1)[-1]

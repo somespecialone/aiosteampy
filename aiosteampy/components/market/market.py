@@ -1,50 +1,51 @@
 import re
-
+from collections.abc import AsyncGenerator, Awaitable
 from contextlib import suppress
-from collections.abc import AsyncGenerator
-from typing import overload, Literal, Callable, TYPE_CHECKING
 from datetime import datetime
+from typing import TYPE_CHECKING, Callable, Literal, overload
 
-from ...types import Coro, AppMap
 from ...app import App, AppContext
-from ...constants import Currency, STEAM_URL, EResult
+from ...constants import STEAM_URL, Currency, EResult
 from ...exceptions import (
+    EmailConfirmationRequired,
     EResultError,
-    SessionExpired,
     NeedMobileConfirmation,
-    NeedEmailConfirmation,
 )
-from ...utils import create_ident_code
-from ...models import ItemDescription, EconItem
 from ...id import SteamID
-from ...transport import BaseSteamTransport, TransportError, TransportResponse
-from ...session import SteamLoginSession
+from ...models import EconItem, ItemDescription
+from ...session import SteamSession
+from ...transport import BaseSteamTransport, TransportResponse, TransportResponseError
+from ...utils import create_ident_code
+from .._common import AppMap, ItemDescriptionsMap, confirmations_required
+from ..state import StateComponent
 
-if TYPE_CHECKING:  # make market component independent from confirmation component
-    from ..confirmation import ConfirmationComponent, Confirmation
+if TYPE_CHECKING:  # optional dependency
+    from ...guard.confirmation import Confirmation, SteamConfirmations
 
-from .utils import buyer_pays_to_receive, calc_market_listing_fee
 from .exceptions import InsufficientBalance, ListingRemoved
 from .models import (
-    MarketListingStatus,
-    MarketListingItem,
-    ListingValues,
-    MyMarketListing,
     BuyOrder,
-    MarketListing,
     BuyOrderStatus,
-    WalletInfo,
-    MarketHistoryListingItem,
-    MarketHistoryListing,
-    MarketHistoryEventType,
+    ListingValues,
+    MarketAvailability,
     MarketHistoryEvent,
+    MarketHistoryEventType,
+    MarketHistoryListing,
+    MarketHistoryListingItem,
+    MarketListing,
+    MarketListingItem,
+    MarketListingStatus,
+    MyMarketListing,
     PriceHistoryEntry,
+    WalletInfo,
 )
-from .public import MARKET_URL, ItemDescriptionsMap, MarketPublicComponent
-
+from .public import MARKET_URL, MarketPublicComponent
+from .utils import buyer_pays_to_receive, calc_market_listing_fee
 
 UserListingData = tuple[list[MyMarketListing], list[MyMarketListing], list[BuyOrder], int]
 UserMarketHistoryData = tuple[list[MarketHistoryEvent], int]
+
+PRICE_ENTRY_TIME_FORMAT = "%b %d %Y %H: %z"
 
 
 class MarketComponent(MarketPublicComponent):
@@ -52,17 +53,17 @@ class MarketComponent(MarketPublicComponent):
 
     __slots__ = ("_session", "_conf")
 
+    _state: StateComponent
+
     def __init__(
         self,
-        session: SteamLoginSession,
-        country: str = "UA",
-        currency: Currency = Currency.USD,
-        confirmation: "ConfirmationComponent | None" = None,
+        session: SteamSession,
+        state: StateComponent,
+        confirmation: "SteamConfirmations | None" = None,
     ):
-        super().__init__(session.transport, country, currency)
+        super().__init__(session.transport, state)
 
         self._session = session
-
         self._conf = confirmation
 
     @overload
@@ -71,6 +72,7 @@ class MarketComponent(MarketPublicComponent):
     @overload
     async def confirm_sell_listing(self, obj: MyMarketListing | EconItem | int) -> "Confirmation": ...
 
+    @confirmations_required
     async def confirm_sell_listing(
         self,
         obj: MyMarketListing | EconItem | int,
@@ -84,29 +86,25 @@ class MarketComponent(MarketPublicComponent):
         :return: processed ``Confirmation``.
         :raises KeyError: if confirmation not found.
         :raises EResultError: ordinary reasons.
-        :raises TransportError: arbitrary reasons.
-        :raises SessionExpired: current login session is expired.
+        :raises TransportError: ordinary reasons.
         :raises ValueError: if ``ConfirmationComponent`` is not provided.
         """
 
-        if self._conf is None:
-            raise ValueError("Confirmation component is required to use this method")
-
-        details_for_listing_type = False  # avoid unnecessary requests
+        details = "none"  # avoid unnecessary requests
         if isinstance(obj, MyMarketListing):
             key = obj.id
         elif isinstance(obj, EconItem):
             key = obj.id
-            details_for_listing_type = True
+            details = "listing"
         else:  # int and app ctx
             if app_ctx is not None:  # asset id & app context
                 key = create_ident_code(obj, app_ctx.context_id, app_ctx.app.id)
-                details_for_listing_type = True
+                details = "listing"
             else:  # listing id
                 key = obj
 
-        if conf := await self._conf.get_confirmation(key, details_for_listing_type=details_for_listing_type):
-            await self._conf.allow_confirmation(conf)
+        if conf := await self._conf.get(key, details=details):
+            await self._conf.accept(conf)
             return conf
         else:
             raise KeyError(f"No confirmation found for listing: {key}")
@@ -245,22 +243,15 @@ class MarketComponent(MarketPublicComponent):
         :param count: listings per page.
         :return: active listings, listings to confirm, buy orders, total count of active listings.
         :raises EResultError: ordinary reasons.
-        :raises TransportError: arbitrary reasons.
-        :raises SessionExpired: current login session is expired.
+        :raises TransportError: ordinary reasons.
         """
 
-        try:
-            r = await self._transport.request(
-                "GET",
-                MARKET_URL / "mylistings",
-                params={"norender": 1, "start": start, "count": count},
-                response_mode="json",
-            )
-        except TransportError as e:
-            if e.response and e.response.status == 400:  # We sure that there are code 400
-                raise SessionExpired
-            else:
-                raise
+        r = await self._transport.request(
+            "GET",
+            MARKET_URL / "mylistings",
+            params={"norender": 1, "start": start, "count": count},
+            response_mode="json",
+        )
 
         rj: dict = r.content
 
@@ -290,8 +281,7 @@ class MarketComponent(MarketPublicComponent):
         :return: ``AsyncGenerator`` that yields list of active listings as page,
             listings to confirm, buy orders, total count of active listings.
         :raises EResultError: ordinary reasons.
-        :raises TransportError: arbitrary reasons.
-        :raises SessionExpired: current login session is expired.
+        :raises TransportError: ordinary reasons.
         """
 
         _app_map = {}
@@ -342,8 +332,7 @@ class MarketComponent(MarketPublicComponent):
         :param ident_code: ident code of listing item.
         :return: ``MyMarketListing`` or ``None``.
         :raises EResultError: ordinary reasons.
-        :raises TransportError: arbitrary reasons.
-        :raises SessionExpired: current login session is expired.
+        :raises TransportError: ordinary reasons.
         :raises ValueError: required arguments not provided.
         """
 
@@ -375,8 +364,7 @@ class MarketComponent(MarketPublicComponent):
         :param obj: `order id` or predicate function.
         :return: ``BuyOrder`` or ``None``.
         :raises EResultError: ordinary reasons.
-        :raises TransportError: arbitrary reasons.
-        :raises SessionExpired: current login session is expired.
+        :raises TransportError: ordinary reasons.
         """
 
         if callable(obj):
@@ -446,9 +434,9 @@ class MarketComponent(MarketPublicComponent):
         :return: `listing id` or ``None``.
         :raises ValueError: item is not marketable, wrong arguments combination or types.
         :raises EResultError: ordinary reasons.
-        :raises TransportError: arbitrary reasons.
+        :raises TransportError: ordinary reasons.
         :raises NeedMobileConfirmation: action requires mobile app confirmation.
-        :raises NeedEmailConfirmation: action requires email confirmation.
+        :raises EmailConfirmationRequired: action requires email confirmation.
         """
 
         # flow: place sell listing -> listing created but not active -> allow confirmation -> listing activated
@@ -471,11 +459,18 @@ class MarketComponent(MarketPublicComponent):
                 "The `price` and `to_receive` arguments should be integers. Did you forget to convert price to cents?"
             )
 
-        to_receive = to_receive or buyer_pays_to_receive(price)[2]
+        if not to_receive:
+            to_receive = buyer_pays_to_receive(
+                price,
+                publisher_fee=self._state.publisher_fee,
+                steam_fee=self._state.steam_fee,
+                wallet_fee_min=self._state.wallet_fee_min,
+                wallet_fee_base=self._state.wallet_fee_base,
+            )[2]
 
         data = {
             "assetid": asset_id,
-            "sessionid": self._transport.session_id,
+            "sessionid": self._session.session_id,
             "contextid": app_ctx.context_id,
             "appid": app_ctx.app.id,
             "amount": 1,
@@ -500,11 +495,11 @@ class MarketComponent(MarketPublicComponent):
             return conf.creator_id  # listing id
 
         elif rj.get("needs_email_confirmation"):
-            raise NeedEmailConfirmation
+            raise EmailConfirmationRequired
 
         EResultError.check_data(rj)
 
-    async def cancel_sell_listing(self, obj: MyMarketListing | int) -> Coro[TransportResponse]:
+    async def cancel_sell_listing(self, obj: MyMarketListing | int) -> Awaitable[TransportResponse]:
         """
         Cancel current user active sell listing.
 
@@ -515,7 +510,7 @@ class MarketComponent(MarketPublicComponent):
         return self._transport.request(
             "POST",
             MARKET_URL / f"removelisting/{listing_id}",
-            data={"sessionid": self._transport.session_id},
+            data={"sessionid": self._session.session_id},
             headers={"Referer": str(MARKET_URL)},
             response_mode="meta",
         )
@@ -560,7 +555,7 @@ class MarketComponent(MarketPublicComponent):
         :param confirmation_id: `confirmation id` of order.
         :return: `buy order id` or ``BuyOrder``.
         :raises EResultError: ordinary reasons.
-        :raises TransportError: arbitrary reasons.
+        :raises TransportError: ordinary reasons.
         :raises NeedMobileConfirmation: action requires mobile app confirmation.
         """
 
@@ -579,8 +574,8 @@ class MarketComponent(MarketPublicComponent):
             name = obj
 
         data = {
-            "sessionid": self._transport.session_id,
-            "currency": self._currency.value,
+            "sessionid": self._session.session_id,
+            "currency": self._state.currency,
             "appid": app.id,
             "market_hash_name": name,
             "price_total": price * quantity,
@@ -596,8 +591,8 @@ class MarketComponent(MarketPublicComponent):
                 headers={"Referer": str(MARKET_URL / f"listings/{app.id}/{name}")},
                 response_mode="json",
             )
-        except TransportError as e:
-            if e.response and e.response.status == 406:  # need confirmation
+        except TransportResponseError as e:
+            if e.response.status == 406:  # need confirmation
                 r = e.response
             else:
                 raise
@@ -608,10 +603,10 @@ class MarketComponent(MarketPublicComponent):
             confirmation_id = int(rj["confirmation"]["confirmation_id"])
 
             if self._conf is None:
-                raise NeedMobileConfirmation(confirmation_id)  # can we get here need of email conf?
+                raise NeedMobileConfirmation(confirmation_id)
 
-            conf = await self._conf.get_confirmation(confirmation_id)
-            await self._conf.allow_confirmation(conf)
+            # conf = await self._conf.get_confirmation(confirmation_id)
+            # await self._conf.allow_confirmation(conf)
 
             return await self.place_buy_order(
                 obj,
@@ -632,7 +627,7 @@ class MarketComponent(MarketPublicComponent):
         :param obj: ``BuyOrder`` or `buy order id`.
         :return: ``BuyOrderStatus``.
         :raises EResultError: ordinary reasons.
-        :raises TransportError: arbitrary reasons.
+        :raises TransportError: ordinary reasons.
         """
 
         if isinstance(obj, BuyOrder):
@@ -646,12 +641,12 @@ class MarketComponent(MarketPublicComponent):
             r = await self._transport.request(
                 "GET",
                 MARKET_URL / "getbuyorderstatus/",
-                params={"sessionid": self._transport.session_id, "buy_orderid": buy_order_id},
+                params={"sessionid": self._session.session_id, "buy_orderid": buy_order_id},
                 headers=headers,
                 response_mode="json",
             )
-        except TransportError as e:
-            if e.response and e.response.status == 406:  # also need confirmation
+        except TransportResponseError as e:
+            if e.response.status == 406:  # also need confirmation
                 r = e.response
             else:
                 raise
@@ -670,12 +665,12 @@ class MarketComponent(MarketPublicComponent):
             quantity_remaining=int(rj["quantity_remaining"]),
         )
 
-    def cancel_buy_order(self, order: int | BuyOrder) -> Coro[TransportResponse]:
+    def cancel_buy_order(self, order: int | BuyOrder) -> Awaitable[TransportResponse]:
         """
         Cancel current user active buy order.
 
         :param order: ``BuyOrder`` or `buy order id`.
-        :raises TransportError: arbitrary reasons.
+        :raises TransportError: ordinary reasons.
         """
 
         if isinstance(order, BuyOrder):
@@ -686,7 +681,7 @@ class MarketComponent(MarketPublicComponent):
         return self._transport.request(
             "POST",
             MARKET_URL / "cancelbuyorder/",
-            data={"sessionid": self._transport.session_id, "buy_orderid": order_id},
+            data={"sessionid": self._session.session_id, "buy_orderid": order_id},
             headers={"Referer": str(MARKET_URL)},
             response_mode="meta",
         )
@@ -735,7 +730,7 @@ class MarketComponent(MarketPublicComponent):
         :param confirmation_id: `confirmation id` of order.
         :return: ``WalletInfo``.
         :raises EResultError: ordinary reasons.
-        :raises TransportError: arbitrary reasons.
+        :raises TransportError: ordinary reasons.
         :raises ValueError: listing already sold,
             converted currency of ``MarketListing`` is different from wallet currency.
         :raises InsufficientBalance: not enough money in wallet.
@@ -749,10 +744,10 @@ class MarketComponent(MarketPublicComponent):
             if obj.sold:
                 raise ValueError("Listing is already sold")
 
-            if obj.converted.currency is not self._currency:
+            if obj.converted.currency is not self._state.currency:
                 raise ValueError(
                     f"Currency of listing ({obj.converted.currency!r}) is "
-                    f"different from wallet ({self._currency!r}) one"
+                    f"different from wallet ({self._state.currency!r}) one"
                 )
 
             listing_id = obj.id
@@ -766,10 +761,16 @@ class MarketComponent(MarketPublicComponent):
             if not all([app, market_hash_name, price]):
                 raise ValueError("`app`, `market_hash_name` and `price` arguments must be provided")
 
-        fee = fee or calc_market_listing_fee(price)
+        if not fee:
+            fee = calc_market_listing_fee(
+                price,
+                steam_fee=self._state.steam_fee,
+                publisher_fee=self._state.publisher_fee,
+                wallet_fee_min=self._state.wallet_fee_min,
+            )
         data = {
-            "sessionid": self._transport.session_id,
-            "currency": self._currency.value,
+            "sessionid": self._session.session_id,
+            "currency": self._state.currency,
             "subtotal": price,
             "fee": fee,
             "total": price + fee,
@@ -785,19 +786,16 @@ class MarketComponent(MarketPublicComponent):
                 headers={"Referer": str(MARKET_URL / f"listings/{app.id}/{market_hash_name}")},  # mandatory
                 response_mode="json",
             )
-        except TransportError as e:  # ugly
-            if e.response:
-                if e.response.status == 406:  # need confirmation
-                    r = e.response
-                elif e.response.status == 502:
-                    if e.response.content:
-                        if "listing may have been removed" in e.response.content["message"]:
-                            raise ListingRemoved
-                        else:
-                            # there content tells us that somebody bought listing before us, lol
-                            raise InsufficientBalance
+        except TransportResponseError as e:  # ugly
+            if e.response.status == 406:  # need confirmation
+                r = e.response
+            elif e.response.status == 502:
+                if e.response.content:
+                    if "listing may have been removed" in e.response.content["message"]:
+                        raise ListingRemoved from e
                     else:
-                        raise
+                        # there content tells us that somebody bought listing before us, lol
+                        raise InsufficientBalance from e
                 else:
                     raise
             else:
@@ -809,10 +807,10 @@ class MarketComponent(MarketPublicComponent):
             confirmation_id = int(rj["confirmation"]["confirmation_id"])
 
             if self._conf is None:
-                raise NeedMobileConfirmation(confirmation_id)
+                raise NeedMobileConfirmation(confirmation_id)  # are we get only mobile confirmation?
 
-            conf = await self._conf.get_confirmation(confirmation_id)
-            await self._conf.allow_confirmation(conf)
+            conf = await self._conf.get(confirmation_id)
+            await self._conf.accept(conf)
 
             return await self.buy_market_listing(
                 obj,
@@ -853,9 +851,12 @@ class MarketComponent(MarketPublicComponent):
         for app_id, app_data in data.items():
             for context_id, context_data in app_data.items():
                 for a_data in context_data.values():
-                    # because I don't know why in data `id` and `unowned_id` combinations and how that suppose to work
                     key_id = create_ident_code(a_data["id"], context_id, app_id)
-                    key_unowned_id = create_ident_code(a_data["unowned_id"], context_id, app_id)
+                    key_unowned_id = create_ident_code(
+                        a_data["unowned_id"],
+                        a_data.get("unowned_contextid", context_id),
+                        app_id,
+                    )
                     if key_id not in item_descriptions_map or key_unowned_id not in item_descriptions_map:
                         econ_item = MarketHistoryListingItem(
                             context_id=int(a_data["contextid"]),
@@ -982,7 +983,7 @@ class MarketComponent(MarketPublicComponent):
         :param count: listings per page.
         :return: list of ``MarketHistoryEvent``, total_count.
         :raises EResultError: ordinary reasons.
-        :raises TransportError: arbitrary reasons.
+        :raises TransportError: ordinary reasons.
         """
 
         # empty lists if session is expired
@@ -1027,7 +1028,7 @@ class MarketComponent(MarketPublicComponent):
         :param count: listings per page.
         :return: `AsyncGenerator` that yields list of ``MarketHistoryEvent``, total_count.
         :raises EResultError: ordinary reasons.
-        :raises TransportError: arbitrary reasons.
+        :raises TransportError: ordinary reasons.
         """
 
         _app_map = {}
@@ -1070,7 +1071,7 @@ class MarketComponent(MarketPublicComponent):
         :param app: `Steam` app.
         :return: list of ``PriceHistoryEntry``.
         :raises EResultError: ordinary reasons.
-        :raises TransportError: arbitrary reasons.
+        :raises TransportError: ordinary reasons.
         """
 
         if isinstance(obj, ItemDescription):
@@ -1079,18 +1080,12 @@ class MarketComponent(MarketPublicComponent):
         else:  # str
             name = obj
 
-        try:
-            r = await self._transport.request(
-                "GET",
-                MARKET_URL / "pricehistory",
-                params={"appid": app.id, "market_hash_name": name},
-                response_mode="json",
-            )
-        except TransportError as e:
-            if e.response and e.response.status == 400:
-                raise SessionExpired
-            else:
-                raise
+        r = await self._transport.request(
+            "GET",
+            MARKET_URL / "pricehistory",
+            params={"appid": app.id, "market_hash_name": name},
+            response_mode="json",
+        )
 
         rj: dict = r.content
 
@@ -1100,17 +1095,15 @@ class MarketComponent(MarketPublicComponent):
             PriceHistoryEntry(
                 price=round(e_data[1] * 100),  # as in Steam chart
                 price_raw=e_data[1],
-                date=datetime.strptime(e_data[0].replace("+0", "+0000"), "%b %d %Y %H: %z"),
+                date=datetime.strptime(e_data[0].replace("+0", "+0000"), PRICE_ENTRY_TIME_FORMAT),
                 daily_volume=int(e_data[2]),
             )
             for e_data in rj["prices"]
         ]
 
-    # need rework
-    async def get_market_availability_info(self) -> tuple[bool, datetime | None]:
+    async def get_market_availability_info(self) -> MarketAvailability:
         """
         Return market status of whether it is available or not.
-        If possible "when"  market will be available will be returned also.
 
         .. seealso:: https://help.steampowered.com/en/faqs/view/451E-96B3-D194-50FC.
         """
@@ -1125,21 +1118,30 @@ class MarketComponent(MarketPublicComponent):
 
         available = True
         when: datetime | None = None
+        tips: list[str] = []
 
         if "The Market is unavailable for the following reason" in rt:  # language unsafe
             available = False
 
+            tips_section = (
+                re.search(r"id=\"market_tip_noaccess\"([\s\S]+)var elTooltip", rt)
+                .group(1)
+                .replace("\n", "")
+                .replace("\t", "")
+            )
+            tips = re.findall(r"<div id=\"market_tip_[^\"]*\">(.*?)</div>", tips_section)
+
             if "dateCanUseMarket" in rt:
                 when = datetime.strptime(
-                    re.search(r"var dateCanUseMarket = new Date\(\"(?P<date>.+)\"\);", rt).group("date"),
+                    re.search(r"var dateCanUseMarket = new Date\(\"(.+)\"\);", rt).group(1),
                     "%a, %d %b %Y %H:%M:%S %z",
                 )
 
         # in theory we can retrieve purchase history from https://store.steampowered.com/account/history/
         # and evaluate estimate market block time that must depends on last wallet deposit or app purchase
-        # as at time of writing: last app purchase older than year and market still available
+        # as at time of writing: last app purchase older than a year and market still available
 
-        return available, when
+        return MarketAvailability(available, tips, when)
 
     # TODO get asset prices, also access token instead of api key
     # https://api.steampowered.com/ISteamEconomy/GetAssetPrices/v1/?key=<API KEY>&appid=...

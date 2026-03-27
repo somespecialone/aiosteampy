@@ -1,17 +1,21 @@
 """Common shared functionality for components."""
 
 from collections.abc import Iterable
+from functools import wraps
+from typing import Any, Callable
 
 from ..app import App
-from ..types import AppMap
 from ..models import (
-    AssetProperty,
     AssetAccessory,
-    ItemDescriptionEntry,
-    ItemTag,
+    AssetProperty,
     ItemAction,
     ItemDescription,
+    ItemDescriptionEntry,
+    ItemTag,
 )
+
+AppMap = dict[int, "App"]
+ItemDescriptionsMap = dict[str, "ItemDescription"]  # ident code : descr
 
 
 class EconMixin:
@@ -69,8 +73,8 @@ class EconMixin:
             name_color=data.get("name_color") or None,  # ignore " "
             background_color=data.get("name_color") or None,
             type=data["type"] or None,
-            icon=data["icon_url"],
-            icon_large=data.get("icon_url_large"),
+            icon_key=data["icon_url"],
+            icon_large_key=data.get("icon_url_large"),
             commodity=bool(data["commodity"]),
             tradable=bool(data["tradable"]),
             # market search page descriptions may miss this so True by default
@@ -116,3 +120,13 @@ class EconMixin:
     @classmethod
     def _parse_asset_accessories(cls, data: dict) -> tuple[AssetAccessory, ...]:
         return tuple(cls._create_accessory(a_data) for a_data in data.get("asset_accessories", ()) or ())
+
+
+def confirmations_required[F: Callable[..., Any]](func: F) -> F:
+    @wraps(func)
+    def wrapper(self, *args, **kwargs):  # too lazy to create protocol
+        if self._conf is None:
+            raise ValueError("Steam confirmations instance is required to use this method")
+        return func(self, *args, **kwargs)
+
+    return wrapper

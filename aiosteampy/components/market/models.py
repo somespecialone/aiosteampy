@@ -1,12 +1,12 @@
 from dataclasses import dataclass, field
-from typing import NamedTuple
 from datetime import datetime
-from enum import StrEnum, IntEnum
+from enum import IntEnum, StrEnum
+from typing import NamedTuple
 
 from ...app import App, AppContext
-from ...id import SteamID
 from ...constants import Currency
-from ...models import ItemDescription, EconItem
+from ...id import SteamID
+from ...models import EconItem, ItemDescription
 
 
 class SellOrderTableEntry(NamedTuple):
@@ -26,7 +26,7 @@ class OrderGraphEntry(NamedTuple):
     repr: str
 
 
-@dataclass(eq=False, slots=True)
+@dataclass(slots=True)
 class ItemOrdersHistogram:
     sell_order_count: int
     sell_order_price: int | None
@@ -83,7 +83,7 @@ class MarketListingStatus(IntEnum):
     ACTIVE = 1
 
 
-@dataclass(eq=False, slots=True, kw_only=True)
+@dataclass(slots=True, kw_only=True)
 class MarketListingItem(EconItem):
     """Representation of ``EconItem`` with additional fields for market listings and orders."""
 
@@ -93,20 +93,8 @@ class MarketListingItem(EconItem):
     unowned_context_id: int
 
     amount: int = 1  # listing item always have amount eq 1
-
     owner_id: None = None  # always 0 for listings from market, so let it be None
-
     accessories: None = None  # no data
-
-    # @property
-    # def inspect_link(self) -> str | None:
-    #     """`Inspect in game` link for `CS2` item, if available."""
-    #     if self.description.cs2 and self.description.cs2.inspect_id:
-    #         return make_inspect_link(
-    #             market_id=self.market_id,
-    #             asset_id=self.asset_id,
-    #             d_id=self.description.cs2.inspect_id,
-    #         )
 
     @property
     def unowned_app_context(self) -> AppContext:
@@ -272,8 +260,6 @@ class MarketHistoryListingItem(MarketListingItem):
     rollback_new_asset_id: int | None = None
     rollback_new_context_id: int | None = None
 
-    inspect_link: None = None  # always None, because we can't be sure that asset id has not been changed
-
     @property
     def new_app_context(self) -> AppContext | None:
         if self.new_context_id is not None:
@@ -374,3 +360,11 @@ class MarketSearchSuggestion(NamedTuple):
     market_type: str
     min_price: float
     search_score: int
+
+
+class MarketAvailability(NamedTuple):
+    available: bool
+    tips: list[str]
+    """List of tips for current user."""
+    when: datetime | None
+    """When market will be available if applicable."""

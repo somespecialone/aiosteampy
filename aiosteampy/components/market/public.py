@@ -1,37 +1,35 @@
 import re
-
-from collections.abc import AsyncGenerator, Sequence, Mapping
-from typing import Literal, overload
+from collections.abc import AsyncGenerator, Mapping, Sequence
 from datetime import datetime
+from typing import Literal, overload
 
 from ...app import App, AppContext
-from ...constants import Currency, EResult, STEAM_URL
-from ...utils import create_ident_code, extract_icon_hash_from_app_icon_link
+from ...constants import STEAM_URL, Currency, EResult
 from ...exceptions import EResultError
-from ...models import ItemAction, ItemDescriptionEntry, ItemTag, AssetProperty, ItemDescription
+from ...models import AssetProperty, ItemAction, ItemDescription, ItemDescriptionEntry, ItemTag
 from ...transport import BaseSteamTransport, TransportError, format_http_date, parse_http_date
-from ...types import AppMap, ItemDescriptionsMap
-
-from .._common import EconMixin
-
+from ...utils import create_ident_code
+from .._common import AppMap, EconMixin, ItemDescriptionsMap
+from ..state import PublicStateComponent
 from .models import (
-    SellOrderTableEntry,
-    BuyOrderTableEntry,
-    OrderGraphEntry,
-    ItemOrdersHistogram,
-    ActivityType,
     ActivityEntry,
+    ActivityType,
+    BuyOrderTableEntry,
     ItemOrdersActivity,
-    PriceOverview,
-    MarketListingStatus,
-    MarketListingItem,
-    MarketListing,
+    ItemOrdersHistogram,
     ListingValues,
+    MarketListing,
+    MarketListingItem,
+    MarketListingStatus,
     MarketSearchItem,
-    PurchaseInfoValues,
-    PurchaseInfo,
     MarketSearchSuggestion,
+    OrderGraphEntry,
+    PriceOverview,
+    PurchaseInfo,
+    PurchaseInfoValues,
+    SellOrderTableEntry,
 )
+from .utils import extract_icon_hash_from_app_icon_link
 
 ITEM_ORDER_HIST_PRICE_RE = re.compile(r"[^\d\s]*([\d,]+(?:\.\d+)?)[^\d\s]*")  # Author: ChatGPT
 ITEM_NAME_ID_RE = re.compile(r"Market_LoadOrderSpread\(\s?(\d+)\s?\)")
@@ -56,25 +54,11 @@ CUSTOM_API_HEADERS = {"X-Prototype-Version": "1.7", "X-Requested-With": "XMLHttp
 class MarketPublicComponent(EconMixin):
     """Component with public `Steam Market` methods. Available without authentication."""
 
-    __slots__ = ("_transport", "_country", "_currency")
+    __slots__ = ("_transport", "_state")
 
-    def __init__(
-        self,
-        transport: BaseSteamTransport,
-        country: str = "UA",
-        currency: Currency = Currency.USD,
-    ):
+    def __init__(self, transport: BaseSteamTransport, state: PublicStateComponent):
         self._transport = transport
-        self._country = country
-        self._currency = currency
-
-    @property
-    def country(self) -> str:
-        return self._country
-
-    @property
-    def currency(self) -> Currency:
-        return self._currency
+        self._state = state
 
     @staticmethod
     def _parse_quantity(text: str | int) -> int:
@@ -131,15 +115,15 @@ class MarketPublicComponent(EconMixin):
         :param if_modified_since: `If-Modified-Since` header value.
         :return: ``ItemOrdersHistogram`` model, datetime object when resource was last modified.
         :raises EResultError: ordinary reasons.
-        :raises TransportError: arbitrary reasons.
+        :raises TransportError: ordinary reasons.
         :raises RateLimitExceeded: rate limit has been hit.
         :raises ResourceNotModified: 304 status code.
         """
 
         params = {
             "norender": 1,
-            "language": self._transport.language.value,
-            "currency": self._currency.value,
+            "language": self._state.language,
+            "currency": self._state.currency,
             "item_nameid": item_name_id,
         }
         headers = {}
@@ -204,16 +188,16 @@ class MarketPublicComponent(EconMixin):
         :param item_name_id: special id of item class. Can be found only on listings page.
         :param if_modified_since: `If-Modified-Since` header value.
         :return: ``ItemOrdersActivity`` model, datetime object when resource was last modified.
-        :raises TransportError: arbitrary reasons.
+        :raises TransportError: ordinary reasons.
         :raises EResultError: ordinary reasons.
         :raises ResourceNotModified: 304 status code.
         """
 
         params = {
             "norender": 1,
-            "language": self._transport.language.value,
-            "country": self._country,
-            "currency": self._currency.value,
+            "language": self._state.language,
+            "country": self._state.country,
+            "currency": self._state.currency,
             "item_nameid": item_name_id,
         }
         headers = {}
@@ -285,7 +269,7 @@ class MarketPublicComponent(EconMixin):
         :param if_modified_since: `If-Modified-Since` header value.
         :return: ``PriceOverview`` model, datetime object when resource was last modified.
         :raises EResultError: ordinary reasons.
-        :raises TransportError: arbitrary reasons.
+        :raises TransportError: ordinary reasons.
         :raises ResourceNotModified: 304 status code.
         """
 
@@ -296,8 +280,8 @@ class MarketPublicComponent(EconMixin):
             name = obj
 
         params = {
-            "country": self._country,
-            "currency": self._currency,
+            "country": self._state.country,
+            "currency": self._state.currency,
             "market_hash_name": name,
             "appid": app.id,
         }
@@ -467,7 +451,7 @@ class MarketPublicComponent(EconMixin):
         :return: list of ``MarketListing`` as response page, total listings count,
             datetime object when resource was last modified.
         :raises EResultError: ordinary reasons.
-        :raises TransportError: arbitrary reasons.
+        :raises TransportError: ordinary reasons.
         :raises RateLimitExceeded: rate limit has been hit.
         :raises ResourceNotModified: 304 status code.
         """
@@ -485,11 +469,11 @@ class MarketPublicComponent(EconMixin):
         params = {
             "filter": query,
             "query": "",  # as web browser
-            "country": self._country,
-            "currency": self._currency.value,
+            "country": self._state.country,
+            "currency": self._state.currency,
             "start": start,
             "count": count,
-            "language": self._transport.language.value,
+            "language": self._state.language,
         }
         headers = {"Referer": str(base_url), **CUSTOM_API_HEADERS}
         self._prepare_if_modified_since(headers, if_modified_since)
@@ -570,7 +554,7 @@ class MarketPublicComponent(EconMixin):
         :return: ``AsyncGenerator`` that yields list of ``MarketListing`` as page, total listings count,
             datetime object when resource was last modified.
         :raises EResultError: ordinary reasons.
-        :raises TransportError: arbitrary reasons.
+        :raises TransportError: ordinary reasons.
         :raises RateLimitExceeded: rate limit has been hit.
         :raises ResourceNotModified: 304 status code.
         """
@@ -616,7 +600,7 @@ class MarketPublicComponent(EconMixin):
         :return: `item name id`.
         :raises RateLimitExceeded: rate limit has been hit.
         :raises ValueError: failed to find `item name id` on page.
-        :raises TransportError: arbitrary reasons.
+        :raises TransportError: ordinary reasons.
         """
 
         if isinstance(obj, ItemDescription):
@@ -715,7 +699,7 @@ class MarketPublicComponent(EconMixin):
         :param filters: app search filters.
         :return: list of ``MarketSearchItem``, total results count.
         :raises EResultError: ordinary reasons.
-        :raises TransportError: arbitrary reasons.
+        :raises TransportError: ordinary reasons.
         :raises RateLimitExceeded: rate limit has been hit.
         """
 
@@ -827,7 +811,7 @@ class MarketPublicComponent(EconMixin):
         :param filters: app search filters.
         :return: ``AsyncGenerator`` that yields list of ``MarketSearchItem``, total results count.
         :raises EResultError: ordinary reasons.
-        :raises TransportError: arbitrary reasons.
+        :raises TransportError: ordinary reasons.
         :raises RateLimitExceeded: rate limit has been hit.
         """
 
@@ -871,9 +855,9 @@ class MarketPublicComponent(EconMixin):
         """
 
         params = {
-            "country": self._country,
-            "language": self._transport.language.value,
-            "currency": self._currency.value,
+            "country": self._state.country,
+            "language": self._state.language,
+            "currency": self._state.currency,
         }
         headers = {"Referer": str(MARKET_URL), **CUSTOM_API_HEADERS}
         self._prepare_if_modified_since(headers, if_modified_since)
@@ -938,9 +922,9 @@ class MarketPublicComponent(EconMixin):
         """Get *recently sold items* from `Steam Market`. Can be seen on main market page."""
 
         params = {
-            "country": self._country,
-            "language": self._transport.language.value,
-            "currency": self._currency.value,
+            "country": self._state.country,
+            "language": self._state.language,
+            "currency": self._state.currency,
         }
 
         r = await self._transport.request(
@@ -977,7 +961,7 @@ class MarketPublicComponent(EconMixin):
         :param app: `Steam` app.
         :return: list of search suggestions.
         :raises EResultError: ordinary reasons.
-        :raises TransportError: arbitrary reasons.
+        :raises TransportError: ordinary reasons.
         """
 
         params = {"q": query}

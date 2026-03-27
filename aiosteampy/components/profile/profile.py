@@ -1,87 +1,50 @@
 """Utils, models and component to work with current user profile."""
 
-import asyncio
-import re
 import json
-
-from dataclasses import asdict
-from urllib.parse import quote
+import re
+from collections.abc import Awaitable
 from pathlib import Path
-from typing import TYPE_CHECKING
 
 from yarl import URL
 
-from ...types import Coro
-from ...constants import STEAM_URL, EResult, Language, Currency
-from ...exceptions import SteamError, EResultError, NeedMobileConfirmation
+from ...constants import STEAM_URL, Currency, EResult, Language
+from ...exceptions import EResultError, NeedMobileConfirmation, SteamError
 from ...id import SteamID
+from ...session import SteamSession
 from ...transport import BaseSteamTransport, TransportResponse
-from ...session import SteamLoginSession
-
-if TYPE_CHECKING:  # make market component independent from confirmation component
-    from ..confirmation import ConfirmationComponent, Confirmation
-
+from ..state import StateComponent
 from .models import (
-    PrivacySettingsOptions,
-    CommentPrivacySettingsOptions,
-    LocationData,
-    ProfilePrivacySettings,
-    ProfilePrivacy,
-    ProfileTheme,
-    ProfilePreferences,
-    MiniprofileMovie,
-    GoldenProfileDataEntry,
-    ProfileData,
-    AvatarUploadImagesData,
     AvatarUploadData,
-    ProfileAliasHistoryEntry,
+    AvatarUploadImagesData,
+    CommentPrivacySettingsOptions,
+    GoldenProfileDataEntry,
+    LocationData,
     MiniProfileBadge,
     MiniProfileData,
+    MiniprofileMovie,
+    PrivacySettingsOptions,
+    ProfileAliasHistoryEntry,
+    ProfileData,
+    ProfilePreferences,
+    ProfilePrivacy,
+    ProfilePrivacySettings,
+    ProfileTheme,
 )
 from .public import ProfilePublicComponent
-from .utils import make_alias_profile_url, make_steam_id_profile_url
 
-TRADE_TOKEN_RE = re.compile(r"\d+&token=(.+)\" readonly")
 PROFILE_DATA_RE = re.compile(r"data-profile-edit=\"(.+)\" data-profile-badges")
-STEAM_GUARD_REQ_RE = re.compile(r"Your account requires (<a [^>]+>)?Steam Guard Mobile Authenticator")
-API_KEY_RE = re.compile(r"<p>Key: ([0-9A-F]+)</p>")
 
 
 class ProfileComponent(ProfilePublicComponent):
     """Component to work with `Steam` profile."""
 
-    __slots__ = ("_session", "_trade_token", "_alias", "_conf")
+    __slots__ = ("_session", "_state")
 
-    def __init__(
-        self,
-        session: SteamLoginSession,
-        trade_token: str | None = None,
-        alias: str | None = None,
-        confirmation: "ConfirmationComponent | None" = None,
-    ):
+    def __init__(self, session: SteamSession, state: StateComponent):
         super().__init__(session.transport)
 
         self._session = session
-
-        self._trade_token = trade_token
-        self._alias = alias
-        self._conf = confirmation
-
-    @property
-    def trade_token(self) -> str | None:
-        """Trade `token` of current user."""
-        return self._trade_token
-
-    @property
-    def trade_url(self) -> URL | None:
-        """Trade `url` of current user."""
-        if self._trade_token:
-            return STEAM_URL.TRADE / "new/" % {"partner": self._session.steam_id.account_id, "token": self._trade_token}
-
-    @property
-    def alias(self) -> str | None:
-        """Custom `alias` of current user profile `url`, e.g `https://steamcommunity.com/id/<ALIAS>`."""
-        return self._alias
+        self._state = state
 
     @property
     def url(self) -> URL:
@@ -90,51 +53,7 @@ class ProfileComponent(ProfilePublicComponent):
         If ``alias`` is set, return `custom url`, e.g `https://steamcommunity.com/id/<ALIAS>`.
         """
 
-        if self._alias:
-            return make_alias_profile_url(self._alias)
-        else:
-            return make_steam_id_profile_url(self._session.steam_id)
-
-    async def update_alias(self) -> str | None:
-        """Update profile ``alias`` from `Steam`."""
-
-        r = await self._transport.request("GET", STEAM_URL.COMMUNITY / "my", redirects=False, response_mode="meta")
-        location = r.headers["Location"]
-        if "profiles/" in location:  # redirect to default url so there is no alias
-            self._alias = None
-        else:
-            self._alias = location.rsplit("/", 2)[-2]
-
-        return self._alias
-
-    async def update_trade_token(self) -> str | None:
-        """Update ``trade_token`` from `Steam`."""
-
-        r = await self._transport.request(
-            "GET",
-            self.url / "tradeoffers/privacy",
-            redirects=True,  # if alias is not set but existed, redirects will be handled
-            response_mode="text",
-        )
-
-        search = TRADE_TOKEN_RE.search(r.content)
-        self._trade_token = search.group(1) if search else None
-
-        return self._trade_token
-
-    async def generate_new_trade_token(self) -> str:
-        """Generates new `trade url` alongside `token`. Will update ``trade_token``."""
-
-        r = await self._transport.request(
-            "POST",
-            self.url / "tradeoffers/newtradeurl",
-            data={"sessionid": self._transport.session_id},
-            response_mode="json",
-        )
-
-        self._trade_token = quote(r.content, safe="~()*!.'")  # https://stackoverflow.com/a/72449666/19419998
-
-        return self._trade_token
+        return self._state.profile_url
 
     async def get_info(self) -> ProfileData:
         """Get current user profile info including general properties and privacy settings."""
@@ -194,7 +113,7 @@ class ProfileComponent(ProfilePublicComponent):
             ),
         )
 
-        self._alias = profile_data.custom_url  # implicitly update alias, assuming that's safe
+        self._state._alias = profile_data.custom_url  # implicitly update alias, assuming that's safe
 
         return profile_data
 
@@ -209,6 +128,7 @@ class ProfileComponent(ProfilePublicComponent):
         city: str | None = None,
         custom_url: str | None = None,
         hide_profile_award: bool | None = None,
+        profile_data: ProfileData | None = None,
     ):
         """
         Edit current user profile general info.
@@ -221,24 +141,26 @@ class ProfileComponent(ProfilePublicComponent):
         :param city: profile city.
         :param custom_url: custom url `ALIAS` (`https://steamcommunity.com/id/<ALIAS>`). E.g. `somespecialone`.
         :param hide_profile_award: whether to hide profile awards.
+        :param profile_data: profile data with default values. If not provided, will be fetched from the server.
         :raises EResultError: ordinary reasons.
-        :raises TransportError: arbitrary reasons.
+        :raises TransportError: ordinary reasons.
         :raises ValueError: required arguments not provided.
         """
 
         if all(
             map(
                 lambda x: x is None,
-                [persona_name, real_name, summary, country, state, city, custom_url, hide_profile_award],
+                (persona_name, real_name, summary, country, state, city, custom_url, hide_profile_award),
             )
         ):
             raise ValueError("At least one argument must be provided")
 
-        profile_data = await self.get_info()  # alias will be updated here
+        if profile_data is None:
+            profile_data = await self.get_info()  # alias will be updated here
 
         # https://github.com/DoctorMcKay/node-steamcommunity/blob/1067d4572ee9d467e8f686951901c51028c5c995/components/profile.js#L56
         data = {
-            "sessionID": self._transport.session_id,
+            "sessionID": self._session.session_id,
             "type": "profileSave",
             "hide_profile_awards": "0",
             "json": 1,
@@ -284,6 +206,7 @@ class ProfileComponent(ProfilePublicComponent):
         playtime: bool | None = None,
         profile: PrivacySettingsOptions | None = None,
         comment_permission: CommentPrivacySettingsOptions | None = None,
+        profile_data: ProfileData | None = None,
     ):
         """
         Edit profile privacy settings.
@@ -306,15 +229,16 @@ class ProfileComponent(ProfilePublicComponent):
         :param playtime: keep game playtime private.
         :param profile: desired general profile privacy state.
         :param comment_permission: desired profile comments privacy state.
+        :param profile_data: profile data with default values. If not provided, will be fetched from the server.
         :raises EResultError: ordinary reasons.
-        :raises TransportError: arbitrary reasons.
+        :raises TransportError: ordinary reasons.
         :raises ValueError: required arguments not provided.
         """
 
         if all(
             map(
                 lambda x: x is None,
-                [
+                (
                     friends_list,
                     inventory,
                     inventory_gifts,
@@ -322,12 +246,13 @@ class ProfileComponent(ProfilePublicComponent):
                     playtime,
                     profile,
                     comment_permission,
-                ],
+                ),
             )
         ):
             raise ValueError("At least one argument must be provided")
 
-        profile_data = await self.get_info()  # alias will be updated here
+        if profile_data is None:
+            profile_data = await self.get_info()  # alias will be updated here
 
         if friends_list is not None:
             profile_data.privacy.settings.friends_list = friends_list
@@ -345,7 +270,7 @@ class ProfileComponent(ProfilePublicComponent):
             profile_data.privacy.comment_permission = comment_permission
 
         data = {
-            "sessionid": self._transport.session_id,
+            "sessionid": self._session.session_id,
             "Privacy": json.dumps(
                 {
                     "PrivacyProfile": profile_data.privacy.settings.profile,
@@ -370,12 +295,8 @@ class ProfileComponent(ProfilePublicComponent):
 
         EResultError.check_data(rj)
 
-    def make_public(self) -> Coro[None]:
-        """
-        Make current user profile fully public.
-
-        :raises TransportError: arbitrary reasons.
-        """
+    def make_public(self) -> Awaitable[None]:
+        """Make current user profile fully public."""
 
         return self.edit_privacy_settings(
             inventory=3,
@@ -387,12 +308,8 @@ class ProfileComponent(ProfilePublicComponent):
             comment_permission=1,
         )
 
-    def make_private(self) -> Coro[None]:
-        """
-        Make current user profile private.
-
-        :raises TransportError: arbitrary reasons.
-        """
+    def make_private(self) -> Awaitable[None]:
+        """Make current user profile private."""
 
         return self.edit_privacy_settings(
             inventory=1,
@@ -404,14 +321,8 @@ class ProfileComponent(ProfilePublicComponent):
             friends_list=1,
         )
 
-    def get_mini_profile(self) -> Coro[MiniProfileData]:
-        """
-        Get user `miniprofile` data.
-
-        :return: miniprofile data.
-        :raises TransportError: arbitrary reasons.
-        """
-
+    def get_mini_profile(self) -> Awaitable[MiniProfileData]:
+        """Get user `miniprofile` data."""
         return self.get_user_mini_profile(self._session.steam_id)
 
     async def upload_avatar(self, source: Path | URL | bytes) -> AvatarUploadData:
@@ -424,7 +335,7 @@ class ProfileComponent(ProfilePublicComponent):
         :param source: image source.
         :return: avatar upload data.
         :raises EResultError: ordinary reasons.
-        :raises TransportError: arbitrary reasons.
+        :raises TransportError: ordinary reasons.
         """
 
         if isinstance(source, Path):
@@ -438,7 +349,7 @@ class ProfileComponent(ProfilePublicComponent):
         data = {
             "type": "player_avatar_image",
             "sId": str(self._session.steam_id.id64),
-            "sessionid": self._transport.session_id,
+            "sessionid": self._session.session_id,
             "doSub": "1",
             "json": "1",
             "avatar": source,
@@ -464,7 +375,7 @@ class ProfileComponent(ProfilePublicComponent):
         )
 
     # TODO move to trade
-    def trade_acknowledge(self) -> Coro[TransportResponse]:
+    def trade_acknowledge(self) -> Awaitable[TransportResponse]:
         """
         Acknowledge *trade protection rules*.
         Required only once before you can make trade offers.
@@ -473,140 +384,27 @@ class ProfileComponent(ProfilePublicComponent):
         return self._transport.request(
             "POST",
             STEAM_URL.COMMUNITY / "trade/new/acknowledge",
-            data={"sessionid": self._transport.session_id, "message": 1},
+            data={"sessionid": self._session.session_id, "message": 1},
             headers={"Referer": str(self.url / "tradeoffers/"), "Origin": str(STEAM_URL.COMMUNITY)},
             response_mode="meta",
         )
 
-    async def set_language(self, lang: Language):
-        """
-        Set main `language` of `Steam` domains.
-
-        .. note:: **Language other than `English` will break some methods**. Use cautiously!.
-        """
-
-        # backup option
-        # POST https://store.steampowered.com/account/savelanguagepreferences?primary_language=...&sessionid=...
-
-        await self._transport.request(
-            "POST",
-            STEAM_URL.COMMUNITY / "actions/SetLanguage",
-            data={"sessionid": self._transport.session_id, "language": lang.value},
-            response_mode="meta",
-        )
-        # We can set lang cookie to store domain, but let's follow browser behaviour
-        await self._transport.request(
-            "GET",
-            STEAM_URL.STORE / "account/languagepreferences/",
-            redirects=False,  # we don't need to load page in new language, enough first request with cookie
-            response_mode="meta",
-        )
-
-    def get_name_history(self) -> Coro[list[ProfileAliasHistoryEntry]]:
+    def get_name_history(self) -> Awaitable[list[ProfileAliasHistoryEntry]]:
         """
         Get nickname history of current user.
 
         :return: list of profile alias history.
-        :raises TransportError: arbitrary reasons.
+        :raises TransportError: ordinary reasons.
         """
 
         return self.get_user_name_history(self._session.steam_id)
 
-    def clear_name_history(self) -> Coro[TransportResponse]:
+    def clear_name_history(self) -> Awaitable[TransportResponse]:
         """Clear nickname history of current user."""
 
         return self._transport.request(
             "POST",
             self.url / "ajaxclearaliashistory",
-            data={"sessionid": self._transport.session_id},
+            data={"sessionid": self._session.session_id},
             response_mode="meta",
         )
-
-    def actualize(self) -> Coro[...]:
-        """Actualize component states for current user by updating them from `Steam`."""
-
-        loop = asyncio.get_running_loop()
-        return asyncio.wait(map(loop.create_task, [self.update_alias(), self.update_trade_token()]))
-
-    # guess we don't need api key as attr
-    async def get_api_key(self) -> str | None:
-        """
-        Get `Steam Web API` key.
-
-        :return: api key or ``None`` if not registered yet.
-        :raises TransportError: arbitrary reasons.
-        :raises SteamError: unable to get api key.
-        """
-
-        r = await self._transport.request(
-            "GET",
-            STEAM_URL.COMMUNITY / "dev/apikey",
-            params={"l": "english"},  # force english
-            response_mode="text",
-        )
-        rt: str = r.content
-
-        if "You must have a validated email address to create a Steam Web API key" in rt:
-            raise SteamError("Validated email address required to create a Steam Web API key")
-        elif STEAM_GUARD_REQ_RE.search(rt):
-            raise SteamError("Steam Guard Mobile Authenticator is required")
-        elif "<h2>Access Denied</h2>" in rt:
-            raise SteamError("Access to Steam Web Api page is denied")
-
-        if search := API_KEY_RE.search(rt):
-            return search.group(1)
-
-    async def revoke_api_key(self):
-        """Revoke old `Steam Web API` key."""
-
-        data = {
-            "sessionid": self._transport.session_id,
-            "Revoke": "Revoke My Steam Web API Key",  # whatever
-        }
-        await self._transport.request("POST", STEAM_URL.COMMUNITY / "dev/revokekey", data=data)
-
-    async def confirm_api_key_request(self, req_id: int) -> "Confirmation":
-        """Confirm `Steam Web API` key registration request."""
-
-        if self._conf is None:
-            raise ValueError("Confirmation component is required to use this method")
-
-        conf = await self._conf.get_confirmation(req_id)
-        await self._conf.allow_confirmation(conf)
-
-        return conf
-
-    async def register_new_api_key(self, domain: str) -> str:
-        """
-        Request registration of a new `Steam Web API` key.
-
-        :param domain: on which domain api key will be registered.
-        :return: api key.
-        :raises TransportError: arbitrary reasons.
-        :raises EResultError: ordinary reasons.
-        :raises NeedMobileConfirmation: action requires mobile app confirmation.
-        """
-
-        await self.revoke_api_key()  # revoke old one as browser do
-
-        data = {
-            "domain": domain,
-            "request_id": 0,
-            "sessionid": self._transport.session_id,
-            "agreeToTerms": "true",
-        }
-        url = STEAM_URL.COMMUNITY / "dev/requestkey"
-        r = await self._transport.request("POST", url, data=data, response_mode="json")
-        rj: dict = r.content
-
-        if EResult(rj.get("success")) is EResult.PENDING and rj.get("requires_confirmation"):
-            if self._conf is None:
-                raise NeedMobileConfirmation(rj["request_id"])
-
-            await self.confirm_api_key_request(rj["request_id"])
-            r = await self._transport.request("POST", url, data=data, response_mode="json")  # repeat
-            rj = r.content
-
-        EResultError.check_data(rj)
-
-        return rj["api_key"]

@@ -1,12 +1,19 @@
 """"""
 
-from enum import IntEnum, StrEnum
+from enum import Enum, IntEnum, StrEnum, auto
 from importlib.metadata import version
 
 from yarl import URL
 
 LIB_ID = f"Aiosteampy/{version('aiosteampy')}"
 """Library identifier."""
+
+
+class Platform(Enum):
+    """Platform type."""
+
+    WEB = auto()
+    MOBILE = auto()
 
 
 class Currency(IntEnum):  # already params serializable

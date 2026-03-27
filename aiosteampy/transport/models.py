@@ -1,11 +1,12 @@
 from collections.abc import Mapping
 from dataclasses import asdict, dataclass, field
-from datetime import datetime, UTC
+from datetime import UTC, datetime
 from http.cookies import Morsel
-from typing import Any, Literal, Self
+from typing import Any, Literal, Self, TypedDict
 
 from yarl import URL
 
+from ..constants import Platform
 from .types import Content, Headers
 from .utils import format_http_date, parse_http_date
 
@@ -120,3 +121,10 @@ class TransportResponse:
     def ok(self) -> bool:
         """If response status is successful (<400)."""
         return self.status < 400
+
+
+class Context(TypedDict, total=False):
+    """Transport context that will be passed to a constructor."""
+
+    user_agent: str | None
+    platform: Platform

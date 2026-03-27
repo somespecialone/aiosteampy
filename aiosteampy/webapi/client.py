@@ -5,12 +5,12 @@ from typing import Any, Literal
 
 from betterproto2 import Message
 
-from ..constants import STEAM_URL
+from ..constants import LIB_ID, STEAM_URL, Platform
 from ..exceptions import EResultError
 from ..transport import (
-    AiohttpSteamTransport,
     BaseSteamTransport,
     Cookie,
+    DefaultSteamTransport,
     Headers,
     Params,
     Payload,
@@ -31,11 +31,6 @@ BROWSER_HEADERS = {
     "Referer": str(STEAM_URL.COMMUNITY) + "/",
     "Origin": str(STEAM_URL.COMMUNITY),
 }
-
-
-class Platform(Enum):
-    WEB = auto()
-    MOBILE = auto()
 
 
 class SteamWebAPIClient:
@@ -65,7 +60,7 @@ class SteamWebAPIClient:
 
         self._platform = platform
 
-        self._transport: BaseSteamTransport = transport or AiohttpSteamTransport(proxy=proxy)
+        self._transport = transport or DefaultSteamTransport(proxy, {"platform": platform, "user_agent": LIB_ID})
 
         self._access_token = access_token
         self._api_key = api_key

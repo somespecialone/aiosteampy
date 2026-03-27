@@ -1,10 +1,10 @@
 from abc import ABCMeta, abstractmethod
-from typing import overload
+from typing import Any, overload
 
 from yarl import URL
 
 from .exceptions import RateLimitExceeded, ResourceNotModified, TransportError, TransportResponseError, Unauthenticated
-from .models import Cookie, TransportResponse
+from .models import Context, Cookie, TransportResponse
 from .types import Headers, HttpMethod, Params, Payload, ResponseMode
 from .utils import parse_http_date
 
@@ -36,11 +36,12 @@ class BaseSteamTransport(metaclass=ABCMeta):
 
     __slots__ = ()
 
-    # TODO how to enforce constructor signature?
+    @abstractmethod
+    def __init__(self, proxy: str | None, ctx: Context) -> None: ...
 
     @property
     @abstractmethod
-    def proxy(self) -> URL | None:
+    def proxy(self) -> str | None:
         """Proxy URL."""
 
     @property

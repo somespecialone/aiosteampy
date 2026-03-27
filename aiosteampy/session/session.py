@@ -6,7 +6,7 @@ from typing import Any, Callable
 
 from yarl import URL
 
-from ..constants import LIB_ID, STEAM_URL, EResult
+from ..constants import LIB_ID, STEAM_URL, EResult, Platform
 from ..exceptions import EResultError
 from ..id import SteamID
 from ..transport import (
@@ -24,7 +24,6 @@ from ..webapi.services.auth import (
     CAuthenticationGetAuthSessionInfoResponse,
     CAuthenticationPollAuthSessionStatusResponse,
     GuardCodeTypes,
-    Platform,
 )
 from .exceptions import *
 from .models import SteamJWT

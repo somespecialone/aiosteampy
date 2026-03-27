@@ -5,39 +5,37 @@ from http.cookies import BaseCookie, Morsel
 from aiohttp import ClientConnectionError, ClientSession, JsonPayload, MultipartWriter
 from yarl import URL
 
-from ..constants import LIB_ID
-from .base import BaseSteamTransport, Cookie, TransportResponse
-from .exceptions import NetworkError
-from .utils import format_http_date
+from aiosteampy.transport.base import BaseSteamTransport, Cookie, TransportResponse
+from aiosteampy.transport.exceptions import NetworkError
+from aiosteampy.transport.utils import format_http_date
 
 
-class AiohttpSteamTransport(BaseSteamTransport):
+class AiohttpTransport(BaseSteamTransport):
     __slots__ = ("_session",)
 
-    def __init__(self, proxy: str | URL | None = None, **kwargs):
+    def __init__(self, proxy, ctx, **session_kwargs):
         connector = None
 
         if proxy is not None and proxy.startswith("socks"):
             try:
                 from aiohttp_socks import ProxyConnector
-            except ImportError as e:
+            except ImportError:
                 raise ImportError(
-                    """
-                    To use `socks` type proxies you need `aiohttp_socks` package. 
-                    You can install it with `aiosteampy[socks]` dependency install target.
-                    """
-                ) from e
+                    "To use `socks` type proxies you need `aiohttp_socks` package. "
+                    "You can install it with `aiosteampy[socks]` dependency install target."
+                )
 
             connector = ProxyConnector.from_url(proxy)
             proxy = None
 
-        self._session = ClientSession(proxy=proxy, connector=connector, **kwargs)
+        self._session = ClientSession(proxy=proxy, connector=connector, **session_kwargs)
 
-        self.user_agent = LIB_ID
+        if user_agent := ctx.get("user_agent"):
+            self.user_agent = user_agent
 
     @property
-    def proxy(self) -> URL | None:
-        return URL(self._session._default_proxy) if isinstance(self._session._default_proxy, str) else None
+    def proxy(self):
+        return str(self._session._default_proxy) if self._session._default_proxy else None
 
     def get_headers(self):
         return self._session.headers

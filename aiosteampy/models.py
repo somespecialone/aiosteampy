@@ -55,7 +55,7 @@ class AssetAccessory(NamedTuple):
     standalone_properties: tuple[AssetProperty, ...]
 
 
-@dataclass(eq=False, slots=True, kw_only=True)
+@dataclass(slots=True, kw_only=True)
 class BaseEntityWithIdentCode:
     id: str = field(init=False, default="")
     """Unique identifier within whole `Steam Economy`."""
@@ -79,7 +79,7 @@ class BaseEntityWithIdentCode:
         return hash(self.id)
 
 
-@dataclass(eq=False, slots=True, kw_only=True)
+@dataclass(slots=True, kw_only=True)
 class ItemDescription(BaseEntityWithIdentCode):
     """
     ``EconItem`` `description` representation embodies item *class* merged with *instance*.
@@ -110,8 +110,6 @@ class ItemDescription(BaseEntityWithIdentCode):
     """Icon CDN asset key."""
     icon_large_key: str | None = None
     """Large icon CDN asset key."""
-
-    # TODO do I need defaults here? Wait for trade, inventory methods
 
     tags: tuple[ItemTag, ...] = ()  # listing item does not show tags
     descriptions: tuple[ItemDescriptionEntry, ...] = ()
@@ -203,7 +201,7 @@ class ItemDescription(BaseEntityWithIdentCode):
         return STEAM_URL.COMMUNITY / f"market/listings/{self.app.id}/{self.market_hash_name}"
 
 
-@dataclass(eq=False, slots=True, kw_only=True)
+@dataclass(slots=True, kw_only=True)
 class EconItem(BaseEntityWithIdentCode):
     """
     Represents unique copy of `Steam Economy` item, ala `Asset`.
@@ -223,8 +221,8 @@ class EconItem(BaseEntityWithIdentCode):
 
     description: ItemDescription
 
-    properties: tuple[AssetProperty, ...]
-    accessories: tuple[AssetAccessory, ...]  # see only stickers wear here
+    properties: tuple[AssetProperty, ...] = ()
+    accessories: tuple[AssetAccessory, ...] = ()  # only stickers wear here is meaningful
 
     _cs2_ctx: "CS2ItemContext | None" = field(init=False, default=None)  # cached
 

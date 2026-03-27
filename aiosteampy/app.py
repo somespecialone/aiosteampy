@@ -1,7 +1,6 @@
 """`Steam App` and `Context` models representation."""
 
-from typing import Self, ClassVar
-
+from typing import ClassVar, Self
 
 __all__ = ("App", "AppContext")
 
@@ -78,15 +77,21 @@ class App:
         return AppContext(self, context_id)
 
     @property
-    def icon_link(self) -> str | None:
+    def icon(self) -> str | None:
         if self._icon_hash is not None:
             return (
                 f"https://cdn.akamai.steamstatic.com/steamcommunity/public/images/apps/{self._id}/{self._icon_hash}.jpg"
             )
 
     @property
-    def community_link(self) -> str:
+    def community(self) -> str:
+        """Steam App's community page url."""
         return f"https://steamcommunity.com/app/{self._id}"
+
+    @property
+    def store(self):
+        """Steam App's store page url."""
+        return f"https://store.steampowered.com/app/{self._id}"
 
     def __eq__(self, other):
         return isinstance(other, App) and self.id == other.id
@@ -97,7 +102,6 @@ class App:
     @classmethod
     def get(cls, app_id: int) -> Self | None:
         """Get existed member."""
-
         return cls.__members__.get(app_id)
 
 
@@ -186,7 +190,6 @@ class AppContext:
     @classmethod
     def get(cls, app: App, context_id: int) -> Self | None:
         """Get existed member."""
-
         return cls.__members__.get((app.id, context_id))
 
 

@@ -71,7 +71,7 @@ class DescriptionDescriptionName(StrEnum):  # lol
     def get(cls, value: str) -> Self | None:
         try:
             return cls(value)
-        except KeyError:
+        except ValueError:
             return None
 
 
@@ -151,16 +151,21 @@ class ItemContext:
     stickers: tuple[Sticker, ...]
     charm: Charm | None
 
-    inspect_link: str | None
+    inspect_id: str | None
+    """Unique key of item (`item certificate`), used to inspect item in game."""
     wear_rating: float | None
     """Wear rating of item skin, known as `float` or `floatvalue`."""
     pattern_template: int | None
     name_tag: str | None
 
+    @property
+    def inspect_link(self) -> str | None:
+        """`Inspect in game` link."""
+        return make_inspect_link(self.inspect_id) if self.inspect_id else None
+
     @staticmethod
     def _create_sticker(sticker_meta: ItemAccessoryMeta, accessory: "AssetAccessory") -> Sticker:
         w_prop = accessory.parent_relationship_properties[0]
-
         assert AssetPropertyId(w_prop.id) is AssetPropertyId.STICKER_WEAR_RATING
 
         # float will round to 16 digits from original 18
@@ -180,25 +185,21 @@ class ItemContext:
         charm = None
         if item.accessories and descr_ctx.charm is not None:
             accs = item.accessories[-1]
-            if not accs.standalone_properties:
-                raise ValueError(
-                    "Charm accessory has no standalone properties or, highly likely, is not at the end of the list."
-                )
+            assert accs.standalone_properties
 
             p_prop = accs.standalone_properties[0]
-            if not AssetPropertyId(p_prop.id) is AssetPropertyId.CHARM_PATTERN_TEMPLATE:
-                raise ValueError("Charm property has no pattern or, highly likely, is not at the 0 index of the list.")
+            assert AssetPropertyId(p_prop.id) is AssetPropertyId.CHARM_PATTERN_TEMPLATE
 
             charm = Charm(class_id=accs.class_id, meta=descr_ctx.charm, pattern=int(p_prop.value))
 
-        inspect_link = None
+        inspect_id = None
         wear_rating = None
         pattern = None
         name_tag = None
         for prop in item.properties:
             match AssetPropertyId.get(prop.id):
                 case AssetPropertyId.ITEM_CERTIFICATE:
-                    inspect_link = make_inspect_link(prop.value)
+                    inspect_id = prop.value
                 case AssetPropertyId.WEAR_RATING:
                     wear_rating = float(prop.value)  # will round to 16 digits from original 18
                 case AssetPropertyId.PATTERN_TEMPLATE:
@@ -206,4 +207,4 @@ class ItemContext:
                 case AssetPropertyId.NAME_TAG:
                     name_tag = prop.value
 
-        return cls(descr_ctx, stickers, charm, inspect_link, wear_rating, pattern, name_tag)
+        return cls(descr_ctx, stickers, charm, inspect_id, wear_rating, pattern, name_tag)

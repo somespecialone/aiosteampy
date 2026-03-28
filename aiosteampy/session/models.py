@@ -4,8 +4,8 @@ from dataclasses import dataclass, field
 from datetime import UTC, datetime
 from typing import Self, TypedDict
 
+from ..constants import Platform
 from ..id import SteamID
-from ..webapi.services.auth import Platform
 
 ALTCHARS = b"-_"
 COOKIE_SEP = "%7C%7C"

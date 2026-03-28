@@ -12,7 +12,7 @@ from ..models import AssetAccessory, AssetProperty, EconItem
 from ..session import SteamSession
 from ..transport import BaseSteamTransport, TransportResponseError, Unauthenticated
 from ..utils import create_ident_code
-from ._common import AppMap, EconMixin, ItemDescriptionsMap
+from ._common import EconMixin, ItemDescriptionsMap
 from .state import PublicStateComponent, StateComponent
 
 # Steam current limit
@@ -38,12 +38,11 @@ class InventoryPublicComponent(EconMixin):
         data: dict[str, list[dict]],
         owner_id: SteamID,
         item_descriptions_map: ItemDescriptionsMap,
-        app_map: AppMap,
     ) -> list[EconItem]:
         for d_data in data["descriptions"]:
             key = create_ident_code(d_data["instanceid"], d_data["classid"], d_data["appid"])
             if key not in item_descriptions_map:
-                item_descriptions_map[key] = cls._create_item_descr(d_data, app_map)
+                item_descriptions_map[key] = cls._create_item_descr(d_data)
 
         properties_map: dict[str, tuple[AssetProperty, ...]] = {}
         accessories_map: dict[str, tuple[AssetAccessory, ...]] = {}
@@ -73,7 +72,6 @@ class InventoryPublicComponent(EconMixin):
         *,
         start_asset_id: int | None = None,
         count: int = INV_COUNT,
-        _app_map: AppMap | None = None,
         _item_descriptions_map: ItemDescriptionsMap | None = None,
     ) -> InventoryItemData:
         """
@@ -127,12 +125,9 @@ class InventoryPublicComponent(EconMixin):
         if "descriptions" not in rj:  # for old reasons, but let it be
             return [], total_count, last_asset_id
 
-        _app_map = {} if _app_map is None else _app_map
         _item_descriptions_map = {} if _item_descriptions_map is None else _item_descriptions_map
 
-        _app_map[app_ctx.app.id] = app_ctx.app  # no need to extract apps from data, we can share passed one
-
-        items = self._parse_inventory(rj, user_id, _item_descriptions_map, _app_map)
+        items = self._parse_inventory(rj, user_id, _item_descriptions_map)
 
         return items, total_count, last_asset_id
 
@@ -243,7 +238,6 @@ class InventoryComponent(InventoryPublicComponent):
         *,
         start_asset_id: int | None = None,
         count: int = INV_COUNT,
-        _app_map: AppMap | None = None,
         _item_descriptions_map: ItemDescriptionsMap | None = None,
     ) -> InventoryItemData:
         """
@@ -258,7 +252,7 @@ class InventoryComponent(InventoryPublicComponent):
         :raises SteamError: inventory is private.
         :raises EResultError: ordinary reasons.
         :raises TransportError: ordinary reasons.
-        :raises SessionExpired: current login session is expired.
+        :raises Unauthenticated: Auth cookies or token are missing, expired or invalid.
         """
 
         try:
@@ -267,7 +261,6 @@ class InventoryComponent(InventoryPublicComponent):
                 app_ctx,
                 start_asset_id=start_asset_id,
                 count=count,
-                _app_map=_app_map,
                 _item_descriptions_map=_item_descriptions_map,
             )
         except SteamError as e:
@@ -294,9 +287,10 @@ class InventoryComponent(InventoryPublicComponent):
         :raises SteamError: inventory is private.
         :raises EResultError: ordinary reasons.
         :raises TransportError: ordinary reasons.
-        :raises SessionExpired: current login session is expired.
+        :raises Unauthenticated: Auth cookies or token are missing, expired or invalid.
         """
 
+        # TODO Unauthenticated will not be raised :)
         return self.user_inventory(self._session.steam_id, app_ctx, start_asset_id=start_asset_id, count=count)
 
     @overload
@@ -320,7 +314,7 @@ class InventoryComponent(InventoryPublicComponent):
         :raises SteamError: inventory is private.
         :raises EResultError: ordinary reasons.
         :raises TransportError: ordinary reasons.
-        :raises SessionExpired: current login session is expired.
+        :raises Unauthenticated: Auth cookies or token are missing, expired or invalid.
         """
 
         return self.get_user_inventory_item(self._session.steam_id, app_ctx, obj)

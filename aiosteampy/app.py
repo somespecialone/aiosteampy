@@ -2,7 +2,7 @@
 
 from typing import ClassVar, Self
 
-__all__ = ("App", "AppContext")
+__all__ = ("App", "AppContext", "ADD_NEW_MEMBERS", "change_members_mode")
 
 
 ADD_NEW_MEMBERS: bool = False
@@ -101,8 +101,17 @@ class App:
 
     @classmethod
     def get(cls, app_id: int) -> Self | None:
-        """Get existed member."""
+        """Get existing member."""
         return cls.__members__.get(app_id)
+
+    @classmethod
+    def add(cls, app: Self, force: bool = False):
+        """Add new member regardless of ``ADD_NEW_MEMBERS`` flag."""
+
+        if (existing := cls.get(app._id)) and not force:
+            raise ValueError(f"{existing} already exists")
+
+        cls.__members__[app._id] = app
 
 
 App.CS2 = App(730, "Counter-Strike 2", "8dbc71957312bbd3baea65848b545be9eae2a355")
@@ -189,8 +198,17 @@ class AppContext:
 
     @classmethod
     def get(cls, app: App, context_id: int) -> Self | None:
-        """Get existed member."""
+        """Get existing member."""
         return cls.__members__.get((app.id, context_id))
+
+    @classmethod
+    def add(cls, app_ctx: Self, force: bool = False):
+        """Add new member regardless of ``ADD_NEW_MEMBERS`` flag."""
+
+        if (existing := cls.get(app_ctx._app, app_ctx._context_id)) and not force:
+            raise ValueError(f"{existing} already exists")
+
+        cls.__members__[app_ctx.as_tuple()] = app_ctx
 
 
 AppContext.CS2 = AppContext(App.CS2, 2)

@@ -3,13 +3,13 @@ from collections.abc import AsyncGenerator, Mapping, Sequence
 from datetime import datetime
 from typing import Literal, overload
 
-from ...app import App, AppContext
+from ...app import ADD_NEW_MEMBERS, App, AppContext
 from ...constants import STEAM_URL, Currency, EResult
 from ...exceptions import EResultError
 from ...models import AssetProperty, ItemAction, ItemDescription, ItemDescriptionEntry, ItemTag
 from ...transport import BaseSteamTransport, TransportError, format_http_date, parse_http_date
 from ...utils import create_ident_code
-from .._common import AppMap, EconMixin, ItemDescriptionsMap
+from .._common import EconMixin, ItemDescriptionsMap
 from ..state import PublicStateComponent
 from .models import (
     ActivityEntry,
@@ -307,14 +307,16 @@ class MarketPublicComponent(EconMixin):
         ), parse_http_date(r.headers["Last-Modified"])
 
     @staticmethod
-    def _parse_apps_from_app_data(data: dict[str, dict[str, int | str]], app_map: AppMap):
-        for _, app_data in data.items():
-            if app_data["appid"] not in app_map:
-                app_map[app_data["appid"]] = App(
-                    app_data["appid"],
-                    app_data["name"],
-                    extract_icon_hash_from_app_icon_link(app_data["icon"]),
-                )
+    def _parse_apps_from_app_data(data: dict[str, dict[str, int | str]]):
+        """Extract `apps` from data and create if they are not present in ``App.__members__``."""
+        if ADD_NEW_MEMBERS:  # if caching is disabled then we do not need to do work
+            for _, app_data in data.items():
+                if not App.get(app_data["appid"]):
+                    App(
+                        app_data["appid"],
+                        app_data["name"],
+                        extract_icon_hash_from_app_icon_link(app_data["icon"]),
+                    )
 
     @staticmethod
     def _get_market_item_from_map_by_ident_code(
@@ -361,7 +363,6 @@ class MarketPublicComponent(EconMixin):
         cls,
         assets: dict[str, dict[str, dict[str, dict]]],
         item_descriptions_map: ItemDescriptionsMap,
-        app_map: AppMap,
     ):
         """Extract item descriptions from market assets data to ``item_descriptions_map`` dict."""
 
@@ -370,7 +371,7 @@ class MarketPublicComponent(EconMixin):
                 for asset_id, mixed_data in context_data.items():  # asset+descr data
                     key = create_ident_code(mixed_data["instanceid"], mixed_data["classid"], app_id)
                     if key not in item_descriptions_map:
-                        item_descriptions_map[key] = cls._create_item_descr(mixed_data, app_map)
+                        item_descriptions_map[key] = cls._create_item_descr(mixed_data)
 
     @classmethod
     def _parse_market_listing_items(
@@ -431,7 +432,6 @@ class MarketPublicComponent(EconMixin):
         count: int = LISTING_COUNT,
         if_modified_since: datetime | str | None = None,
         # share mapping with iterator method
-        _app_map: AppMap | None = None,
         _item_descriptions_map: ItemDescriptionsMap | None = None,
         _market_econ_items_map: dict[str, MarketListingItem] | None = None,
     ) -> MarketItemListingData:
@@ -494,13 +494,10 @@ class MarketPublicComponent(EconMixin):
         if not rj["total_count"] or not rj["assets"]:
             return [], 0, last_modified
 
-        _app_map = {} if _app_map is None else _app_map
         _item_descriptions_map = {} if _item_descriptions_map is None else _item_descriptions_map
         _market_econ_items_map = {} if _market_econ_items_map is None else _market_econ_items_map
 
-        _app_map[app.id] = app  # no need to extract apps from data, we can share passed one
-
-        self._parse_descriptions_from_market_assets(rj["assets"], _item_descriptions_map, _app_map)
+        self._parse_descriptions_from_market_assets(rj["assets"], _item_descriptions_map)
         # Do we need to share items?
         self._parse_market_listing_items(rj["assets"], _item_descriptions_map, _market_econ_items_map)
 
@@ -559,7 +556,6 @@ class MarketPublicComponent(EconMixin):
         :raises ResourceNotModified: 304 status code.
         """
 
-        _app_map: AppMap = {}
         _item_descriptions_map: ItemDescriptionsMap = {}
         _market_econ_items_map: dict[str, MarketListingItem] = {}
 
@@ -573,7 +569,6 @@ class MarketPublicComponent(EconMixin):
                 query=query,
                 count=count,
                 if_modified_since=if_modified_since,
-                _app_map=_app_map,
                 _item_descriptions_map=_item_descriptions_map,
                 _market_econ_items_map=_market_econ_items_map,
                 start=start,
@@ -673,7 +668,6 @@ class MarketPublicComponent(EconMixin):
         sort_dir: SortDir = "desc",
         filters: str | Mapping[str, str | Sequence[str]] = "",
         # share mapping with iterator method
-        _app_map: AppMap | None = None,
         _item_descriptions_map: ItemDescriptionsMap | None = None,
     ) -> tuple[list[MarketSearchItem], int]:
         """
@@ -737,11 +731,7 @@ class MarketPublicComponent(EconMixin):
         if not rj["total_count"] or not rj["results"]:
             return [], 0
 
-        _app_map = {} if _app_map is None else _app_map
         _item_descriptions_map = {} if _item_descriptions_map is None else _item_descriptions_map
-
-        if app is not None:
-            _app_map[app.id] = app  # share same app if passed
 
         items = []
         for item_data in rj["results"]:
@@ -754,14 +744,14 @@ class MarketPublicComponent(EconMixin):
             if descr_ident_code in _item_descriptions_map:
                 description = _item_descriptions_map[descr_ident_code]
             else:
-                if item_data["asset_description"]["appid"] not in _app_map:
-                    _app_map[item_data["asset_description"]["appid"]] = App(
-                        item_data["asset_description"]["appid"],
+                if ADD_NEW_MEMBERS and App.get(int(item_data["asset_description"]["appid"])) is None:
+                    App(
+                        int(item_data["asset_description"]["appid"]),
                         item_data["app_name"],
                         extract_icon_hash_from_app_icon_link(item_data["app_icon"]),
-                    )
+                    )  # will cache app
 
-                description = self._create_item_descr(item_data["asset_description"], _app_map)
+                description = self._create_item_descr(item_data["asset_description"])
                 _item_descriptions_map[descr_ident_code] = description
 
             item = MarketSearchItem(
@@ -815,7 +805,6 @@ class MarketPublicComponent(EconMixin):
         :raises RateLimitExceeded: rate limit has been hit.
         """
 
-        _app_map = {}
         _item_descriptions_map = {}
 
         total_count: int = 10000000  # simplify logic for initial iteration
@@ -829,7 +818,6 @@ class MarketPublicComponent(EconMixin):
                 descriptions=descriptions,
                 sort_column=sort_column,
                 sort_dir=sort_dir,
-                _app_map=_app_map,
                 _item_descriptions_map=_item_descriptions_map,
                 start=start,
                 filters=filters,
@@ -873,12 +861,11 @@ class MarketPublicComponent(EconMixin):
 
         EResultError.check_data(rj)
 
-        _app_map = {}
         _item_descriptions_map = {}
         _market_econ_items_map = {}
 
-        self._parse_apps_from_app_data(rj["app_data"], _app_map)
-        self._parse_descriptions_from_market_assets(rj["assets"], _item_descriptions_map, _app_map)
+        self._parse_apps_from_app_data(rj["app_data"])
+        self._parse_descriptions_from_market_assets(rj["assets"], _item_descriptions_map)
         self._parse_market_listing_items(rj["assets"], _item_descriptions_map, _market_econ_items_map)
 
         # unknow fields: last_time, last_listing
@@ -938,12 +925,11 @@ class MarketPublicComponent(EconMixin):
 
         EResultError.check_data(rj)
 
-        _app_map: AppMap = {}
         _item_descriptions_map: ItemDescriptionsMap = {}
         _market_econ_items_map: dict[str, MarketListingItem] = {}
 
-        self._parse_apps_from_app_data(rj["app_data"], _app_map)
-        self._parse_descriptions_from_market_assets(rj["assets"], _item_descriptions_map, _app_map)
+        self._parse_apps_from_app_data(rj["app_data"])
+        self._parse_descriptions_from_market_assets(rj["assets"], _item_descriptions_map)
         self._parse_market_listing_items(rj["assets"], _item_descriptions_map, _market_econ_items_map)
 
         # unknow fields: last_time, last_listing

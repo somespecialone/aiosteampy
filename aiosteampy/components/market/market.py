@@ -16,7 +16,7 @@ from ...models import EconItem, ItemDescription
 from ...session import SteamSession
 from ...transport import BaseSteamTransport, TransportResponse, TransportResponseError
 from ...utils import create_ident_code
-from .._common import AppMap, ItemDescriptionsMap, confirmations_required
+from .._common import ItemDescriptionsMap, confirmations_required
 from ..state import StateComponent
 
 if TYPE_CHECKING:  # optional dependency
@@ -114,48 +114,34 @@ class MarketComponent(MarketPublicComponent):
         cls,
         data: dict[str, dict | list[dict]],
         item_descriptions_map: ItemDescriptionsMap,
-        app_map: AppMap,
     ):
         """
         Extract item descriptions from user listings data or market history data to ``item_descriptions_map`` dict.
         """
 
         for app_id, app_data in (data["assets"] or {}).items():  # thanks to Steam for an empty list instead of a dict
-            app_id_int = int(app_id)
-            if app_id_int not in app_map:
-                app_map[app_id_int] = App(app_id_int)
-
             for context_id, context_data in app_data.items():
                 for asset_id, mixed_data in context_data.items():
                     key = create_ident_code(mixed_data["instanceid"], mixed_data["classid"], app_id)
                     if key not in item_descriptions_map:
-                        item_descriptions_map[key] = cls._create_item_descr(mixed_data, app_map)
+                        item_descriptions_map[key] = cls._create_item_descr(mixed_data)
 
                     # there can be retrieved app ico, but
 
         for listing_data in data.get("listings_to_confirm", ()):
             mixed_data = listing_data["asset"]
-
-            app_id_int = int(mixed_data["appid"])
-            if app_id_int not in app_map:
-                app_map[app_id_int] = App(app_id_int)
-
             key = create_ident_code(mixed_data["instanceid"], mixed_data["classid"], mixed_data["appid"])
             if key not in item_descriptions_map:
-                item_descriptions_map[key] = cls._create_item_descr(mixed_data, app_map)
+                item_descriptions_map[key] = cls._create_item_descr(mixed_data)
 
         for order_data in data.get("buy_orders", ()):
             descr_data = order_data.get("description")
             if not descr_data:  # ignore orders with invalid outdated descriptions
                 continue
 
-            app_id_int = int(descr_data["appid"])
-            if app_id_int not in app_map:
-                app_map[app_id_int] = App(app_id_int)
-
             key = create_ident_code(descr_data["instanceid"], descr_data["classid"], descr_data["appid"])
             if key not in item_descriptions_map:
-                item_descriptions_map[key] = cls._create_item_descr(descr_data, app_map)
+                item_descriptions_map[key] = cls._create_item_descr(descr_data)
 
     def _parse_my_listings(
         self,
@@ -231,7 +217,6 @@ class MarketComponent(MarketPublicComponent):
         start: int = 0,
         count: int = 100,
         # share mapping with iterator method
-        _app_map: AppMap | None = None,
         _item_descriptions_map: ItemDescriptionsMap | None = None,
     ) -> UserListingData:
         """
@@ -259,11 +244,10 @@ class MarketComponent(MarketPublicComponent):
 
         # no need to check `assets` or `total_count`
 
-        _app_map = {} if _app_map is None else _app_map
         _item_descriptions_map = {} if _item_descriptions_map is None else _item_descriptions_map
 
         # we get only app id here, so func below will do the work
-        self._parse_descriptions_from_my_listings_or_market_history(rj, _item_descriptions_map, _app_map)
+        self._parse_descriptions_from_my_listings_or_market_history(rj, _item_descriptions_map)
 
         active = self._parse_my_listings(rj["listings"], _item_descriptions_map)
         # what is "listings_on_hold"?
@@ -284,7 +268,6 @@ class MarketComponent(MarketPublicComponent):
         :raises TransportError: ordinary reasons.
         """
 
-        _app_map = {}
         _item_descriptions_map = {}
 
         more_listings = True
@@ -293,7 +276,6 @@ class MarketComponent(MarketPublicComponent):
             listings_data = await self.get_my_listings(
                 start=start,
                 count=count,
-                _app_map=_app_map,
                 _item_descriptions_map=_item_descriptions_map,
             )
             start += count
@@ -969,7 +951,6 @@ class MarketComponent(MarketPublicComponent):
         start: int = 0,
         count: int = 100,
         # share mapping with iterator method
-        _app_map: AppMap | None = None,
         _item_descriptions_map: ItemDescriptionsMap | None = None,
         _market_history_econ_items_map: dict[str, MarketHistoryListingItem] | None = None,
         _market_history_listings_map: dict[int, MarketHistoryListing] | None = None,
@@ -1001,14 +982,13 @@ class MarketComponent(MarketPublicComponent):
         if not rj["total_count"] or not rj["assets"]:  # safe
             return [], 0
 
-        _app_map = {} if _app_map is None else _app_map
         _item_descriptions_map = {} if _item_descriptions_map is None else _item_descriptions_map
         _market_history_econ_items_map = (
             {} if _market_history_econ_items_map is None else _market_history_econ_items_map
         )
         _market_history_listings_map = {} if _market_history_listings_map is None else _market_history_listings_map
 
-        self._parse_descriptions_from_my_listings_or_market_history(rj, _item_descriptions_map, _app_map)
+        self._parse_descriptions_from_my_listings_or_market_history(rj, _item_descriptions_map)
         self._parse_assets_for_history_listings(rj["assets"], _item_descriptions_map, _market_history_econ_items_map)
         self._parse_history_listings(rj, _market_history_econ_items_map, _market_history_listings_map)
 
@@ -1031,7 +1011,6 @@ class MarketComponent(MarketPublicComponent):
         :raises TransportError: ordinary reasons.
         """
 
-        _app_map = {}
         _item_descriptions_map = {}
         _market_history_econ_items_map = {}
         _market_history_listings_map = {}
@@ -1042,7 +1021,6 @@ class MarketComponent(MarketPublicComponent):
             history_data = await self.get_my_market_history(
                 start=start,
                 count=count,
-                _app_map=_app_map,
                 _item_descriptions_map=_item_descriptions_map,
                 _market_history_econ_items_map=_market_history_econ_items_map,
                 _market_history_listings_map=_market_history_listings_map,

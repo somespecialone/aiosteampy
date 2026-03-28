@@ -14,8 +14,7 @@ from ..models import (
     ItemTag,
 )
 
-AppMap = dict[int, "App"]
-ItemDescriptionsMap = dict[str, "ItemDescription"]  # ident code : descr
+ItemDescriptionsMap = dict[str, ItemDescription]  # ident code : descr
 
 
 class EconMixin:
@@ -54,19 +53,11 @@ class EconMixin:
         )
 
     @classmethod
-    def _create_item_descr(cls, data: dict, app_map: AppMap) -> ItemDescription:
-        market_fee_app = None
-        if "market_fee_app" in data:
-            if app_from_map := app_map.get(data["market_fee_app"]):
-                market_fee_app = app_from_map
-            else:
-                market_fee_app = App(data["market_fee_app"])  # any place where we can get app name
-                app_map[market_fee_app.id] = market_fee_app
-
+    def _create_item_descr(cls, data: dict) -> ItemDescription:
         return ItemDescription(
             class_id=int(data["classid"]),
             instance_id=int(data["instanceid"]),
-            app=app_map[data["appid"]],
+            app=App(data["appid"]),
             name=data["name"],
             market_name=data["market_name"],
             market_hash_name=data["market_hash_name"],
@@ -81,7 +72,7 @@ class EconMixin:
             marketable=bool(data.get("marketable", True)),
             market_tradable_restriction=data.get("market_tradable_restriction", 0),
             market_buy_country_restriction=data.get("market_buy_country_restriction"),
-            market_fee_app=market_fee_app,
+            market_fee_app=App(data["market_fee_app"]) if "market_fee_app" in data else None,
             market_marketable_restriction=data.get("market_marketable_restriction", 0),
             actions=cls._parse_item_actions(data.get("actions", ())),
             market_actions=cls._parse_item_actions(data.get("market_actions", ())),

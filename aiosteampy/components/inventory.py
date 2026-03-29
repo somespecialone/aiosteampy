@@ -2,7 +2,7 @@
 
 from collections.abc import AsyncGenerator, Awaitable
 from contextlib import suppress
-from typing import Callable, overload
+from typing import Callable, NamedTuple, overload
 
 from ..app import App, AppContext
 from ..constants import STEAM_URL
@@ -13,14 +13,23 @@ from ..session import SteamSession
 from ..transport import BaseSteamTransport, TransportResponseError, Unauthenticated
 from ..utils import create_ident_code
 from ._common import EconMixin, ItemDescriptionsMap
-from .state import PublicStateComponent, StateComponent
+from .state import PublicSteamState, SteamState
 
 # Steam current limit
 INV_COUNT = 2000
 
-InventoryItemData = tuple[list[EconItem], int, int | None]  # items, total count, last asset id for pagination
-
 INVENTORY_URL = STEAM_URL.COMMUNITY / "inventory"
+
+
+class Inventory(NamedTuple):
+    """Container of inventory data."""
+
+    items: list[EconItem]
+    """Inventory items."""
+    total: int
+    """Total count of *items in inventory*."""
+    last_asset_id: int | None
+    """Last `asset id` of the list returned by `Steam`."""
 
 
 class InventoryPublicComponent(EconMixin):
@@ -28,7 +37,7 @@ class InventoryPublicComponent(EconMixin):
 
     __slots__ = ("_transport", "_state")
 
-    def __init__(self, transport: BaseSteamTransport, state: PublicStateComponent):
+    def __init__(self, transport: BaseSteamTransport, state: PublicSteamState):
         self._transport = transport
         self._state = state
 
@@ -73,7 +82,7 @@ class InventoryPublicComponent(EconMixin):
         start_asset_id: int | None = None,
         count: int = INV_COUNT,
         _item_descriptions_map: ItemDescriptionsMap | None = None,
-    ) -> InventoryItemData:
+    ) -> Inventory:
         """
         Get `user` inventory.
 
@@ -123,13 +132,11 @@ class InventoryPublicComponent(EconMixin):
         last_asset_id = int(rj["last_assetid"]) if "last_assetid" in rj else None
 
         if "descriptions" not in rj:  # for old reasons, but let it be
-            return [], total_count, last_asset_id
+            return Inventory([], total_count, last_asset_id)
 
         _item_descriptions_map = {} if _item_descriptions_map is None else _item_descriptions_map
 
-        items = self._parse_inventory(rj, user_id, _item_descriptions_map)
-
-        return items, total_count, last_asset_id
+        return Inventory(self._parse_inventory(rj, user_id, _item_descriptions_map), total_count, last_asset_id)
 
     async def user_inventory(
         self,
@@ -138,7 +145,7 @@ class InventoryPublicComponent(EconMixin):
         *,
         start_asset_id: int | None = None,
         count: int = INV_COUNT,
-    ) -> AsyncGenerator[InventoryItemData, None]:
+    ) -> AsyncGenerator[Inventory, None]:
         """
         Get async iterator of user inventory pages.
 
@@ -159,21 +166,20 @@ class InventoryPublicComponent(EconMixin):
         while more_items:
             # browser does the first request with count=75,
             # receiving data with last_assetid if there are more items (and no assets for some apps, ex. CS2)
-            # avoid excess destructuring
-            inventory_data = await self.get_user_inventory(
+            inventory = await self.get_user_inventory(
                 user_id,
                 app_ctx,
                 start_asset_id=start_asset_id,
                 count=count,
                 _item_descriptions_map=_item_descriptions_map,
             )
-            start_asset_id = inventory_data[2]
-            more_items = bool(inventory_data[2])
+            start_asset_id = inventory.last_asset_id
+            more_items = bool(start_asset_id)
 
-            yield inventory_data
+            yield inventory
 
     @overload
-    async def get_user_inventory_item(
+    async def get_user_item(
         self,
         user_id: SteamID,
         app_ctx: AppContext,
@@ -181,7 +187,7 @@ class InventoryPublicComponent(EconMixin):
     ) -> EconItem | None: ...
 
     @overload
-    async def get_user_inventory_item(
+    async def get_user_item(
         self,
         user_id: SteamID,
         app_ctx: AppContext,
@@ -189,7 +195,7 @@ class InventoryPublicComponent(EconMixin):
     ) -> EconItem | None: ...
 
     # unfortunately, option with start_asset_id as asset_id does not work
-    async def get_user_inventory_item(
+    async def get_user_item(
         self,
         user_id: SteamID,
         app_ctx: AppContext,
@@ -216,7 +222,7 @@ class InventoryPublicComponent(EconMixin):
 
         async for data in self.user_inventory(user_id, app_ctx):
             with suppress(StopIteration):
-                return next(filter(predicate, data[0]))
+                return next(filter(predicate, data.items))
 
 
 class InventoryComponent(InventoryPublicComponent):
@@ -224,14 +230,13 @@ class InventoryComponent(InventoryPublicComponent):
 
     __slots__ = ("_session",)
 
-    _state: StateComponent
+    _state: SteamState
 
-    def __init__(self, session: SteamSession, state: StateComponent):
+    def __init__(self, session: SteamSession, state: SteamState):
         super().__init__(session.transport, state)
 
         self._session = session
 
-    # TODO rename methods
     async def get(
         self,
         app_ctx: AppContext,
@@ -239,7 +244,7 @@ class InventoryComponent(InventoryPublicComponent):
         start_asset_id: int | None = None,
         count: int = INV_COUNT,
         _item_descriptions_map: ItemDescriptionsMap | None = None,
-    ) -> InventoryItemData:
+    ) -> Inventory:
         """
         Get current authenticated user inventory.
 
@@ -264,18 +269,18 @@ class InventoryComponent(InventoryPublicComponent):
                 _item_descriptions_map=_item_descriptions_map,
             )
         except SteamError as e:
-            if "private" in (e.args[0] or ()):
+            if "private" in (e.args[0] if e.args else ()):
                 raise Unauthenticated from e  # inventory of self cannot be private
             else:
                 raise e
 
-    def inventory(
+    async def inventory(
         self,
         app_ctx: AppContext,
         *,
         start_asset_id: int | None = None,
         count: int = INV_COUNT,
-    ) -> Awaitable[AsyncGenerator[InventoryItemData, None]]:
+    ) -> AsyncGenerator[Inventory, None]:
         """
         Get async iterator of current authenticated user inventory pages.
 
@@ -290,8 +295,20 @@ class InventoryComponent(InventoryPublicComponent):
         :raises Unauthenticated: Auth cookies or token are missing, expired or invalid.
         """
 
-        # TODO Unauthenticated will not be raised :)
-        return self.user_inventory(self._session.steam_id, app_ctx, start_asset_id=start_asset_id, count=count)
+        _item_descriptions_map = {}  # shared descriptions instances across calls
+
+        more_items = True
+        while more_items:
+            inventory = await self.get(
+                app_ctx,
+                start_asset_id=start_asset_id,
+                count=count,
+                _item_descriptions_map=_item_descriptions_map,
+            )
+            start_asset_id = inventory.last_asset_id
+            more_items = bool(start_asset_id)
+
+            yield inventory
 
     @overload
     async def get_inventory_item(self, app_ctx: AppContext, obj: int) -> EconItem | None: ...
@@ -317,4 +334,4 @@ class InventoryComponent(InventoryPublicComponent):
         :raises Unauthenticated: Auth cookies or token are missing, expired or invalid.
         """
 
-        return self.get_user_inventory_item(self._session.steam_id, app_ctx, obj)
+        return self.get_user_item(self._session.steam_id, app_ctx, obj)

@@ -206,7 +206,7 @@ class SteamState(PublicSteamState):
         self._fee_base = 0  # wallet_fee_base
 
     @property
-    def confirmations(self) -> SteamConfirmations | None:
+    def confirmations(self) -> "SteamConfirmations | None":
         """`Steam` mobile confirmations manager."""
         return self._conf
 

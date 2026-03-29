@@ -65,7 +65,7 @@ class MarketComponent(MarketPublicComponent):
         self._conf = confirmation
 
     @property
-    def confirmations(self) -> SteamConfirmations | None:
+    def confirmations(self) -> "SteamConfirmations | None":
         """`Steam` mobile confirmations manager."""
         return self._conf
 

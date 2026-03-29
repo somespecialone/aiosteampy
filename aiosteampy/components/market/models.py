@@ -27,7 +27,13 @@ class OrderGraphEntry(NamedTuple):
 
 
 @dataclass(slots=True)
-class ItemOrdersHistogram:
+class CachedResponse:
+    last_modified: datetime
+    """When `data` was last modified (value of ``Last-Modified`` header)."""
+
+
+@dataclass(slots=True)
+class ItemOrdersHistogram(CachedResponse):
     sell_order_count: int
     sell_order_price: int | None
     sell_order_table: tuple[SellOrderTableEntry, ...]
@@ -67,12 +73,14 @@ class ActivityEntry(NamedTuple):
     persona_seller: str | None
 
 
-class ItemOrdersActivity(NamedTuple):
+@dataclass(slots=True)
+class ItemOrdersActivity(CachedResponse):
     activity: tuple[ActivityEntry, ...]
     time: datetime
 
 
-class PriceOverview(NamedTuple):
+@dataclass(slots=True)
+class PriceOverview(CachedResponse):
     lowest_price: int
     volume: int
     median_price: int
@@ -101,7 +109,7 @@ class MarketListingItem(EconItem):
         return self.description.app.with_context(self.unowned_context_id)
 
 
-@dataclass(eq=False, slots=True, kw_only=True)
+@dataclass(slots=True, kw_only=True)
 class BaseOrder:
     id: int
     """Order id. Can be either `listing id` or `buy/sell order id`."""
@@ -113,7 +121,7 @@ class BaseOrder:
         return isinstance(other, BaseOrder) and self.id == other.id
 
 
-@dataclass(eq=False, slots=True)
+@dataclass(slots=True)
 class BaseValues:
     currency: Currency
     """Values currency."""
@@ -124,7 +132,7 @@ class BaseValues:
     """`Publisher` part of combined ``fee``."""
 
 
-@dataclass(eq=False, slots=True)
+@dataclass(slots=True)
 class ListingValues(BaseValues):
     """Representation of market listing values, like a price, fee, etc."""
 
@@ -145,7 +153,7 @@ class ListingValues(BaseValues):
         return self.price + self.fee
 
 
-@dataclass(eq=False, slots=True, kw_only=True)
+@dataclass(slots=True, kw_only=True)
 class BaseMarketListing(BaseOrder):
     """Base class for market listings."""
 
@@ -154,14 +162,14 @@ class BaseMarketListing(BaseOrder):
     original: ListingValues
     """Values of current listing in **original** currency."""
     converted: ListingValues
-    """Values of current listing in **converted** to account wallet currency."""
+    """Values of current listing in **converted** to requested currency."""
 
     def __post_init__(self):
         if not self.item.market_id:
             self.item.market_id = self.id
 
 
-@dataclass(eq=False, slots=True, kw_only=True)
+@dataclass(slots=True, kw_only=True)
 class MarketListing(BaseMarketListing):
     """Representation of listing entity (`lot` of the item for sale) at `Steam Market`."""
 
@@ -172,7 +180,24 @@ class MarketListing(BaseMarketListing):
     def sold(self) -> bool:
         """If current listing has been *sold* and unavailable for purchase."""
         return self.converted is None
-        # return self.steam_fee == 0 and self.converted_fee == 0
+
+
+@dataclass(slots=True)
+class MarketListings(CachedResponse):
+    """Container for market listings data."""
+
+    listings: list[MarketListing]
+    """List of market listings."""
+    total: int
+    """Total count of `market listings`."""
+
+
+@dataclass(slots=True)
+class NewlyListedItems(CachedResponse):
+    """Container for newly listed items data."""
+
+    listings: list[MarketListing]
+    """List of newly listed items."""
 
 
 class MarketSearchItem(NamedTuple):
@@ -186,8 +211,16 @@ class MarketSearchItem(NamedTuple):
     description: ItemDescription
 
 
-@dataclass(eq=False, slots=True, kw_only=True)
-class MyMarketListing(BaseMarketListing):
+class MarketSearchResult(NamedTuple):
+    """Container for market search result data."""
+
+    items: list[MarketSearchItem]
+    total: int
+    """Total count of `search results`."""
+
+
+@dataclass(slots=True, kw_only=True)
+class UserMarketListing(BaseMarketListing):
     """Representation of listing created by current user at `Steam Market`."""
 
     lister: SteamID  # there is "steamid_lister" in data so let it be
@@ -205,7 +238,7 @@ class MyMarketListing(BaseMarketListing):
     # time_finish_hold: int
 
 
-@dataclass(eq=False, slots=True, kw_only=True)
+@dataclass(slots=True, kw_only=True)
 class BuyOrder(BaseOrder):
     """Representation of buy order entity placed by current user at `Steam Market`."""
 
@@ -220,6 +253,19 @@ class BuyOrder(BaseOrder):
     """Quantity of items left to fulfill order."""
 
 
+class UserListings(NamedTuple):
+    """User market listings container."""
+
+    active: list[UserMarketListing]
+    """Active (standing) listings."""
+    to_confirm: list[UserMarketListing]
+    """Listings awaiting for confirmation."""
+    buy_orders: list[BuyOrder]
+    """Standing buy orders placed by current user."""
+    total: int
+    """Total count of `active listings`."""
+
+
 class BuyOrderStatus(NamedTuple):
     # from pending
     need_confirmation: bool = False
@@ -232,24 +278,7 @@ class BuyOrderStatus(NamedTuple):
     quantity_remaining: int = 0
 
 
-class WalletInfo(NamedTuple):
-    balance: int
-    country: str
-    currency: Currency
-    currency_increment: int  # ?
-    delayed_balance: int  # ?
-    fee: int
-    fee_base: int
-    fee_minimum: int
-    fee_percent: float
-    market_minimum: int  # ?
-    max_balance: int
-    publisher_fee_percent_default: float
-    # state: str  # ?
-    trade_max_balance: int  # ?
-
-
-@dataclass(eq=False, slots=True, kw_only=True)
+@dataclass(slots=True, kw_only=True)
 class MarketHistoryListingItem(MarketListingItem):
     market_id: None = None
 
@@ -271,7 +300,7 @@ class MarketHistoryListingItem(MarketListingItem):
             return self.description.app.with_context(self.rollback_new_context_id)
 
 
-@dataclass(eq=False, slots=True, kw_only=True)
+@dataclass(slots=True, kw_only=True)
 class MarketHistoryListing(BaseOrder):
     item: MarketHistoryListingItem
 
@@ -302,10 +331,10 @@ class MarketHistoryListing(BaseOrder):
 
 
 class MarketHistoryEventType(IntEnum):
-    LISTING_CREATED = 1
-    LISTING_CANCELED = 2
-    LISTING_SOLD = 3
-    LISTING_PURCHASED = 4
+    CREATED = 1
+    CANCELED = 2
+    SOLD = 3
+    PURCHASED = 4
 
 
 class MarketHistoryEvent(NamedTuple):
@@ -320,6 +349,15 @@ class MarketHistoryEvent(NamedTuple):
     listing: MarketHistoryListing
 
 
+class UserMarketHistory(NamedTuple):
+    """User market history container."""
+
+    events: list[MarketHistoryEvent]
+    """List of market history events."""
+    total: int
+    """Total count of `market history events`."""
+
+
 class PriceHistoryEntry(NamedTuple):
     price: int
     """Parsed ``int`` price in cents."""
@@ -330,7 +368,7 @@ class PriceHistoryEntry(NamedTuple):
     daily_volume: int
 
 
-@dataclass(eq=False, slots=True)
+@dataclass(slots=True)
 class PurchaseInfoValues(BaseValues):
     paid_amount: int
     """How much buyer paid for listing without fees."""
@@ -343,7 +381,7 @@ class PurchaseInfoValues(BaseValues):
         return self.paid_amount + self.paid_fee
 
 
-@dataclass(eq=False, slots=True)
+@dataclass(slots=True)
 class PurchaseInfo(BaseOrder):
     listing_id: int  # listing is empty so no need to store it
     item: MarketListingItem  # MarketListingItem has "sold" property which must be always True here, but who cares

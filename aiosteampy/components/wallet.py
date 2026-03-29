@@ -7,7 +7,7 @@ from typing import Awaitable, NamedTuple
 from ..constants import Currency
 from ..exceptions import EResultError
 from ..session import SteamSession
-from .state import StateComponent, WalletInfo
+from .state import SteamState, WalletInfo
 
 
 class WalletComponent:
@@ -15,7 +15,7 @@ class WalletComponent:
 
     __slots__ = ("_session", "_state")
 
-    def __init__(self, session: SteamSession, state: StateComponent):
+    def __init__(self, session: SteamSession, state: SteamState):
         self._session = session
         self._state = state
 

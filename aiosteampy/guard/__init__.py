@@ -3,7 +3,7 @@
 Enables `two-factor` codes generation, confirmations and `Mobile Authenticator` general functionality.
 """
 
-from .confirmation import SteamConfirmations
+from .confirmations import SteamConfirmations
 from .exceptions import (
     AuthenticatorAlreadyPresent,
     AuthenticatorError,

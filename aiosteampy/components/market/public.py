@@ -10,7 +10,7 @@ from ...models import AssetProperty, ItemAction, ItemDescription, ItemDescriptio
 from ...transport import BaseSteamTransport, TransportError, format_http_date, parse_http_date
 from ...utils import create_ident_code
 from .._common import EconMixin, ItemDescriptionsMap
-from ..state import PublicStateComponent
+from ..state import PublicSteamState
 from .models import (
     ActivityEntry,
     ActivityType,
@@ -20,9 +20,12 @@ from .models import (
     ListingValues,
     MarketListing,
     MarketListingItem,
+    MarketListings,
     MarketListingStatus,
     MarketSearchItem,
+    MarketSearchResult,
     MarketSearchSuggestion,
+    NewlyListedItems,
     OrderGraphEntry,
     PriceOverview,
     PurchaseInfo,
@@ -33,9 +36,6 @@ from .utils import extract_icon_hash_from_app_icon_link
 
 ITEM_ORDER_HIST_PRICE_RE = re.compile(r"[^\d\s]*([\d,]+(?:\.\d+)?)[^\d\s]*")  # Author: ChatGPT
 ITEM_NAME_ID_RE = re.compile(r"Market_LoadOrderSpread\(\s?(\d+)\s?\)")
-
-# listings, total count, last modified
-MarketItemListingData = tuple[list[MarketListing], int, datetime]
 
 # Steam current limit
 LISTING_COUNT = 10
@@ -56,7 +56,7 @@ class MarketPublicComponent(EconMixin):
 
     __slots__ = ("_transport", "_state")
 
-    def __init__(self, transport: BaseSteamTransport, state: PublicStateComponent):
+    def __init__(self, transport: BaseSteamTransport, state: PublicSteamState):
         self._transport = transport
         self._state = state
 
@@ -95,15 +95,14 @@ class MarketPublicComponent(EconMixin):
             else:  # str
                 headers["If-Modified-Since"] = if_modified_since
 
-    # @currency_required
-    async def get_item_orders_histogram(
+    async def get_orders_histogram(
         self,
         item_name_id: int,
         *,
         if_modified_since: datetime | str | None = None,
-    ) -> tuple[ItemOrdersHistogram, datetime]:
+    ) -> ItemOrdersHistogram:
         """
-        Do what described in method name.
+        Get item orders histogram from `Steam Market`..
 
         .. seealso::
             * https://github.com/Revadike/InternalSteamWebAPI/wiki/Get-Market-Item-Orders-Histogram.
@@ -167,17 +166,17 @@ class MarketPublicComponent(EconMixin):
             graph_max_y=rj["graph_max_y"],
             graph_min_x=int(rj["graph_min_x"] * 100),
             graph_max_x=int(rj["graph_max_x"] * 100),
-        ), parse_http_date(r.headers["Last-Modified"])
+            last_modified=parse_http_date(r.headers["Last-Modified"]),
+        )
 
-    # @currency_required
-    async def get_item_orders_activity(
+    async def get_orders_activity(
         self,
         item_name_id: int,
         *,
         if_modified_since: datetime | str | None = None,
-    ) -> tuple[ItemOrdersActivity, datetime]:
+    ) -> ItemOrdersActivity:
         """
-        Do what described in method name.
+        Get orders activity of particular item.
 
         .. seealso::
             * https://github.com/Revadike/InternalSteamWebAPI/wiki/Get-Market-Item-Orders-Activity.
@@ -232,7 +231,8 @@ class MarketPublicComponent(EconMixin):
                 for a in rj["activity"]
             ),
             time=datetime.fromtimestamp(rj["timestamp"]),
-        ), parse_http_date(r.headers["Last-Modified"])
+            last_modified=parse_http_date(r.headers["Last-Modified"]),
+        )
 
     @overload
     async def get_price_overview(
@@ -240,7 +240,7 @@ class MarketPublicComponent(EconMixin):
         obj: ItemDescription,
         *,
         if_modified_since: datetime | str | None = ...,
-    ) -> tuple[PriceOverview, datetime]: ...
+    ) -> PriceOverview: ...
 
     @overload
     async def get_price_overview(
@@ -249,16 +249,15 @@ class MarketPublicComponent(EconMixin):
         app: App,
         *,
         if_modified_since: datetime | str | None = ...,
-    ) -> tuple[PriceOverview, datetime]: ...
+    ) -> PriceOverview: ...
 
-    # @currency_required
     async def get_price_overview(
         self,
         obj: str | ItemDescription,
         app: App | None = None,
         *,
         if_modified_since: datetime | str | None = None,
-    ) -> tuple[PriceOverview, datetime]:
+    ) -> PriceOverview:
         """
         Get price data of particular item.
 
@@ -304,7 +303,8 @@ class MarketPublicComponent(EconMixin):
             lowest_price=self._parse_price_with_currency(rj["lowest_price"]),
             volume=self._parse_quantity(rj["volume"]),
             median_price=self._parse_price_with_currency(rj["lowest_price"]),
-        ), parse_http_date(r.headers["Last-Modified"])
+            last_modified=parse_http_date(r.headers["Last-Modified"]),
+        )
 
     @staticmethod
     def _parse_apps_from_app_data(data: dict[str, dict[str, int | str]]):
@@ -399,7 +399,7 @@ class MarketPublicComponent(EconMixin):
                         )
 
     @overload
-    async def get_item_listings(
+    async def get_listings(
         self,
         obj: ItemDescription,
         *,
@@ -407,10 +407,10 @@ class MarketPublicComponent(EconMixin):
         start: int = ...,
         count: int = ...,
         if_modified_since: datetime | str | None = ...,
-    ) -> MarketItemListingData: ...
+    ) -> MarketListings: ...
 
     @overload
-    async def get_item_listings(
+    async def get_listings(
         self,
         obj: str,
         app: App,
@@ -419,10 +419,9 @@ class MarketPublicComponent(EconMixin):
         start: int = ...,
         count: int = ...,
         if_modified_since: datetime | str | None = ...,
-    ) -> MarketItemListingData: ...
+    ) -> MarketListings: ...
 
-    # @currency_required
-    async def get_item_listings(
+    async def get_listings(
         self,
         obj: str | ItemDescription,
         app: App | None = None,
@@ -434,9 +433,9 @@ class MarketPublicComponent(EconMixin):
         # share mapping with iterator method
         _item_descriptions_map: ItemDescriptionsMap | None = None,
         _market_econ_items_map: dict[str, MarketListingItem] | None = None,
-    ) -> MarketItemListingData:
+    ) -> MarketListings:
         """
-        Get page of item listings from `Steam Market`.
+        Get item listings from `Steam Market`.
 
         .. note::
             * Pagination can be achieved by passing ``start`` arg.
@@ -492,7 +491,7 @@ class MarketPublicComponent(EconMixin):
         last_modified = parse_http_date(r.headers["Last-Modified"])
 
         if not rj["total_count"] or not rj["assets"]:
-            return [], 0, last_modified
+            return MarketListings(listings=[], total=0, last_modified=last_modified)
 
         _item_descriptions_map = {} if _item_descriptions_map is None else _item_descriptions_map
         _market_econ_items_map = {} if _market_econ_items_map is None else _market_econ_items_map
@@ -501,7 +500,11 @@ class MarketPublicComponent(EconMixin):
         # Do we need to share items?
         self._parse_market_listing_items(rj["assets"], _item_descriptions_map, _market_econ_items_map)
 
-        return self._create_market_listings(rj, _market_econ_items_map), rj["total_count"], last_modified
+        return MarketListings(
+            listings=self._create_market_listings(rj, _market_econ_items_map),
+            total=rj["total_count"],
+            last_modified=last_modified,
+        )
 
     # without "async" for proper type hinting in VsCode and PyCharm
     @overload
@@ -513,7 +516,7 @@ class MarketPublicComponent(EconMixin):
         start: int = ...,
         count: int = ...,
         if_modified_since: datetime | str | None = ...,
-    ) -> AsyncGenerator[MarketItemListingData, None]: ...
+    ) -> AsyncGenerator[MarketListings, None]: ...
 
     @overload
     def item_listings(
@@ -525,7 +528,7 @@ class MarketPublicComponent(EconMixin):
         start: int = ...,
         count: int = ...,
         if_modified_since: datetime | str | None = ...,
-    ) -> AsyncGenerator[MarketItemListingData, None]: ...
+    ) -> AsyncGenerator[MarketListings, None]: ...
 
     async def item_listings(
         self,
@@ -536,9 +539,9 @@ class MarketPublicComponent(EconMixin):
         start: int = 0,
         count: int = LISTING_COUNT,
         if_modified_since: datetime | str | None = None,
-    ) -> AsyncGenerator[MarketItemListingData, None]:
+    ) -> AsyncGenerator[MarketListings, None]:
         """
-        Get iterator of item listings pages from `Steam Market`.
+        Get iterator of item listings from `Steam Market`.
 
         .. note:: This request is rate limited by `Steam`. It is **strongly advised** to use ``if_modified_since``.
 
@@ -562,8 +565,7 @@ class MarketPublicComponent(EconMixin):
         total_count: int = 10000000  # simplify logic for initial iteration
         while total_count > start:
             # browser loads first batch from document request and not json api point, but anyway
-            # avoid excess destructuring
-            listings_data = await self.get_item_listings(
+            listings = await self.get_listings(  # avoid excess destructuring
                 obj,
                 app,
                 query=query,
@@ -573,10 +575,10 @@ class MarketPublicComponent(EconMixin):
                 _market_econ_items_map=_market_econ_items_map,
                 start=start,
             )
-            total_count = listings_data[1]
+            total_count = listings.total
             start += count
 
-            yield listings_data
+            yield listings
 
     @overload
     async def get_item_name_id(self, obj: ItemDescription) -> int: ...
@@ -603,7 +605,12 @@ class MarketPublicComponent(EconMixin):
         else:  # str and app
             url = MARKET_URL / f"listings/{app.id}/{obj}"
 
-        r = await self._transport.request("GET", url, response_mode="text")
+        r = await self._transport.request(
+            "GET",
+            url,
+            headers={"Referer": str(STEAM_URL.COMMUNITY)},
+            response_mode="text",
+        )
 
         search = ITEM_NAME_ID_RE.search(r.content)  # lang safe
         res = int(search.group(1)) if search is not None else search
@@ -613,7 +620,7 @@ class MarketPublicComponent(EconMixin):
         return res
 
     # TODO models, FilterSequence constructor or something
-    async def get_market_search_app_filters(self, app: App) -> dict[str, ...]:
+    async def get_search_app_filters(self, app: App) -> dict[str, ...]:
         """
         Get `Steam App` filter facets for `Steam Market` search.
 
@@ -634,7 +641,7 @@ class MarketPublicComponent(EconMixin):
 
         return rj["facets"]
 
-    async def get_market_search_app_accessories(self, app: App) -> dict[str, ...]:
+    async def get_search_app_accessories(self, app: App) -> dict[str, ...]:
         """
         Get `Steam App` accessory filter facets for `Steam Market` search.
 
@@ -656,20 +663,20 @@ class MarketPublicComponent(EconMixin):
         return rj["facets"]
 
     # TODO check new search
-    async def get_market_search_results(
+    async def search(
         self,
         query="",
         app: App | None = None,
         *,
-        start=0,
-        count=10,
-        descriptions=False,
+        start: int = 0,
+        count: int = 10,
+        descriptions: int = False,
         sort_column: SortColumn = "default",
         sort_dir: SortDir = "desc",
         filters: str | Mapping[str, str | Sequence[str]] = "",
         # share mapping with iterator method
         _item_descriptions_map: ItemDescriptionsMap | None = None,
-    ) -> tuple[list[MarketSearchItem], int]:
+    ) -> MarketSearchResult:
         """
         Get search results from `Steam Market`.
 
@@ -729,7 +736,7 @@ class MarketPublicComponent(EconMixin):
         EResultError.check_data(rj)
 
         if not rj["total_count"] or not rj["results"]:
-            return [], 0
+            return MarketSearchResult([], 0)
 
         _item_descriptions_map = {} if _item_descriptions_map is None else _item_descriptions_map
 
@@ -763,9 +770,9 @@ class MarketPublicComponent(EconMixin):
             )
             items.append(item)
 
-        return items, rj["total_count"]
+        return MarketSearchResult(items, rj["total_count"])
 
-    async def market_search_results(
+    async def search_results(
         self,
         query="",
         app: App | None = None,
@@ -776,7 +783,7 @@ class MarketPublicComponent(EconMixin):
         sort_column: SortColumn = "default",
         sort_dir: SortDir = "desc",
         filters: str | Mapping[str, str | Sequence[str]] = "",
-    ) -> AsyncGenerator[tuple[list[MarketSearchItem], int], None]:
+    ) -> AsyncGenerator[MarketSearchResult, None]:
         """
         Get search results from `Steam Market`.
         Return async iterator to paginate over market search result pages.
@@ -810,8 +817,7 @@ class MarketPublicComponent(EconMixin):
         total_count: int = 10000000  # simplify logic for initial iteration
         while total_count > start:
             # browser loads first batch from document request and not json api point, but anyway
-            # avoid excess destructuring
-            search_results = await self.get_market_search_results(
+            search_results = await self.search(
                 query,
                 app,
                 count=count,
@@ -822,16 +828,12 @@ class MarketPublicComponent(EconMixin):
                 start=start,
                 filters=filters,
             )
-            total_count = search_results[1]
+            total_count = search_results.total
             start += count
 
             yield search_results
 
-    async def get_newly_listed_items(
-        self,
-        *,
-        if_modified_since: datetime | str | None = None,
-    ) -> tuple[list[MarketListing], datetime]:
+    async def get_newly_listed(self, *, if_modified_since: datetime | str | None = None) -> NewlyListedItems:
         """
         Get *newly listed items* from `Steam Market`.
         Can be seen on main market page.
@@ -870,9 +872,9 @@ class MarketPublicComponent(EconMixin):
 
         # unknow fields: last_time, last_listing
 
-        return (
-            self._create_market_listings(rj, _market_econ_items_map),
-            parse_http_date(r.headers["Last-Modified"]),
+        return NewlyListedItems(
+            listings=self._create_market_listings(rj, _market_econ_items_map),
+            last_modified=parse_http_date(r.headers["Last-Modified"]),
         )
 
     @classmethod
@@ -905,7 +907,7 @@ class MarketPublicComponent(EconMixin):
             for p_data in data["purchaseinfo"].values()
         ]
 
-    async def get_recently_sold_items(self) -> list[PurchaseInfo]:
+    async def get_recently_sold(self) -> list[PurchaseInfo]:
         """Get *recently sold items* from `Steam Market`. Can be seen on main market page."""
 
         params = {

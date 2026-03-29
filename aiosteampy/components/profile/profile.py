@@ -12,7 +12,7 @@ from ...exceptions import EResultError, NeedMobileConfirmation, SteamError
 from ...id import SteamID
 from ...session import SteamSession
 from ...transport import BaseSteamTransport, TransportResponse
-from ..state import StateComponent
+from ..state import SteamState
 from .models import (
     AvatarUploadData,
     AvatarUploadImagesData,
@@ -40,7 +40,7 @@ class ProfileComponent(ProfilePublicComponent):
 
     __slots__ = ("_session", "_state")
 
-    def __init__(self, session: SteamSession, state: StateComponent):
+    def __init__(self, session: SteamSession, state: SteamState):
         super().__init__(session.transport)
 
         self._session = session

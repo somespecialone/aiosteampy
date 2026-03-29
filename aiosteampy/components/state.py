@@ -1,20 +1,23 @@
-"""Component responsible for managing user account state."""
+"""State shared between components."""
 
 import asyncio
 import json
 import re
 from contextlib import suppress
 from datetime import datetime
-from typing import NamedTuple
+from typing import TYPE_CHECKING, NamedTuple, Self
 from urllib.parse import quote
 
 from yarl import URL
 
 from ..constants import STEAM_URL, Currency, EResult, Language
 from ..exceptions import EResultError, NeedMobileConfirmation, SteamError
-from ..guard.confirmation import Confirmation, SteamConfirmations
 from ..session import SteamSession
 from ..transport import BaseSteamTransport, Cookie, format_http_date
+
+if TYPE_CHECKING:  # decouple components from guard
+    from ..guard.confirmations import SteamConfirmations
+
 
 LANG_COOKIE = "Steam_Language"
 
@@ -28,7 +31,7 @@ WALLET_INFO_RE = re.compile(r"g_rgWalletInfo = (.+);")
 
 # single source of truth
 # TODO need load/dump methods
-class PublicStateComponent:
+class PublicSteamState:
     __slots__ = ("_transport", "_country", "_currency", "_language")
 
     def __init__(
@@ -39,7 +42,15 @@ class PublicStateComponent:
         currency: Currency = Currency.USD,
         language: Language = Language.ENGLISH,
     ):
-        """"""
+        """
+        Handle state of non-authenticated user, therefore
+        does not require `Steam` session.
+
+        :param transport: transport to use.
+        :param country: 2-letter country code.
+        :param currency: currency of requested data.
+        :param language: language of `Steam` responses, descriptions, et cetera.
+        """
 
         self._transport = transport
         self._country = country
@@ -50,7 +61,7 @@ class PublicStateComponent:
 
     @property
     def country(self) -> str:
-        """Country of data requested from `Steam`."""
+        """2-letter country code of data requested from `Steam`."""
         return self._country
 
     @property
@@ -93,21 +104,55 @@ class PublicStateComponent:
 
 
 class WalletInfo(NamedTuple):
-    wallet_currency: Currency
-    wallet_country: str
-    wallet_state: str
-    wallet_fee: int
-    wallet_fee_minimum: int
-    wallet_fee_percent: float
-    wallet_publisher_fee_percent_default: float
-    wallet_fee_base: int
-    wallet_balance: int
-    wallet_delayed_balance: int
-    wallet_max_balance: int
-    wallet_trade_max_balance: int
+    """Wallet info of current user."""
+
+    currency: Currency
+    """Wallet currency."""
+    country: str
+    """Account and wallet country."""
+    state: str
+    """Wallet state."""
+    fee: int
+    """Wallet fee."""
+    fee_minimum: int
+    """Wallet minimal fee."""
+    steam_fee: float  # fee percent
+    publisher_fee: float  # publisher_fee_percent_default
+    """Default `publisher` fee percent."""
+    market_minimum: int
+    """Wallet market minimum."""
+    currency_increment: int
+    """Wallet currency increment."""
+    fee_base: int
+    """Wallet base fee."""
+    balance: int
+    """Wallet balance."""
+    delayed_balance: int
+    max_balance: int
+    """Wallet max. balance."""
+    trade_max_balance: int
+
+    @classmethod
+    def from_data(cls, data: dict) -> Self:
+        return cls(
+            currency=Currency(data["wallet_currency"]),
+            country=data["wallet_country"],
+            state=data["wallet_state"],
+            fee=int(data["wallet_fee"]),
+            fee_minimum=int(data["wallet_fee_minimum"]),
+            steam_fee=float(data["wallet_fee_percent"]),
+            publisher_fee=float(data["wallet_publisher_fee_percent_default"]),
+            market_minimum=int(data["wallet_market_minimum"]),
+            currency_increment=int(data["wallet_currency_increment"]),
+            fee_base=int(data["wallet_fee_base"]),
+            balance=int(data["wallet_balance"]),
+            delayed_balance=int(data["wallet_delayed_balance"]),
+            max_balance=int(data["wallet_max_balance"]),
+            trade_max_balance=int(data["wallet_trade_max_balance"]),
+        )
 
 
-class StateComponent(PublicStateComponent):
+class SteamState(PublicSteamState):
     __slots__ = (
         "_session",
         "_conf",
@@ -123,7 +168,7 @@ class StateComponent(PublicStateComponent):
     def __init__(
         self,
         session: SteamSession,
-        confirmations: SteamConfirmations | None = None,
+        confirmations: "SteamConfirmations | None" = None,
         *,
         country: str = "UA",
         currency: Currency = Currency.USD,
@@ -133,15 +178,16 @@ class StateComponent(PublicStateComponent):
         alias: str | None = None,
     ):
         """
+        Handle state of authenticated user.
 
-        :param session:
-        :param confirmations:
-        :param country:
-        :param currency:
-        :param language:
+        :param session: authenticated session.
+        :param confirmations: confirmations component.
+        :param country: 2-letter country code.
+        :param currency: currency of requested data.
+        :param language: language of `Steam` responses, descriptions, et cetera.
         :param web_api_key: `Steam Web API` key. Can be used for access `Web API`.
-        :param trade_token:
-        :param alias:
+        :param trade_token: trade `token` from account trade url.
+        :param alias: custom profile `alias`.
         """
 
         super().__init__(session.transport, country=country, currency=currency, language=language)
@@ -158,6 +204,11 @@ class StateComponent(PublicStateComponent):
         self._publisher_fee = 0.10  # wallet_publisher_fee_percent_default
         self._fee_min = 1  # wallet_fee_minimum
         self._fee_base = 0  # wallet_fee_base
+
+    @property
+    def confirmations(self) -> SteamConfirmations | None:
+        """`Steam` mobile confirmations manager."""
+        return self._conf
 
     @property
     def web_api_key(self) -> str | None:
@@ -272,17 +323,6 @@ class StateComponent(PublicStateComponent):
 
         self._web_api_key = None
 
-    async def confirm_api_key_request(self, req_id: int) -> "Confirmation":
-        """Confirm `Steam Web API` key registration request."""
-
-        if self._conf is None:
-            raise ValueError("Confirmation component is required to use this method")
-
-        conf = await self._conf.get_confirmation(req_id)
-        await self._conf.allow_confirmation(conf)
-
-        return conf
-
     async def register_new_api_key(self, domain: str, *, request_id: int = 0) -> str:
         """
         Request registration of a new `Steam Web API` key.
@@ -311,7 +351,7 @@ class StateComponent(PublicStateComponent):
             if self._conf is None:
                 raise NeedMobileConfirmation(rj["request_id"])
 
-            await self.confirm_api_key_request(rj["request_id"])
+            await self._conf.confirm_api_key_request(rj["request_id"])
 
             data["request_id"] = rj["request_id"]
 
@@ -383,27 +423,14 @@ class StateComponent(PublicStateComponent):
 
         EResultError.check_data(data)
 
-        info = WalletInfo(
-            Currency(data["wallet_currency"]),
-            data["wallet_country"],
-            data["wallet_state"],
-            int(data["wallet_fee"]),
-            int(data["wallet_fee_minimum"]),
-            float(data["wallet_fee_percent"]),
-            float(data["wallet_publisher_fee_percent_default"]),
-            int(data["wallet_fee_base"]),
-            int(data["wallet_balance"]),
-            int(data["wallet_delayed_balance"]),
-            int(data["wallet_max_balance"]),
-            int(data["wallet_trade_max_balance"]),
-        )
+        info = WalletInfo.from_data(data)
 
-        self._currency = info.wallet_currency
-        self._country = info.wallet_country
-        self._steam_fee = info.wallet_fee_percent
-        self._publisher_fee = info.wallet_publisher_fee_percent_default
-        self._fee_min = info.wallet_fee_minimum
-        self._fee_base = info.wallet_fee_base
+        self._currency = info.currency
+        self._country = info.country
+        self._steam_fee = info.steam_fee
+        self._publisher_fee = info.publisher_fee
+        self._fee_min = info.fee_minimum
+        self._fee_base = info.fee_base
 
         return info
 

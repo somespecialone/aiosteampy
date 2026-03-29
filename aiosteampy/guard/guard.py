@@ -14,7 +14,7 @@ from ..webapi import SteamWebAPIClient
 from ..webapi.services.phone import PhoneServiceClient
 from ..webapi.services.protobufs import CTwoFactorStatusResponse
 from ..webapi.services.twofactor import CTwoFactorAddAuthenticatorResponse, TwoFactorServiceClient
-from .confirmation import SteamConfirmations
+from .confirmations import SteamConfirmations
 from .exceptions import *
 from .models import MaFile, SteamGuardAccount
 from .signer import TwoFactorSigner

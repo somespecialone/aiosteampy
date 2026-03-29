@@ -17,10 +17,10 @@ from ...session import SteamSession
 from ...transport import BaseSteamTransport, TransportResponse, TransportResponseError
 from ...utils import create_ident_code
 from .._common import ItemDescriptionsMap, confirmations_required
-from ..state import StateComponent
+from ..state import SteamState, WalletInfo
 
-if TYPE_CHECKING:  # optional dependency
-    from ...guard.confirmation import Confirmation, SteamConfirmations
+if TYPE_CHECKING:  # decouple components from guard
+    from ...guard.confirmations import SteamConfirmations
 
 from .exceptions import InsufficientBalance, ListingRemoved
 from .models import (
@@ -35,15 +35,13 @@ from .models import (
     MarketListing,
     MarketListingItem,
     MarketListingStatus,
-    MyMarketListing,
     PriceHistoryEntry,
-    WalletInfo,
+    UserListings,
+    UserMarketHistory,
+    UserMarketListing,
 )
 from .public import MARKET_URL, MarketPublicComponent
 from .utils import buyer_pays_to_receive, calc_market_listing_fee
-
-UserListingData = tuple[list[MyMarketListing], list[MyMarketListing], list[BuyOrder], int]
-UserMarketHistoryData = tuple[list[MarketHistoryEvent], int]
 
 PRICE_ENTRY_TIME_FORMAT = "%b %d %Y %H: %z"
 
@@ -53,12 +51,12 @@ class MarketComponent(MarketPublicComponent):
 
     __slots__ = ("_session", "_conf")
 
-    _state: StateComponent
+    _state: SteamState
 
     def __init__(
         self,
         session: SteamSession,
-        state: StateComponent,
+        state: SteamState,
         confirmation: "SteamConfirmations | None" = None,
     ):
         super().__init__(session.transport, state)
@@ -66,48 +64,10 @@ class MarketComponent(MarketPublicComponent):
         self._session = session
         self._conf = confirmation
 
-    @overload
-    async def confirm_sell_listing(self, obj: int, app_ctx: AppContext) -> "Confirmation": ...
-
-    @overload
-    async def confirm_sell_listing(self, obj: MyMarketListing | EconItem | int) -> "Confirmation": ...
-
-    @confirmations_required
-    async def confirm_sell_listing(
-        self,
-        obj: MyMarketListing | EconItem | int,
-        app_ctx: AppContext | None = None,
-    ) -> "Confirmation":
-        """
-        Perform sell listing confirmation.
-
-        :param obj: ``MyMarketListing``, ``EconItem`` that you listed, `listing id` or `asset id`.
-        :param app_ctx: ``AppContext`` of item. Required when ``obj`` is `asset id`.
-        :return: processed ``Confirmation``.
-        :raises KeyError: if confirmation not found.
-        :raises EResultError: ordinary reasons.
-        :raises TransportError: ordinary reasons.
-        :raises ValueError: if ``ConfirmationComponent`` is not provided.
-        """
-
-        details = "none"  # avoid unnecessary requests
-        if isinstance(obj, MyMarketListing):
-            key = obj.id
-        elif isinstance(obj, EconItem):
-            key = obj.id
-            details = "listing"
-        else:  # int and app ctx
-            if app_ctx is not None:  # asset id & app context
-                key = create_ident_code(obj, app_ctx.context_id, app_ctx.app.id)
-                details = "listing"
-            else:  # listing id
-                key = obj
-
-        if conf := await self._conf.get(key, details=details):
-            await self._conf.accept(conf)
-            return conf
-        else:
-            raise KeyError(f"No confirmation found for listing: {key}")
+    @property
+    def confirmations(self) -> SteamConfirmations | None:
+        """`Steam` mobile confirmations manager."""
+        return self._conf
 
     @classmethod
     def _parse_descriptions_from_my_listings_or_market_history(
@@ -147,9 +107,9 @@ class MarketComponent(MarketPublicComponent):
         self,
         listings: list[dict],
         item_descriptions_map: ItemDescriptionsMap,
-    ) -> list[MyMarketListing]:
+    ) -> list[UserMarketListing]:
         return [
-            MyMarketListing(
+            UserMarketListing(
                 id=int(l_data["listingid"]),
                 lister=self._session.steam_id,  # no need to parse data again
                 created_at=datetime.fromtimestamp(l_data["time_created"]),
@@ -211,14 +171,14 @@ class MarketComponent(MarketPublicComponent):
             for o_data in orders
         ]
 
-    async def get_my_listings(
+    async def get_user_listings(
         self,
         *,
         start: int = 0,
         count: int = 100,
         # share mapping with iterator method
         _item_descriptions_map: ItemDescriptionsMap | None = None,
-    ) -> UserListingData:
+    ) -> UserListings:
         """
         Get current user market listings.
 
@@ -249,14 +209,15 @@ class MarketComponent(MarketPublicComponent):
         # we get only app id here, so func below will do the work
         self._parse_descriptions_from_my_listings_or_market_history(rj, _item_descriptions_map)
 
-        active = self._parse_my_listings(rj["listings"], _item_descriptions_map)
-        # what is "listings_on_hold"?
-        to_confirm = self._parse_my_listings(rj["listings_to_confirm"], _item_descriptions_map)
-        buy_orders = self._parse_buy_orders(rj["buy_orders"], _item_descriptions_map)
+        return UserListings(
+            self._parse_my_listings(rj["listings"], _item_descriptions_map),
+            # what is "listings_on_hold"?
+            self._parse_my_listings(rj["listings_to_confirm"], _item_descriptions_map),
+            self._parse_buy_orders(rj["buy_orders"], _item_descriptions_map),
+            rj["num_active_listings"],
+        )
 
-        return active, to_confirm, buy_orders, rj["num_active_listings"]
-
-    async def my_listings(self, *, start: int = 0, count: int = 100) -> AsyncGenerator[UserListingData, None]:
+    async def user_listings(self, *, start: int = 0, count: int = 100) -> AsyncGenerator[UserListings, None]:
         """
         Get current user market listings as async generator to paginate over.
 
@@ -272,38 +233,37 @@ class MarketComponent(MarketPublicComponent):
 
         more_listings = True
         while more_listings:
-            # avoid excess destructuring
-            listings_data = await self.get_my_listings(
+            listings_data = await self.get_user_listings(
                 start=start,
                 count=count,
                 _item_descriptions_map=_item_descriptions_map,
             )
             start += count
-            more_listings = listings_data[3] > start
+            more_listings = listings_data.total > start
 
-            yield listings_data[0]
+            yield listings_data
 
     @overload
-    async def get_my_sell_listing(
+    async def get_user_listing(
         self,
         obj: int = ...,
         *,
         need_confirmation: bool = ...,
         asset_id: int = ...,
         ident_code: str = ...,
-    ) -> MyMarketListing | None: ...
+    ) -> UserMarketListing | None: ...
 
     @overload
-    async def get_my_sell_listing(self, obj: Callable[[MyMarketListing], bool]) -> MyMarketListing | None: ...
+    async def get_user_listing(self, obj: Callable[[UserMarketListing], bool]) -> UserMarketListing | None: ...
 
-    async def get_my_sell_listing(
+    async def get_user_listing(
         self,
-        obj: int | Callable[[MyMarketListing], bool] | None = None,
+        obj: int | Callable[[UserMarketListing], bool] | None = None,
         *,
         need_confirmation: bool = False,
         asset_id: int | None = None,
         ident_code: str | None = None,
-    ) -> MyMarketListing | None:
+    ) -> UserMarketListing | None:
         """
         Iterate over current user sell listings pages
         until find *first one* that satisfies passed arguments.
@@ -312,7 +272,7 @@ class MarketComponent(MarketPublicComponent):
         :param need_confirmation: get listing from `to_confirm` list.
         :param asset_id: asset id of listing item.
         :param ident_code: ident code of listing item.
-        :return: ``MyMarketListing`` or ``None``.
+        :return: ``UserMarketListing`` or ``None``.
         :raises EResultError: ordinary reasons.
         :raises TransportError: ordinary reasons.
         :raises ValueError: required arguments not provided.
@@ -325,7 +285,7 @@ class MarketComponent(MarketPublicComponent):
             predicate = obj
         else:
 
-            def predicate(listing: MyMarketListing):
+            def predicate(listing: UserMarketListing):
                 if obj is not None and listing.id != obj:
                     return False
                 if asset_id is not None and listing.item.asset_id != asset_id:
@@ -335,11 +295,12 @@ class MarketComponent(MarketPublicComponent):
 
                 return True
 
-        async for listings, to_confirm, _, _ in self.my_listings():
+        # PyCharm cannot inherit types with destructuring from async function :(
+        async for listings, to_confirm, _, _ in self.user_listings():
             with suppress(StopIteration):  # iterate until find first one that satisfies predicate
                 return next(filter(predicate, to_confirm if need_confirmation else listings))
 
-    async def get_my_buy_order(self, obj: int | Callable[[BuyOrder], bool]) -> BuyOrder | None:
+    async def get_user_buy_order(self, obj: int | Callable[[BuyOrder], bool]) -> BuyOrder | None:
         """
         Get current user buy orders and return *first one* that satisfies passed arguments.
 
@@ -357,7 +318,7 @@ class MarketComponent(MarketPublicComponent):
                 return order.id == obj
 
         # count 1 to reduce unnecessary work as we only need buy orders
-        _, _, orders, _ = await self.get_my_listings(count=1)
+        _, _, orders, _ = await self.get_user_listings(count=1)
         return next(filter(predicate, orders), None)
 
     @overload
@@ -473,7 +434,7 @@ class MarketComponent(MarketPublicComponent):
                 conf_key = create_ident_code(asset_id, app_ctx.context_id, app_ctx.app.id)
                 raise NeedMobileConfirmation(conf_key)
 
-            conf = await self.confirm_sell_listing(asset_id, app_ctx)
+            conf = await self._conf.confirm_sell_listing(asset_id, app_ctx)
             return conf.creator_id  # listing id
 
         elif rj.get("needs_email_confirmation"):
@@ -481,14 +442,14 @@ class MarketComponent(MarketPublicComponent):
 
         EResultError.check_data(rj)
 
-    async def cancel_sell_listing(self, obj: MyMarketListing | int) -> Awaitable[TransportResponse]:
+    def cancel_sell_listing(self, obj: UserMarketListing | int) -> Awaitable[TransportResponse]:
         """
         Cancel current user active sell listing.
 
-        :param obj: ``MyMarketListing`` or `listing id`.
+        :param obj: ``UserMarketListing`` or `listing id`.
         """
 
-        listing_id = obj.id if isinstance(obj, MyMarketListing) else obj
+        listing_id = obj.id if isinstance(obj, UserMarketListing) else obj
         return self._transport.request(
             "POST",
             MARKET_URL / f"removelisting/{listing_id}",
@@ -587,8 +548,8 @@ class MarketComponent(MarketPublicComponent):
             if self._conf is None:
                 raise NeedMobileConfirmation(confirmation_id)
 
-            # conf = await self._conf.get_confirmation(confirmation_id)
-            # await self._conf.allow_confirmation(conf)
+            conf = await self._conf.get(confirmation_id)
+            await self._conf.accept(conf)
 
             return await self.place_buy_order(
                 obj,
@@ -807,21 +768,7 @@ class MarketComponent(MarketPublicComponent):
 
         EResultError.check_data(rj)
 
-        return WalletInfo(
-            balance=int(rj["wallet_balance"]),
-            country=rj["wallet_country"],
-            currency=Currency(rj["wallet_currency"]),
-            currency_increment=int(rj["wallet_currency_increment"]),
-            delayed_balance=int(rj["wallet_delayed_balance"]),
-            fee=int(rj["wallet_fee"]),
-            fee_base=int(rj["wallet_fee_base"]),
-            fee_minimum=int(rj["wallet_fee_minimum"]),
-            fee_percent=float(rj["wallet_fee_percent"]),
-            market_minimum=int(rj["wallet_market_minimum"]),
-            max_balance=int(rj["wallet_max_balance"]),
-            publisher_fee_percent_default=float(rj["wallet_publisher_fee_percent_default"]),
-            trade_max_balance=int(rj["wallet_trade_max_balance"]),
-        )
+        return WalletInfo.from_data(rj)
 
     @classmethod
     def _parse_assets_for_history_listings(
@@ -945,7 +892,7 @@ class MarketComponent(MarketPublicComponent):
 
         return events
 
-    async def get_my_market_history(
+    async def get_user_market_history(
         self,
         *,
         start: int = 0,
@@ -954,7 +901,7 @@ class MarketComponent(MarketPublicComponent):
         _item_descriptions_map: ItemDescriptionsMap | None = None,
         _market_history_econ_items_map: dict[str, MarketHistoryListingItem] | None = None,
         _market_history_listings_map: dict[int, MarketHistoryListing] | None = None,
-    ) -> UserMarketHistoryData:
+    ) -> UserMarketHistory:
         """
         Get market history of current user.
 
@@ -980,7 +927,7 @@ class MarketComponent(MarketPublicComponent):
         EResultError.check_data(rj)
 
         if not rj["total_count"] or not rj["assets"]:  # safe
-            return [], 0
+            return UserMarketHistory([], 0)
 
         _item_descriptions_map = {} if _item_descriptions_map is None else _item_descriptions_map
         _market_history_econ_items_map = (
@@ -992,14 +939,16 @@ class MarketComponent(MarketPublicComponent):
         self._parse_assets_for_history_listings(rj["assets"], _item_descriptions_map, _market_history_econ_items_map)
         self._parse_history_listings(rj, _market_history_econ_items_map, _market_history_listings_map)
 
-        return self._parse_history_events(rj, _market_history_listings_map), rj["total_count"]
+        events = self._parse_history_events(rj, _market_history_listings_map)
 
-    async def my_market_history(
+        return UserMarketHistory(events, rj["total_count"])
+
+    async def user_market_history(
         self,
         *,
         start: int = 0,
         count: int = 100,
-    ) -> AsyncGenerator[UserMarketHistoryData, None]:
+    ) -> AsyncGenerator[UserMarketHistory, None]:
         """
         Get market history of current user.
         Return async generator to paginate over history event pages.
@@ -1018,7 +967,7 @@ class MarketComponent(MarketPublicComponent):
         more_listings = True
         while more_listings:
             # avoid excess destructuring
-            history_data = await self.get_my_market_history(
+            history_data = await self.get_user_market_history(
                 start=start,
                 count=count,
                 _item_descriptions_map=_item_descriptions_map,
@@ -1079,9 +1028,9 @@ class MarketComponent(MarketPublicComponent):
             for e_data in rj["prices"]
         ]
 
-    async def get_market_availability_info(self) -> MarketAvailability:
+    async def verify_market_availability(self) -> MarketAvailability:
         """
-        Return market status of whether it is available or not.
+        Return market availability info that contains status, tips and possibly date.
 
         .. seealso:: https://help.steampowered.com/en/faqs/view/451E-96B3-D194-50FC.
         """
@@ -1090,6 +1039,7 @@ class MarketComponent(MarketPublicComponent):
             "GET",
             MARKET_URL,
             headers={"Referer": str(STEAM_URL.STORE)},
+            redirects=True,  # handle eligibility check
             response_mode="text",
         )
         rt = r.content
@@ -1098,9 +1048,10 @@ class MarketComponent(MarketPublicComponent):
         when: datetime | None = None
         tips: list[str] = []
 
-        if "The Market is unavailable for the following reason" in rt:  # language unsafe
+        if 'id="market_tip_noaccess"' in rt:  # language safe
             available = False
 
+            # no need to precompile as they are rarely used
             tips_section = (
                 re.search(r"id=\"market_tip_noaccess\"([\s\S]+)var elTooltip", rt)
                 .group(1)
@@ -1114,6 +1065,8 @@ class MarketComponent(MarketPublicComponent):
                     re.search(r"var dateCanUseMarket = new Date\(\"(.+)\"\);", rt).group(1),
                     "%a, %d %b %Y %H:%M:%S %z",
                 )
+
+        # https://steamcommunity.com/market/eligibilitycheck/?goto=%2Fmarket%2F
 
         # in theory we can retrieve purchase history from https://store.steampowered.com/account/history/
         # and evaluate estimate market block time that must depends on last wallet deposit or app purchase

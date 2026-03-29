@@ -2,13 +2,17 @@ import asyncio
 from collections.abc import Awaitable, Iterable
 from datetime import datetime
 from itertools import batched
-from typing import Literal
+from typing import Literal, overload
 
+from ..app import AppContext
+from ..components.market import UserMarketListing
 from ..constants import STEAM_URL, EResult
 from ..exceptions import EResultError
 from ..id import SteamID
+from ..models import EconItem
 from ..session import SteamSession
 from ..transport import Unauthenticated
+from ..utils import create_ident_code
 from .models import Confirmation, ConfirmationType
 from .signer import TwoFactorSigner
 from .utils import generate_device_id
@@ -271,3 +275,52 @@ class SteamConfirmations:
         confs = await self.get_all()
         confs and await self.deny_multiple(confs)
         return confs
+
+    # helper methods for components
+    @overload
+    async def confirm_sell_listing(self, obj: int, app_ctx: AppContext) -> Confirmation: ...
+
+    @overload
+    async def confirm_sell_listing(self, obj: UserMarketListing | EconItem | int) -> Confirmation: ...
+
+    async def confirm_sell_listing(
+        self,
+        obj: UserMarketListing | EconItem | int,
+        app_ctx: AppContext | None = None,
+    ) -> Confirmation:
+        """
+        Perform sell listing confirmation.
+
+        :param obj: ``UserMarketListing``, ``EconItem`` that you listed, `listing id` or `asset id`.
+        :param app_ctx: ``AppContext`` of item. Required when ``obj`` is `asset id`.
+        :return: processed ``Confirmation``.
+        :raises KeyError: if confirmation not found.
+        :raises EResultError: ordinary reasons.
+        :raises TransportError: ordinary reasons.
+        """
+
+        details = "none"  # avoid unnecessary requests
+        if isinstance(obj, UserMarketListing):
+            key = obj.id
+        elif isinstance(obj, EconItem):
+            key = obj.id
+            details = "listing"
+        else:  # int and app ctx
+            if app_ctx is not None:  # asset id & app context
+                key = create_ident_code(obj, app_ctx.context_id, app_ctx.app.id)
+                details = "listing"
+            else:  # listing id
+                key = obj
+
+        if conf := await self.get(key, details=details):
+            await self.accept(conf)
+            return conf
+        else:
+            raise KeyError(f"No confirmation found for listing: {key}")
+
+    async def confirm_api_key_request(self, req_id: int) -> Confirmation:
+        """Confirm `Steam Web API` key registration request."""
+
+        conf = await self.get(req_id)
+        await self.accept(conf)
+        return conf

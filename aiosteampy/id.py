@@ -2,20 +2,9 @@
 
 import re
 from enum import IntEnum
+from typing import Self
 
 __all__ = ("Universe", "AccountType", "Instance", "SteamID")
-
-
-STEAM_2_FORMAT_RE = re.compile(r"^STEAM_([0-5]):([0-1]):(\d+)$")
-STEAM_3_FORMAT_RE = re.compile(r"^\[([a-zA-Z]):([0-5]):(\d+)(?::(\d+))?]$")
-
-ACCOUNT_ID_MASK = 0xFFFFFFFF
-ACCOUNT_INSTANCE_MASK = 0xFFFFF
-
-# Chat instance flags
-CHAT_INSTANCE_FLAG_CLAN = (ACCOUNT_INSTANCE_MASK + 1) >> 1
-CHAT_INSTANCE_FLAG_LOBBY = (ACCOUNT_INSTANCE_MASK + 1) >> 2
-CHAT_INSTANCE_FLAG_MMS_LOBBY = (ACCOUNT_INSTANCE_MASK + 1) >> 3
 
 
 class Universe(IntEnum):
@@ -53,125 +42,126 @@ class Instance(IntEnum):
     WEB = 4
 
 
-# Type character mappings
-TYPE_CHARS = {
-    AccountType.INVALID: "I",
-    AccountType.INDIVIDUAL: "U",
-    AccountType.MULTISEAT: "M",
-    AccountType.GAMESERVER: "G",
-    AccountType.ANON_GAMESERVER: "A",
-    AccountType.PENDING: "P",
-    AccountType.CONTENT_SERVER: "C",
-    AccountType.CLAN: "g",
-    AccountType.CHAT: "T",
-    AccountType.ANON_USER: "a",
-}
+class SteamID(int):
+    """
+    Represents a `Steam ID` and provides methods for rendering
+    in various formats (`Steam2`, `Steam3`, 32-bit, 64-bit).
 
+    :param _x: Can be a 32/64-bit integer or string representation, a `Steam2` format string (`STEAM_X:Y:Z`),
+        or a `Steam3` format string (`[U:X:Y]`). Creates *blank (invalid) ID* in case of no input.
+    """
 
-class SteamID:
-    __slots__ = ("_universe", "_type", "_instance", "_account_id", "_id64")
+    _STEAM_2_FORMAT_RE = re.compile(r"^STEAM_([0-5]):([0-1]):(\d+)$")
+    _STEAM_3_FORMAT_RE = re.compile(r"^\[([a-zA-Z]):([0-5]):(\d+)(?::(\d+))?]$")
 
-    def __init__(self, input_id: str | int | None = None):
-        """
-        Represents a `Steam ID` and provides methods for parsing and rendering
-        in various formats (`Steam2`, `Steam3`, 32-bit, 64-bit).
+    _ACCOUNT_ID_MASK = 0xFFFFFFFF
+    _ACCOUNT_INSTANCE_MASK = 0xFFFFF
 
-        :param input_id: Can be a 32/64-bit integer or string representation, a `Steam2` format string ("STEAM_X:Y:Z"),
-            or a `Steam3` format string ("[U:X:Y]"). If None, creates blank (invalid) ID.
-        """
+    # Chat instance flags
+    _CHAT_INSTANCE_FLAG_CLAN = (_ACCOUNT_INSTANCE_MASK + 1) >> 1
+    _CHAT_INSTANCE_FLAG_LOBBY = (_ACCOUNT_INSTANCE_MASK + 1) >> 2
+    _CHAT_INSTANCE_FLAG_MMS_LOBBY = (_ACCOUNT_INSTANCE_MASK + 1) >> 3
 
-        self._universe = Universe.INVALID
-        self._type = AccountType.INVALID
-        self._instance = Instance.ALL
-        self._account_id = 0
-        self._id64 = 0
+    # Type character mapping
+    _TYPE_CHAR_INDIVIDUAL = "U"
+    _TYPE_CHARS = {
+        AccountType.INVALID: "I",
+        AccountType.INDIVIDUAL: _TYPE_CHAR_INDIVIDUAL,
+        AccountType.MULTISEAT: "M",
+        AccountType.GAMESERVER: "G",
+        AccountType.ANON_GAMESERVER: "A",
+        AccountType.PENDING: "P",
+        AccountType.CONTENT_SERVER: "C",
+        AccountType.CLAN: "g",
+        AccountType.CHAT: "T",
+        AccountType.ANON_USER: "a",
+    }
 
-        if not input_id:
-            return
+    def __new__(cls, _x: str | int | None = None) -> Self:
+        # all underscored due to a strange PyCharm love to inherit variables from __new__ as properties
+        _type = AccountType.INVALID
+        _instance = Instance.ALL
 
-        elif isinstance(input_id, int) or (isinstance(input_id, str) and input_id.isdigit()):  # numeric formats
-            input_id = int(input_id)
+        if not _x:
+            return super().__new__(cls, 0)
 
-            if input_id < 0:
+        elif isinstance(_x, int) or (isinstance(_x, str) and _x.isdigit()):  # numeric formats
+            _x = int(_x)
+
+            if _x < 0:
                 raise ValueError("ID cannot be negative")
 
-            elif input_id < 2**32:  # 32-bit account ID, public only
-                self._universe = Universe.PUBLIC
-                self._type = AccountType.INDIVIDUAL
-                self._instance = Instance.DESKTOP
-                self._account_id = input_id
+            elif _x < 2**32:  # 32-bit account ID, public only
+                _universe = Universe.PUBLIC
+                _type = AccountType.INDIVIDUAL
+                _instance = Instance.DESKTOP
+                _account_id = _x
 
-            elif input_id < 2**64:  # and 64-bit
-                self._universe = Universe((input_id >> 56) & 0xFF)
-                self._type = AccountType((input_id >> 52) & 0xF)
-                self._instance = Instance((input_id >> 32) & ACCOUNT_INSTANCE_MASK)
-                self._account_id = input_id & ACCOUNT_ID_MASK
+            elif _x < 2**64:  # input is just what we need so return early
+                return super().__new__(cls, _x)
 
             else:
                 raise ValueError("ID is too large")
 
-        elif isinstance(input_id, str):  # Steam2/3 formats
+        elif isinstance(_x, str):  # Steam2/3 formats
             # Handle Steam2 format: STEAM_X:Y:Z
-            if match := STEAM_2_FORMAT_RE.match(input_id):
-                universe_str, mod, account_id = match.groups()
+            if match := cls._STEAM_2_FORMAT_RE.match(_x):
+                _universe, _mod, _account_id = match.groups()
 
-                universe = int(universe_str)
-                self._universe = Universe(universe or 1)  # 0 -> 1
-                self._type = AccountType.INDIVIDUAL
-                self._instance = Instance.DESKTOP
-                self._account_id = (int(account_id) * 2) + int(mod)
+                _universe = Universe(int(_universe) or 1)  # 0 -> 1
+                _type = AccountType.INDIVIDUAL
+                _instance = Instance.DESKTOP
+                _account_id = (int(_account_id) * 2) + int(_mod)
 
             # Handle Steam3 format: [T:U:A] or [T:U:A:I]
-            elif match := STEAM_3_FORMAT_RE.match(input_id):
-                type_char, universe, account_id, instance = match.groups()
+            elif match := cls._STEAM_3_FORMAT_RE.match(_x):
+                _type_char, _universe, _account_id, _instance_raw = match.groups()
 
-                self._universe = Universe(int(universe))
-                self._account_id = int(account_id)
-
-                if instance:
-                    self._instance = Instance(int(instance))
+                _universe = Universe(int(_universe))
+                _account_id = int(_account_id)
 
                 # Handle special type characters
-                if type_char == "U":
-                    self._type = AccountType.INDIVIDUAL
-                    if instance is None:
-                        self._instance = Instance.DESKTOP
-                elif type_char == "c":
-                    self._instance |= CHAT_INSTANCE_FLAG_CLAN
-                    self._type = AccountType.CHAT
-                elif type_char == "L":
-                    self._instance |= CHAT_INSTANCE_FLAG_LOBBY
-                    self._type = AccountType.CHAT
-                else:
-                    for account_type, char in TYPE_CHARS.items():
-                        if char == type_char:
-                            self._type = account_type
+                if _type_char == cls._TYPE_CHAR_INDIVIDUAL:
+                    _type = AccountType.INDIVIDUAL
+                    if _instance_raw:
+                        _instance = Instance(int(_instance_raw))
                     else:
-                        self._type = AccountType.INVALID
+                        _instance = Instance.DESKTOP
+
+                elif _type_char == "c":
+                    _instance |= cls._CHAT_INSTANCE_FLAG_CLAN
+                    _type = AccountType.CHAT
+                elif _type_char == "L":
+                    _instance |= cls._CHAT_INSTANCE_FLAG_LOBBY
+                    _type = AccountType.CHAT
+                else:
+                    for account_type, char in cls._TYPE_CHARS.items():
+                        if _type_char == char:
+                            _type = account_type
 
             else:
-                raise ValueError(f'Unknown SteamID input format: "{input_id}"')
+                raise ValueError(f'Unknown SteamID input format: "{_x}"')
 
         else:
-            raise ValueError(f'Unknown SteamID input type: "{type(input_id)}"')
+            raise TypeError(f'Unknown SteamID input type: "{type(_x)}"')
 
-        self._id64 = (self._universe << 56) | (self._type << 52) | (self._instance << 32) | self._account_id
+        return super().__new__(cls, ((_universe << 56) | (_type << 52) | (_instance << 32) | _account_id))
 
     @property
     def universe(self) -> Universe:
-        return self._universe
+        return Universe((self >> 56) & 0xFF)
 
     @property
     def type(self) -> AccountType:
-        return self._type
+        return AccountType((self >> 52) & 0xF)
 
     @property
     def instance(self) -> Instance:
-        return self._instance
+        return Instance((self >> 32) & self._ACCOUNT_INSTANCE_MASK)
 
     @property
     def account_id(self) -> int:
-        return self._account_id
+        return self & self._ACCOUNT_ID_MASK
 
     @property
     def valid(self) -> bool:
@@ -181,21 +171,21 @@ class SteamID:
         .. note:: Does not check whether the account actually exists.
         """
 
-        if self._type <= AccountType.INVALID or self._type > AccountType.ANON_USER:
+        if self.type <= AccountType.INVALID or self.type > AccountType.ANON_USER:
             return False
 
-        if self._universe <= Universe.INVALID or self._universe > Universe.DEV:
+        if self.universe <= Universe.INVALID or self.universe > Universe.DEV:
             return False
 
-        if self._type == AccountType.INDIVIDUAL:
-            if self._account_id == 0 or self._instance > Instance.WEB:
+        if self.type == AccountType.INDIVIDUAL:
+            if self.account_id == 0 or self.instance > Instance.WEB:
                 return False
 
-        if self._type == AccountType.CLAN:
-            if self._account_id == 0 or self._instance != Instance.ALL:
+        if self.type == AccountType.CLAN:
+            if self.account_id == 0 or self.instance != Instance.ALL:
                 return False
 
-        if self._type == AccountType.GAMESERVER and self._account_id == 0:
+        if self.type == AccountType.GAMESERVER and self.account_id == 0:
             return False
 
         return True
@@ -211,77 +201,74 @@ class SteamID:
         """
 
         return (
-            self._universe == Universe.PUBLIC
-            and self._type == AccountType.INDIVIDUAL
-            and self._instance == Instance.DESKTOP
+            self.universe == Universe.PUBLIC
+            and self.type == AccountType.INDIVIDUAL
+            and self.instance == Instance.DESKTOP
             and self.valid
         )
 
     @property
     def is_group_chat(self) -> bool:
         """If represents a legacy group chat."""
-
-        return self._type == AccountType.CHAT and bool(self._instance & CHAT_INSTANCE_FLAG_CLAN)
+        return self.type == AccountType.CHAT and bool(self.instance & self._CHAT_INSTANCE_FLAG_CLAN)
 
     @property
     def is_lobby(self) -> bool:
         """If represents a game lobby."""
 
-        return self._type == AccountType.CHAT and bool(
-            self._instance & (CHAT_INSTANCE_FLAG_LOBBY | CHAT_INSTANCE_FLAG_MMS_LOBBY)
+        return self.type == AccountType.CHAT and bool(
+            self.instance & (self._CHAT_INSTANCE_FLAG_LOBBY | self._CHAT_INSTANCE_FLAG_MMS_LOBBY)
         )
 
     @property
     def steam2(self) -> str | None:
         """`Steam2` format representation (e.g., "STEAM_1:0:23071901"). ``None`` for non-individual `IDs`."""
 
-        if self._type == AccountType.INDIVIDUAL:
-            return f"STEAM_{self._universe}:{self._account_id & 1}:{self._account_id // 2}"
+        if self.type == AccountType.INDIVIDUAL:
+            return f"STEAM_{self.universe}:{self.account_id & 1}:{self.account_id // 2}"
 
     @property
     def steam3(self) -> str:
         """`Steam3` format representation (e.g., "[U:1:46143802]")."""
 
-        type_char = TYPE_CHARS.get(self._type, "i")
-
-        if self._instance & CHAT_INSTANCE_FLAG_CLAN:
+        if self.instance & self._CHAT_INSTANCE_FLAG_CLAN:
             type_char = "c"
-        elif self._instance & CHAT_INSTANCE_FLAG_LOBBY:
+        elif self.instance & self._CHAT_INSTANCE_FLAG_LOBBY:
             type_char = "L"
+        else:
+            type_char = self._TYPE_CHARS.get(self.type, "i")
 
         should_render_instance = (
-            self._type == AccountType.ANON_GAMESERVER
-            or self._type == AccountType.MULTISEAT
-            or (self._type == AccountType.INDIVIDUAL and self._instance != Instance.DESKTOP)
+            self.type == AccountType.ANON_GAMESERVER
+            or self.type == AccountType.MULTISEAT
+            or (self.type == AccountType.INDIVIDUAL and self.instance != Instance.DESKTOP)
         )
 
-        instance_str = f":{self._instance}" if should_render_instance else ""
-        return f"[{type_char}:{self._universe}:{self._account_id}{instance_str}]"
+        instance_str = f":{self.instance}" if should_render_instance else ""
+        return f"[{type_char}:{self.universe}:{self.account_id}{instance_str}]"
 
     @property
     def id32(self) -> int:
         """32-bit representation. Alias to ``account_id``."""
-        return self._account_id
+        return self.account_id
 
     @property
     def id64(self) -> int:
         """64-bit representation."""
-        return self._id64
+        return int(self)
 
     def __str__(self):
-        return str(self._id64)
-
-    def __int__(self):
-        return self._id64
+        return f"{int(self)}"
 
     def __repr__(self):
-        return f"{self.__class__.__name__}({self._id64})"
+        return f"{self.__class__.__name__}({self})"
 
-    def __eq__(self, other):
-        return isinstance(other, SteamID) and self._id64 == other._id64
+    def __eq__(self, value):
+        if isinstance(value, SteamID):
+            return int(self) == int(value)
+        try:
+            return self == SteamID(value)
+        except (ValueError, TypeError):
+            return int(self) == value
 
-    def __hash__(self):
-        return self._id64
-
-    def __bool__(self):
-        return self.valid
+    __bool__ = valid.fget

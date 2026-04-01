@@ -1,5 +1,5 @@
 """
-Trade and interact with steam market, webapi, guard.
+Manage Steam sessions, Guard, Market, trade offers and more.
 """
 
 # from .exceptions import *
@@ -21,7 +21,7 @@ Trade and interact with steam market, webapi, guard.
 #     EconItem,
 #     Confirmation,
 #     MarketListingItem,
-#     MyMarketListing,
+#     UserMarketListing,
 #     BuyOrder,
 #     MarketHistoryListing,
 #     MarketHistoryListingItem,

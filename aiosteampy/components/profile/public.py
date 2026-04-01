@@ -3,18 +3,16 @@ from datetime import datetime
 from ...constants import STEAM_URL
 from ...id import SteamID
 from ...transport import BaseSteamTransport
+from .._base import BasePublicComponent
 from .models import MiniProfileBadge, MiniProfileData, ProfileAliasHistoryEntry
 
 PROFILE_ALIAS_TIME_FORMAT = "%d %b, %Y @ %I:%M%p"
 
 
-class ProfilePublicComponent:
+class ProfilePublicComponent(BasePublicComponent):
     """Component responsible for working with `Steam` profile and related data."""
 
-    __slots__ = ("_transport",)
-
-    def __init__(self, transport: BaseSteamTransport):
-        self._transport = transport
+    __slots__ = ()
 
     async def get_user_mini_profile(self, user_id: SteamID) -> MiniProfileData:
         """
@@ -62,7 +60,7 @@ class ProfilePublicComponent:
         if isinstance(obj, str):  # alias
             url = STEAM_URL.COMMUNITY / f"id/{obj}"
         else:
-            url = STEAM_URL.COMMUNITY / f"profiles/{obj.id64}"
+            url = STEAM_URL.COMMUNITY / f"profiles/{obj}"
 
         r = await self._transport.request("GET", url / "ajaxaliases", redirects=True, response_mode="json")
 

@@ -44,8 +44,7 @@ class ConfirmationRequired(SteamError):
     """Any confirmation is required to continue."""
 
 
-# TODO those two need to be refactored
-class NeedMobileConfirmation(ConfirmationRequired):
+class MobileConfirmationRequired(ConfirmationRequired):
     """Mobile device confirmation is required."""
 
     def __init__(self, conf_key: int | str):

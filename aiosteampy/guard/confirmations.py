@@ -5,7 +5,10 @@ from itertools import batched
 from typing import Literal, overload
 
 from ..app import AppContext
+
+# as components will be exposed at the top level anyway we can do runtime import here
 from ..components.market import UserMarketListing
+from ..components.trade import TradeOffer
 from ..constants import STEAM_URL, EResult
 from ..exceptions import EResultError
 from ..id import SteamID
@@ -36,7 +39,7 @@ class SteamConfirmations:
         self._session = session
         self._signer = signer
 
-        self._device_id = generate_device_id(self._session.steam_id.id64) if device_id is None else device_id
+        self._device_id = generate_device_id(self._session.steam_id) if device_id is None else device_id
 
     @property
     def signer(self) -> TwoFactorSigner:
@@ -52,7 +55,7 @@ class SteamConfirmations:
         conf_key, ts = self._signer.gen_confirmation_key(tag=tag)
         return {
             "p": self._device_id,
-            "a": self._session.steam_id.id64,
+            "a": self._session.steam_id,
             "k": conf_key,
             "t": ts,
             "m": "react",  # or mobile?
@@ -220,8 +223,8 @@ class SteamConfirmations:
         """
         Perform batch action with multiple confirmations.
 
-        :param confs: iterable with confirmations that you wand to proceed.
-        :param accept: ``True`` if you want to accept confirmation, ``False`` otherwise.
+        :param confs: confirmations that you wand to proceed.
+        :param accept: whether confirmations should be accepted or canceled otherwise.
         :raises EResultError: ordinary reasons.
         :raises TransportError: ordinary reasons.
         """
@@ -289,7 +292,7 @@ class SteamConfirmations:
         app_ctx: AppContext | None = None,
     ) -> Confirmation:
         """
-        Perform sell listing confirmation.
+        Perform `sell listing` confirmation.
 
         :param obj: ``UserMarketListing``, ``EconItem`` that you listed, `listing id` or `asset id`.
         :param app_ctx: ``AppContext`` of item. Required when ``obj`` is `asset id`.
@@ -315,12 +318,35 @@ class SteamConfirmations:
         if conf := await self.get(key, details=details):
             await self.accept(conf)
             return conf
-        else:
-            raise KeyError(f"No confirmation found for listing: {key}")
+        raise KeyError(f"No confirmation found for listing: {key}")
 
     async def confirm_api_key_request(self, req_id: int) -> Confirmation:
-        """Confirm `Steam Web API` key registration request."""
+        """
+        Confirm `Steam Web API` key registration.
 
-        conf = await self.get(req_id)
-        await self.accept(conf)
-        return conf
+        :param req_id: `request id` of registration request.
+        :raises KeyError: if confirmation not found.
+        :raises EResultError: ordinary reasons.
+        :raises TransportError: ordinary reasons.
+        """
+
+        if conf := await self.get(req_id):
+            await self.accept(conf)
+            return conf
+        raise KeyError(f"No confirmation found for `Steam Web API` request: {req_id}")
+
+    async def confirm_trade_offer(self, obj: int | TradeOffer) -> Confirmation:
+        """
+        Confirm `trade offer` countering or sending.
+
+        :param obj: ``TradeOffer`` or `trade offer id`.
+        :raises KeyError: if confirmation not found.
+        :raises EResultError: ordinary reasons.
+        :raises TransportError: ordinary reasons.
+        """
+
+        trade_offer_id = obj.trade_offer_id if isinstance(obj, TradeOffer) else obj
+        if conf := await self.get(trade_offer_id):
+            await self.accept(conf)
+            return conf
+        raise KeyError(f"No confirmation found for trade offer: {trade_offer_id}")

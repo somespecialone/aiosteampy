@@ -9,14 +9,14 @@ from ...constants import STEAM_URL, Currency, EResult
 from ...exceptions import (
     EmailConfirmationRequired,
     EResultError,
-    NeedMobileConfirmation,
+    MobileConfirmationRequired,
 )
 from ...id import SteamID
 from ...models import EconItem, ItemDescription
 from ...session import SteamSession
 from ...transport import BaseSteamTransport, TransportResponse, TransportResponseError
 from ...utils import create_ident_code
-from .._common import ItemDescriptionsMap, confirmations_required
+from .._base import ItemDescriptionsMap
 from ..state import SteamState, WalletInfo
 
 if TYPE_CHECKING:  # decouple components from guard
@@ -53,12 +53,7 @@ class MarketComponent(MarketPublicComponent):
 
     _state: SteamState
 
-    def __init__(
-        self,
-        session: SteamSession,
-        state: SteamState,
-        confirmation: "SteamConfirmations | None" = None,
-    ):
+    def __init__(self, session: SteamSession, state: SteamState, confirmation: "SteamConfirmations | None" = None):
         super().__init__(session.transport, state)
 
         self._session = session
@@ -117,7 +112,7 @@ class MarketComponent(MarketPublicComponent):
                     context_id=int(l_data["asset"]["contextid"]),
                     asset_id=int(l_data["asset"]["id"]),
                     unowned_id=int(l_data["asset"]["unowned_id"]) if "unowned_id" in l_data["asset"] else None,
-                    # owner_id=self.steam_id,
+                    # owner=self._session.steam_id,
                     market_id=int(l_data["listingid"]),
                     unowned_context_id=(
                         int(l_data["asset"]["unowned_contextid"]) if "unowned_contextid" in l_data["asset"] else None
@@ -378,7 +373,7 @@ class MarketComponent(MarketPublicComponent):
         :raises ValueError: item is not marketable, wrong arguments combination or types.
         :raises EResultError: ordinary reasons.
         :raises TransportError: ordinary reasons.
-        :raises NeedMobileConfirmation: action requires mobile app confirmation.
+        :raises MobileConfirmationRequired: action requires mobile app confirmation.
         :raises EmailConfirmationRequired: action requires email confirmation.
         """
 
@@ -424,7 +419,7 @@ class MarketComponent(MarketPublicComponent):
             MARKET_URL / "sellitem/",
             data=data,
             # there must be profile alias, but who cares
-            headers={"Referer": str(STEAM_URL.COMMUNITY / f"profiles/{self._session.steam_id.id64}/inventory")},
+            headers={"Referer": str(STEAM_URL.COMMUNITY / f"profiles/{self._session.steam_id}/inventory")},
             response_mode="json",
         )
         rj: dict = r.content
@@ -432,7 +427,7 @@ class MarketComponent(MarketPublicComponent):
         if rj.get("needs_mobile_confirmation"):
             if self._conf is None:
                 conf_key = create_ident_code(asset_id, app_ctx.context_id, app_ctx.app.id)
-                raise NeedMobileConfirmation(conf_key)
+                raise MobileConfirmationRequired(conf_key)
 
             conf = await self._conf.confirm_sell_listing(asset_id, app_ctx)
             return conf.creator_id  # listing id
@@ -499,7 +494,7 @@ class MarketComponent(MarketPublicComponent):
         :return: `buy order id` or ``BuyOrder``.
         :raises EResultError: ordinary reasons.
         :raises TransportError: ordinary reasons.
-        :raises NeedMobileConfirmation: action requires mobile app confirmation.
+        :raises MobileConfirmationRequired: action requires mobile app confirmation.
         """
 
         # flow:
@@ -546,7 +541,7 @@ class MarketComponent(MarketPublicComponent):
             confirmation_id = int(rj["confirmation"]["confirmation_id"])
 
             if self._conf is None:
-                raise NeedMobileConfirmation(confirmation_id)
+                raise MobileConfirmationRequired(confirmation_id)
 
             conf = await self._conf.get(confirmation_id)
             await self._conf.accept(conf)
@@ -678,7 +673,7 @@ class MarketComponent(MarketPublicComponent):
             converted currency of ``MarketListing`` is different from wallet currency.
         :raises InsufficientBalance: not enough money in wallet.
         :raises ListingRemoved: listing has been removed from market.
-        :raises NeedMobileConfirmation: action requires confirmation.
+        :raises MobileConfirmationRequired: action requires confirmation.
         """
 
         # flow: same as in creating buy order
@@ -750,7 +745,7 @@ class MarketComponent(MarketPublicComponent):
             confirmation_id = int(rj["confirmation"]["confirmation_id"])
 
             if self._conf is None:
-                raise NeedMobileConfirmation(confirmation_id)  # are we get only mobile confirmation?
+                raise MobileConfirmationRequired(confirmation_id)  # are we get only mobile confirmation?
 
             conf = await self._conf.get(confirmation_id)
             await self._conf.accept(conf)

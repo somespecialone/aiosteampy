@@ -30,4 +30,4 @@ class WalletComponent:
         :raises TransportError: ordinary reasons.
         """
 
-        return self._state.update_wallet_info()
+        return self._state.sync_wallet_info()

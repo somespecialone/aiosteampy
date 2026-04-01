@@ -8,7 +8,7 @@ from pathlib import Path
 from yarl import URL
 
 from ...constants import STEAM_URL, Currency, EResult, Language
-from ...exceptions import EResultError, NeedMobileConfirmation, SteamError
+from ...exceptions import EResultError, MobileConfirmationRequired, SteamError
 from ...id import SteamID
 from ...session import SteamSession
 from ...transport import BaseSteamTransport, TransportResponse
@@ -49,11 +49,20 @@ class ProfileComponent(ProfilePublicComponent):
     @property
     def url(self) -> URL:
         """
-        Profile `url` of current user.
+        `Profile url` of current user.
         If ``alias`` is set, return `custom url`, e.g `https://steamcommunity.com/id/<ALIAS>`.
         """
 
         return self._state.profile_url
+
+    # for convenience
+    def set_alias(self, alias: str) -> Awaitable[None]:
+        """
+        Set custom ``alias`` of current user `profile url`, e.g `https://steamcommunity.com/id/<ALIAS>`.
+        This method is a shortcut for ``edit_info(custom_url=alias)``.
+        """
+
+        return self.edit_info(custom_url=alias)
 
     async def get_info(self) -> ProfileData:
         """Get current user profile info including general properties and privacy settings."""
@@ -131,7 +140,7 @@ class ProfileComponent(ProfilePublicComponent):
         profile_data: ProfileData | None = None,
     ):
         """
-        Edit current user profile general info.
+        Edit current user `profile general info`.
 
         :param persona_name: nickname.
         :param real_name: real name of the user.
@@ -141,7 +150,7 @@ class ProfileComponent(ProfilePublicComponent):
         :param city: profile city.
         :param custom_url: custom url `ALIAS` (`https://steamcommunity.com/id/<ALIAS>`). E.g. `somespecialone`.
         :param hide_profile_award: whether to hide profile awards.
-        :param profile_data: profile data with default values. If not provided, will be fetched from the server.
+        :param profile_data: `profile data` with default values. If not provided, will be fetched from the server.
         :raises EResultError: ordinary reasons.
         :raises TransportError: ordinary reasons.
         :raises ValueError: required arguments not provided.
@@ -192,9 +201,8 @@ class ProfileComponent(ProfilePublicComponent):
             headers={"Referer": str(self.url / "edit/settings")},
             response_mode="json",
         )
-        rj: dict = r.content
 
-        EResultError.check_data(rj)
+        EResultError.check_data(r.content)
 
     async def edit_privacy_settings(
         self,
@@ -291,12 +299,11 @@ class ProfileComponent(ProfilePublicComponent):
             headers={"Referer": str(self.url / "edit/settings")},
             response_mode="json",
         )
-        rj: dict = r.content
 
-        EResultError.check_data(rj)
+        EResultError.check_data(r.content)
 
     def make_public(self) -> Awaitable[None]:
-        """Make current user profile fully public."""
+        """Make current user profile *fully public*."""
 
         return self.edit_privacy_settings(
             inventory=3,
@@ -309,7 +316,7 @@ class ProfileComponent(ProfilePublicComponent):
         )
 
     def make_private(self) -> Awaitable[None]:
-        """Make current user profile private."""
+        """Make current user profile *private*."""
 
         return self.edit_privacy_settings(
             inventory=1,
@@ -348,7 +355,7 @@ class ProfileComponent(ProfilePublicComponent):
 
         data = {
             "type": "player_avatar_image",
-            "sId": str(self._session.steam_id.id64),
+            "sId": str(self._session.steam_id),
             "sessionid": self._session.session_id,
             "doSub": "1",
             "json": "1",
@@ -372,21 +379,6 @@ class ProfileComponent(ProfilePublicComponent):
                 rj["AvatarUploadImagesData"]["full"],
             ),
             rj["message"],
-        )
-
-    # TODO move to trade
-    def trade_acknowledge(self) -> Awaitable[TransportResponse]:
-        """
-        Acknowledge *trade protection rules*.
-        Required only once before you can make trade offers.
-        """
-
-        return self._transport.request(
-            "POST",
-            STEAM_URL.COMMUNITY / "trade/new/acknowledge",
-            data={"sessionid": self._session.session_id, "message": 1},
-            headers={"Referer": str(self.url / "tradeoffers/"), "Origin": str(STEAM_URL.COMMUNITY)},
-            response_mode="meta",
         )
 
     def get_name_history(self) -> Awaitable[list[ProfileAliasHistoryEntry]]:

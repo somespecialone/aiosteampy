@@ -9,7 +9,7 @@ from ...exceptions import EResultError
 from ...models import AssetProperty, ItemAction, ItemDescription, ItemDescriptionEntry, ItemTag
 from ...transport import BaseSteamTransport, TransportError, format_http_date, parse_http_date
 from ...utils import create_ident_code
-from .._common import EconMixin, ItemDescriptionsMap
+from .._base import BasePublicComponent, EconMixin, ItemDescriptionsMap
 from ..state import PublicSteamState
 from .models import (
     ActivityEntry,
@@ -39,6 +39,7 @@ ITEM_NAME_ID_RE = re.compile(r"Market_LoadOrderSpread\(\s?(\d+)\s?\)")
 
 # Steam current limit
 LISTING_COUNT = 10
+SEARCH_COUNT = 10
 
 SortColumn = Literal["price", "name", "quantity", "popular", "default"]
 SortDir = Literal["asc", "desc"]
@@ -51,13 +52,14 @@ SEARCH_RENDER_URL = SEARCH_URL / "render/"
 CUSTOM_API_HEADERS = {"X-Prototype-Version": "1.7", "X-Requested-With": "XMLHttpRequest"}
 
 
-class MarketPublicComponent(EconMixin):
+class MarketPublicComponent(BasePublicComponent, EconMixin):
     """Component with public `Steam Market` methods. Available without authentication."""
 
-    __slots__ = ("_transport", "_state")
+    __slots__ = ("_state",)
 
     def __init__(self, transport: BaseSteamTransport, state: PublicSteamState):
-        self._transport = transport
+        super().__init__(transport)
+
         self._state = state
 
     @staticmethod
@@ -508,7 +510,7 @@ class MarketPublicComponent(EconMixin):
 
     # without "async" for proper type hinting in VsCode and PyCharm
     @overload
-    def item_listings(
+    def listings(
         self,
         obj: ItemDescription,
         *,
@@ -519,7 +521,7 @@ class MarketPublicComponent(EconMixin):
     ) -> AsyncGenerator[MarketListings, None]: ...
 
     @overload
-    def item_listings(
+    def listings(
         self,
         obj: str,
         app: App,
@@ -530,7 +532,7 @@ class MarketPublicComponent(EconMixin):
         if_modified_since: datetime | str | None = ...,
     ) -> AsyncGenerator[MarketListings, None]: ...
 
-    async def item_listings(
+    async def listings(
         self,
         obj: str | ItemDescription,
         app: App | None = None,
@@ -539,7 +541,7 @@ class MarketPublicComponent(EconMixin):
         start: int = 0,
         count: int = LISTING_COUNT,
         if_modified_since: datetime | str | None = None,
-    ) -> AsyncGenerator[MarketListings, None]:
+    ) -> AsyncGenerator[list[MarketListing], None]:
         """
         Get iterator of item listings from `Steam Market`.
 
@@ -551,8 +553,7 @@ class MarketPublicComponent(EconMixin):
         :param start: offset position.
         :param query: raw search query.
         :param if_modified_since: `If-Modified-Since` header value.
-        :return: ``AsyncGenerator`` that yields list of ``MarketListing`` as page, total listings count,
-            datetime object when resource was last modified.
+        :return: ``AsyncGenerator`` that yields list of ``MarketListing``.
         :raises EResultError: ordinary reasons.
         :raises TransportError: ordinary reasons.
         :raises RateLimitExceeded: rate limit has been hit.
@@ -578,7 +579,7 @@ class MarketPublicComponent(EconMixin):
             total_count = listings.total
             start += count
 
-            yield listings
+            yield listings.listings
 
     @overload
     async def get_item_name_id(self, obj: ItemDescription) -> int: ...
@@ -669,8 +670,8 @@ class MarketPublicComponent(EconMixin):
         app: App | None = None,
         *,
         start: int = 0,
-        count: int = 10,
-        descriptions: int = False,
+        count: int = SEARCH_COUNT,
+        descriptions: bool = False,
         sort_column: SortColumn = "default",
         sort_dir: SortDir = "desc",
         filters: str | Mapping[str, str | Sequence[str]] = "",
@@ -694,7 +695,7 @@ class MarketPublicComponent(EconMixin):
         :param app: `Steam` app.
         :param start: start result position.
         :param count: total count of results on page.
-        :param descriptions: to search in descriptions.
+        :param descriptions: search in descriptions.
         :param sort_column: column to sort by.
         :param sort_dir: direction to sort by.
         :param filters: app search filters.
@@ -774,16 +775,16 @@ class MarketPublicComponent(EconMixin):
 
     async def search_results(
         self,
-        query="",
+        query: str = "",
         app: App | None = None,
         *,
-        start=0,
-        count=10,
-        descriptions=False,
+        start: int = 0,
+        count: int = SEARCH_COUNT,
+        descriptions: bool = False,
         sort_column: SortColumn = "default",
         sort_dir: SortDir = "desc",
         filters: str | Mapping[str, str | Sequence[str]] = "",
-    ) -> AsyncGenerator[MarketSearchResult, None]:
+    ) -> AsyncGenerator[list[MarketSearchItem], None]:
         """
         Get search results from `Steam Market`.
         Return async iterator to paginate over market search result pages.
@@ -802,7 +803,7 @@ class MarketPublicComponent(EconMixin):
         :param app: `Steam` app.
         :param start: start result position.
         :param count: total count of results on page.
-        :param descriptions: to search in descriptions.
+        :param descriptions: search in descriptions.
         :param sort_column: column to sort by.
         :param sort_dir: direction to sort by.
         :param filters: app search filters.
@@ -831,7 +832,7 @@ class MarketPublicComponent(EconMixin):
             total_count = search_results.total
             start += count
 
-            yield search_results
+            yield search_results.items
 
     async def get_newly_listed(self, *, if_modified_since: datetime | str | None = None) -> NewlyListedItems:
         """

@@ -158,21 +158,6 @@ class Language(StrEnum):
     VIETNAMESE = "vietnamese"
 
 
-class TradeOfferStatus(IntEnum):
-    INVALID = 1
-    ACTIVE = 2
-    ACCEPTED = 3
-    COUNTERED = 4
-    EXPIRED = 5
-    CANCELED = 6
-    DECLINED = 7
-    INVALID_ITEMS = 8
-    CONFIRMATION_NEED = 9
-    CANCELED_BY_SECONDARY_FACTOR = 10
-    STATE_IN_ESCROW = 11
-    TRADE_REVERSED = 12
-
-
 # TODO need rework
 class STEAM_URL:
     # domains with dedicated access tokens
@@ -183,7 +168,6 @@ class STEAM_URL:
     CHECKOUT = URL("https://checkout.steampowered.com")
 
     STATIC = URL("https://community.akamai.steamstatic.com")
-    TRADE = COMMUNITY / "tradeoffer"  # TODO remove after trade comp
     WEB_API = URL("https://api.steampowered.com")
 
 

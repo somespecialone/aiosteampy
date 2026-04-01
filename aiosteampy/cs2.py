@@ -23,14 +23,16 @@ def make_inspect_link(inspect_key: str) -> str:
     return INSPECT_LINK_BASE + inspect_key
 
 
+# https://steamapi.xpaw.me/IEconService#GetAssetPropertySchema
 class AssetPropertyId(IntEnum):
-    PATTERN_TEMPLATE = 1  # items only
+    PATTERN_TEMPLATE = 1  # seed
     WEAR_RATING = 2  # float value
-    CHARM_PATTERN_TEMPLATE = 3
-    STICKER_WEAR_RATING = 4  # from asset accessories
+    CHARM_TEMPLATE = 3  # charm seed(pattern)
+    STICKER_SCRAPE_LEVEL = 4  # sticker wear
     NAME_TAG = 5
     ITEM_CERTIFICATE = 6  # now we know what this is
     """Inspect key of item."""
+    FINISH_CATALOG = 7
 
     @classmethod
     def get(cls, value: int) -> Self | None:
@@ -166,7 +168,7 @@ class ItemContext:
     @staticmethod
     def _create_sticker(sticker_meta: ItemAccessoryMeta, accessory: "AssetAccessory") -> Sticker:
         w_prop = accessory.parent_relationship_properties[0]
-        assert AssetPropertyId(w_prop.id) is AssetPropertyId.STICKER_WEAR_RATING
+        assert AssetPropertyId(w_prop.id) is AssetPropertyId.STICKER_SCRAPE_LEVEL
 
         # float will round to 16 digits from original 18
         return Sticker(class_id=accessory.class_id, meta=sticker_meta, wear=float(w_prop.value))
@@ -188,7 +190,7 @@ class ItemContext:
             assert accs.standalone_properties
 
             p_prop = accs.standalone_properties[0]
-            assert AssetPropertyId(p_prop.id) is AssetPropertyId.CHARM_PATTERN_TEMPLATE
+            assert AssetPropertyId(p_prop.id) is AssetPropertyId.CHARM_TEMPLATE
 
             charm = Charm(class_id=accs.class_id, meta=descr_ctx.charm, pattern=int(p_prop.value))
 

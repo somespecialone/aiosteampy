@@ -4,7 +4,7 @@ from collections.abc import Awaitable
 from ..id import SteamID
 from ..webapi import SteamWebAPIClient
 from ..webapi.services.twofactor import CTwoFactorTimeResponse, TwoFactorServiceClient
-from .utils import generate_auth_code, generate_confirmation_key, generate_device_id, sing_auth_request
+from .utils import generate_auth_code, generate_confirmation_key, generate_device_id, sign_auth_request
 
 
 class TwoFactorSigner:
@@ -82,4 +82,4 @@ class TwoFactorSigner:
         :param client_id: client id. Also can be extracted from challenge QR.
         """
 
-        return sing_auth_request(self._steam_id.id64, self._shared_secret, version, client_id)
+        return sign_auth_request(self._steam_id, self._shared_secret, version, client_id)

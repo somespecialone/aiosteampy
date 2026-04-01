@@ -101,7 +101,8 @@ class MarketListingItem(EconItem):
     unowned_context_id: int
 
     amount: int = 1  # listing item always have amount eq 1
-    owner_id: None = None  # always 0 for listings from market, so let it be None
+    # always 0 for listings from market, we can set user id for user listings, but let it be None
+    owner: None = None
     accessories: None = None  # no data
 
     @property
@@ -184,10 +185,10 @@ class MarketListing(BaseMarketListing):
 
 @dataclass(slots=True)
 class MarketListings(CachedResponse):
-    """Container for market listings data."""
+    """Container for `market listings` data."""
 
     listings: list[MarketListing]
-    """List of market listings."""
+    """List of `market listings`."""
     total: int
     """Total count of `market listings`."""
 
@@ -212,7 +213,7 @@ class MarketSearchItem(NamedTuple):
 
 
 class MarketSearchResult(NamedTuple):
-    """Container for market search result data."""
+    """Container for `market search result` data."""
 
     items: list[MarketSearchItem]
     total: int
@@ -224,13 +225,15 @@ class UserMarketListing(BaseMarketListing):
     """Representation of listing created by current user at `Steam Market`."""
 
     lister: SteamID  # there is "steamid_lister" in data so let it be
-    """``SteamID`` of listing `lister`."""
+    """``SteamID`` of `lister`."""
 
     created_at: datetime
-    """When market listing was created."""
+    """When `listing` was created."""
 
     status: MarketListingStatus
+    """Current status of the `listing`."""
     active: bool
+    """If `listing` is still active."""
 
     # fields that can be useful
     # item_expired: int

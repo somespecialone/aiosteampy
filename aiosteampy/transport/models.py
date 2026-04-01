@@ -2,7 +2,7 @@ from collections.abc import Mapping
 from dataclasses import asdict, dataclass, field
 from datetime import UTC, datetime
 from http.cookies import Morsel
-from typing import Any, Literal, Self, TypedDict
+from typing import Any, Literal, Self, Sequence, TypedDict
 
 from yarl import URL
 
@@ -100,6 +100,7 @@ class Cookie:
 class TransportResponse:
     """Minimalistic HTTP response model."""
 
+    # TODO it is good to have light request info container (method, url, etc)
     url: URL
     """Requested URL."""
     status: int
@@ -114,7 +115,7 @@ class TransportResponse:
     content: Content = None
     """Response content."""
 
-    redirects: tuple[Self, ...] = ()
+    redirects: Sequence[Self] = ()
     """Sequence of redirect responses if applicable."""
 
     @property

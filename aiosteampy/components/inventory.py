@@ -12,7 +12,7 @@ from ..models import AssetAccessory, AssetProperty, EconItem
 from ..session import SteamSession
 from ..transport import BaseSteamTransport, TransportResponseError, Unauthenticated
 from ..utils import create_ident_code
-from ._common import EconMixin, ItemDescriptionsMap
+from ._base import EconMixin, ItemDescriptionsMap
 from .state import PublicSteamState, SteamState
 
 # Steam current limit
@@ -63,7 +63,7 @@ class InventoryPublicComponent(EconMixin):
             EconItem(
                 context_id=int(a_data["contextid"]),
                 asset_id=int(a_data["assetid"]),
-                owner_id=owner_id,
+                owner=owner_id,
                 amount=int(a_data["amount"]),
                 description=item_descriptions_map[
                     create_ident_code(a_data["instanceid"], a_data["classid"], a_data["appid"])
@@ -98,7 +98,7 @@ class InventoryPublicComponent(EconMixin):
         :raises TransportError: ordinary reasons.
         """
 
-        inv_url = INVENTORY_URL / f"{user_id.id64}/"
+        inv_url = INVENTORY_URL / f"{user_id}/"
         params = {
             "l": self._state.language,
             "count": count,
@@ -145,7 +145,7 @@ class InventoryPublicComponent(EconMixin):
         *,
         start_asset_id: int | None = None,
         count: int = INV_COUNT,
-    ) -> AsyncGenerator[Inventory, None]:
+    ) -> AsyncGenerator[list[EconItem], None]:
         """
         Get async iterator of user inventory pages.
 
@@ -153,8 +153,7 @@ class InventoryPublicComponent(EconMixin):
         :param app_ctx: ``AppContext`` of requested inventory.
         :param start_asset_id: for partial inventory fetch.
         :param count: page size.
-        :return: ``AsyncGenerator`` that yields list of ``EconItem``, total count of items in inventory,
-            `last asset id` of the list.
+        :return: ``AsyncGenerator`` that yields list of ``EconItem``.
         :raises SteamError: inventory is private.
         :raises EResultError: ordinary reasons.
         :raises TransportError: ordinary reasons.
@@ -176,7 +175,7 @@ class InventoryPublicComponent(EconMixin):
             start_asset_id = inventory.last_asset_id
             more_items = bool(start_asset_id)
 
-            yield inventory
+            yield inventory.items
 
     @overload
     async def get_user_item(
@@ -202,7 +201,7 @@ class InventoryPublicComponent(EconMixin):
         obj: int | Callable[[EconItem], bool],
     ) -> EconItem | None:
         """
-        Fetch and iterate over inventory item pages of user until find one that satisfies passed arguments.
+        Get and iterate over inventory item pages of user until find one that satisfies passed arguments.
 
         :param user_id: ``SteamID`` of user which inventory is requested.
         :param app_ctx: ``AppContext`` of requested inventory.
@@ -220,9 +219,9 @@ class InventoryPublicComponent(EconMixin):
             def predicate(i: EconItem):
                 return i.asset_id == obj
 
-        async for data in self.user_inventory(user_id, app_ctx):
+        async for items in self.user_inventory(user_id, app_ctx):
             with suppress(StopIteration):
-                return next(filter(predicate, data.items))
+                return next(filter(predicate, items))
 
 
 class InventoryComponent(InventoryPublicComponent):
@@ -280,7 +279,7 @@ class InventoryComponent(InventoryPublicComponent):
         *,
         start_asset_id: int | None = None,
         count: int = INV_COUNT,
-    ) -> AsyncGenerator[Inventory, None]:
+    ) -> AsyncGenerator[list[EconItem], None]:
         """
         Get async iterator of current authenticated user inventory pages.
 
@@ -297,18 +296,20 @@ class InventoryComponent(InventoryPublicComponent):
 
         _item_descriptions_map = {}  # shared descriptions instances across calls
 
-        more_items = True
-        while more_items:
-            inventory = await self.get(
+        # TODO private check can be pushed out to a func or context
+        try:
+            async for items in self.user_inventory(
+                self._session.steam_id,
                 app_ctx,
                 start_asset_id=start_asset_id,
                 count=count,
-                _item_descriptions_map=_item_descriptions_map,
-            )
-            start_asset_id = inventory.last_asset_id
-            more_items = bool(start_asset_id)
-
-            yield inventory
+            ):
+                yield items
+        except SteamError as e:
+            if "private" in (e.args[0] if e.args else ()):
+                raise Unauthenticated from e  # inventory of self cannot be private
+            else:
+                raise e
 
     @overload
     async def get_inventory_item(self, app_ctx: AppContext, obj: int) -> EconItem | None: ...
@@ -316,11 +317,11 @@ class InventoryComponent(InventoryPublicComponent):
     @overload
     async def get_inventory_item(self, app_ctx: AppContext, obj: Callable[[EconItem], bool]) -> EconItem | None: ...
 
-    def get_inventory_item(
+    async def get_inventory_item(
         self,
         app_ctx: AppContext,
         obj: int | Callable[[EconItem], bool],
-    ) -> Awaitable[EconItem | None]:
+    ) -> EconItem | None:
         """
         Fetch and iterate over inventory item pages of current authenticated
         user until find one that satisfies passed arguments.
@@ -334,4 +335,10 @@ class InventoryComponent(InventoryPublicComponent):
         :raises Unauthenticated: Auth cookies or token are missing, expired or invalid.
         """
 
-        return self.get_user_item(self._session.steam_id, app_ctx, obj)
+        try:
+            return await self.get_user_item(self._session.steam_id, app_ctx, obj)
+        except SteamError as e:
+            if "private" in (e.args[0] if e.args else ()):
+                raise Unauthenticated from e  # inventory of self cannot be private
+            else:
+                raise e

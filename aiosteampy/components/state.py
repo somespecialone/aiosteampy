@@ -5,19 +5,15 @@ import json
 import re
 from contextlib import suppress
 from datetime import datetime
-from typing import TYPE_CHECKING, NamedTuple, Self
-from urllib.parse import quote
+from typing import NamedTuple, Self
 
 from yarl import URL
 
 from ..constants import STEAM_URL, Currency, EResult, Language
-from ..exceptions import EResultError, NeedMobileConfirmation, SteamError
+from ..exceptions import EResultError, MobileConfirmationRequired, SteamError
 from ..session import SteamSession
 from ..transport import BaseSteamTransport, Cookie, format_http_date
-
-if TYPE_CHECKING:  # decouple components from guard
-    from ..guard.confirmations import SteamConfirmations
-
+from ._base import BasePublicComponent
 
 LANG_COOKIE = "Steam_Language"
 
@@ -29,10 +25,10 @@ API_KEY_ERROR_RE = re.compile(r"<div id=\"bodyContents_lo\">\s+?<p>(.+)</p>")
 WALLET_INFO_RE = re.compile(r"g_rgWalletInfo = (.+);")
 
 
-# single source of truth
+# single source of truth. Contain only sync logic
 # TODO need load/dump methods
-class PublicSteamState:
-    __slots__ = ("_transport", "_country", "_currency", "_language")
+class PublicSteamState(BasePublicComponent):
+    __slots__ = ("_country", "_currency", "_language")
 
     def __init__(
         self,
@@ -52,7 +48,8 @@ class PublicSteamState:
         :param language: language of `Steam` responses, descriptions, et cetera.
         """
 
-        self._transport = transport
+        super().__init__(transport)
+
         self._country = country
         self._currency = currency
 
@@ -168,7 +165,6 @@ class SteamState(PublicSteamState):
     def __init__(
         self,
         session: SteamSession,
-        confirmations: "SteamConfirmations | None" = None,
         *,
         country: str = "UA",
         currency: Currency = Currency.USD,
@@ -181,7 +177,6 @@ class SteamState(PublicSteamState):
         Handle state of authenticated user.
 
         :param session: authenticated session.
-        :param confirmations: confirmations component.
         :param country: 2-letter country code.
         :param currency: currency of requested data.
         :param language: language of `Steam` responses, descriptions, et cetera.
@@ -193,7 +188,6 @@ class SteamState(PublicSteamState):
         super().__init__(session.transport, country=country, currency=currency, language=language)
 
         self._session = session
-        self._conf = confirmations
 
         self._web_api_key = web_api_key
         self._trade_token = trade_token
@@ -206,11 +200,6 @@ class SteamState(PublicSteamState):
         self._fee_base = 0  # wallet_fee_base
 
     @property
-    def confirmations(self) -> "SteamConfirmations | None":
-        """`Steam` mobile confirmations manager."""
-        return self._conf
-
-    @property
     def web_api_key(self) -> str | None:
         return self._web_api_key
 
@@ -218,13 +207,6 @@ class SteamState(PublicSteamState):
     def trade_token(self) -> str | None:
         """Trade `token` of current user."""
         return self._trade_token
-
-    @property
-    def trade_url(self) -> URL | None:
-        """Trade `url` of current user."""
-
-        if self._trade_token:
-            return STEAM_URL.TRADE / "new/" % {"partner": self._session.steam_id.account_id, "token": self._trade_token}
 
     @property
     def alias(self) -> str | None:
@@ -244,7 +226,7 @@ class SteamState(PublicSteamState):
         if self._alias:
             return STEAM_URL.COMMUNITY / f"id/{self._alias}"
         else:
-            return STEAM_URL.COMMUNITY / f"profiles/{self._session.steam_id.id64}"
+            return STEAM_URL.COMMUNITY / f"profiles/{self._session.steam_id}"
 
     @property
     def steam_fee(self) -> float:
@@ -284,11 +266,11 @@ class SteamState(PublicSteamState):
             response_mode="meta",
         )
 
-    async def update_api_key(self) -> str | None:
+    async def sync_api_key(self) -> str | None:
         """
         Update `Steam Web API` key from `Steam`.
 
-        :return: api key or ``None`` if not registered yet.
+        :return: api key or ``None`` if not registered.
         :raises TransportError: ordinary reasons.
         :raises SteamError: unable to get api key.
         """
@@ -329,10 +311,9 @@ class SteamState(PublicSteamState):
 
         :param domain: on which domain api key will be registered.
         :param request_id: `confirmation id` of registration request.
-        :return: api key.
         :raises TransportError: ordinary reasons.
         :raises EResultError: ordinary reasons.
-        :raises NeedMobileConfirmation: action requires mobile app confirmation.
+        :raises MobileConfirmationRequired: action requires mobile app confirmation.
         """
 
         await self.revoke_api_key()  # revoke old one as browser do
@@ -349,7 +330,7 @@ class SteamState(PublicSteamState):
 
         if EResult(rj.get("success")) is EResult.PENDING and rj.get("requires_confirmation"):
             if self._conf is None:
-                raise NeedMobileConfirmation(rj["request_id"])
+                raise MobileConfirmationRequired(rj["request_id"])
 
             await self._conf.confirm_api_key_request(rj["request_id"])
 
@@ -364,7 +345,7 @@ class SteamState(PublicSteamState):
 
         return self._web_api_key
 
-    async def update_alias(self) -> str | None:
+    async def sync_alias(self) -> str | None:
         """Update profile ``alias`` from `Steam`."""
 
         r = await self._transport.request("GET", STEAM_URL.COMMUNITY / "my", redirects=False, response_mode="meta")
@@ -376,7 +357,7 @@ class SteamState(PublicSteamState):
 
         return self._alias
 
-    async def update_trade_token(self) -> str | None:
+    async def sync_trade_token(self) -> str | None:
         """Update ``trade_token`` from `Steam`."""
 
         r = await self._transport.request(
@@ -391,27 +372,13 @@ class SteamState(PublicSteamState):
 
         return self._trade_token
 
-    async def generate_new_trade_token(self) -> str:
-        """Generates new `trade url` alongside `token`. Will update ``trade_token``."""
-
-        r = await self._transport.request(
-            "POST",
-            self.profile_url / "tradeoffers/newtradeurl",
-            data={"sessionid": self._session.session_id},
-            response_mode="json",
-        )
-
-        self._trade_token = quote(r.content, safe="~()*!.'")  # https://stackoverflow.com/a/72449666/19419998
-
-        return self._trade_token
-
     # wallet method, but no better way to handle codependence :(
-    async def update_wallet_info(self) -> WalletInfo:
+    async def sync_wallet_info(self) -> WalletInfo:
         """Update country, currency and fees from `Steam`."""
 
         # get wallet info
         profile_url = self.profile_url
-        r = await self._session.transport.request(
+        r = await self._transport.request(
             "GET",
             profile_url / "inventory",
             headers={"Referer": str(profile_url)},
@@ -437,12 +404,12 @@ class SteamState(PublicSteamState):
     async def actualize(self):
         """Actualize component state for current user by updating them from `Steam`."""
 
-        async def update_api_key():  # skip if unavailable
+        async def sync_api_key():  # skip if unavailable
             with suppress(SteamError):
-                await self.update_api_key()
+                await self.sync_api_key()
 
         async with asyncio.TaskGroup() as tg:
-            tg.create_task(update_api_key())
-            tg.create_task(self.update_alias())
-            tg.create_task(self.update_trade_token())
-            tg.create_task(self.update_wallet_info())
+            tg.create_task(sync_api_key())
+            tg.create_task(self.sync_alias())
+            tg.create_task(self.sync_trade_token())
+            tg.create_task(self.sync_wallet_info())

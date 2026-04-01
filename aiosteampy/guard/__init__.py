@@ -15,4 +15,4 @@ from .exceptions import (
 from .guard import SteamGuard
 from .models import Confirmation, ConfirmationType, SteamGuardAccount
 from .signer import TwoFactorSigner
-from .utils import generate_auth_code, generate_confirmation_key, generate_device_id, sing_auth_request
+from .utils import generate_auth_code, generate_confirmation_key, generate_device_id, sign_auth_request

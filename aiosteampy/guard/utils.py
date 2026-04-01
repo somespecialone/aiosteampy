@@ -59,7 +59,7 @@ def generate_confirmation_key(identity_secret: str, tag: str, timestamp) -> str:
     return b64encode(hmac.new(b64decode(identity_secret), buff, digestmod=hashlib.sha1).digest()).decode()
 
 
-def sing_auth_request(steam_id64: int, shared_secret: str, version: int, client_id: int) -> bytes:
+def sign_auth_request(steam_id64: int, shared_secret: str, version: int, client_id: int) -> bytes:
     """Make signature for auth request."""
 
     signature_data = bytearray(18)

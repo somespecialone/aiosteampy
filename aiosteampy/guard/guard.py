@@ -68,7 +68,7 @@ class SteamGuard:
             raise ValueError("Both shared and identity secrets must be provided")
 
         self._session = session
-        self._device_id = device_id or generate_device_id(session.steam_id.id64)
+        self._device_id = device_id or generate_device_id(session.steam_id)
 
         if shared_secret:
             signer = TwoFactorSigner(session.steam_id, shared_secret, identity_secret, session.webapi, time_offset)
@@ -407,7 +407,7 @@ class SteamGuard:
                     "confirm_type": self._2fa_resp.confirm_type,
                     "fully_enrolled": self._2fa_finalized,
                     "Session": {
-                        "SteamID": account.steam_id.id64,
+                        "SteamID": account.steam_id,
                         "AccessToken": self._session.access_token.raw,
                         "RefreshToken": self._session.refresh_token.raw,
                         # if we don't obtained web cookies before, session will not have session id

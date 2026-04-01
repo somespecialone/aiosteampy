@@ -13,8 +13,18 @@ from ..models import (
     ItemDescriptionEntry,
     ItemTag,
 )
+from ..transport import BaseSteamTransport
 
 ItemDescriptionsMap = dict[str, ItemDescription]  # ident code : descr
+
+
+class BasePublicComponent:
+    """Base class for public components."""
+
+    __slots__ = ("_transport",)
+
+    def __init__(self, transport: BaseSteamTransport):
+        self._transport = transport
 
 
 class EconMixin:
@@ -111,13 +121,3 @@ class EconMixin:
     @classmethod
     def _parse_asset_accessories(cls, data: dict) -> tuple[AssetAccessory, ...]:
         return tuple(cls._create_accessory(a_data) for a_data in data.get("asset_accessories", ()) or ())
-
-
-def confirmations_required[F: Callable[..., Any]](func: F) -> F:
-    @wraps(func)
-    def wrapper(self, *args, **kwargs):  # too lazy to create protocol
-        if self._conf is None:
-            raise ValueError("Steam confirmations instance is required to use this method")
-        return func(self, *args, **kwargs)
-
-    return wrapper

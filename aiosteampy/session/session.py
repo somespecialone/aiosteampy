@@ -104,7 +104,7 @@ class SteamSession:
 
         3) **Restoration from refresh token**:
             - Create session instance with valid ``refresh_token``.
-            - Call ``refresh_access_token`` to request new access token if you need it.
+            - Call ``refresh_access_token`` to request new access token if needed.
 
         4) **Restoration with both tokens**
             - Create session instance with valid ``access_token`` and ``refresh_token``.

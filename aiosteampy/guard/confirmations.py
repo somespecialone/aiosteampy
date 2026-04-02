@@ -9,9 +9,8 @@ from ..app import AppContext
 # as components will be exposed at the top level anyway we can do runtime import here
 from ..components.market import UserMarketListing
 from ..components.trade import TradeOffer
-from ..constants import STEAM_URL, EResult
+from ..constants import STEAM_URL
 from ..exceptions import EResultError
-from ..id import SteamID
 from ..models import EconItem
 from ..session import SteamSession
 from ..transport import Unauthenticated
@@ -191,10 +190,10 @@ class SteamConfirmations:
 
     async def send(self, conf: Confirmation, accept: bool = True):
         """
-        Perform action with confirmation.
+        Perform action with `confirmation`.
 
-        :param conf: ``Confirmation`` that you want to proceed.
-        :param accept: ``True`` if you want to accept confirmation, ``False`` otherwise.
+        :param conf: `confirmation` for proceeding.
+        :param accept: whether to accept `confirmation`.
         :raises EResultError: ordinary reasons.
         :raises TransportError: ordinary reasons.
         """
@@ -221,9 +220,9 @@ class SteamConfirmations:
 
     async def send_multiple(self, confs: Iterable[Confirmation], accept: bool = True):
         """
-        Perform batch action with multiple confirmations.
+        Perform batch action with multiple `confirmations`.
 
-        :param confs: confirmations that you wand to proceed.
+        :param confs: `confirmations` for proceeding.
         :param accept: whether confirmations should be accepted or canceled otherwise.
         :raises EResultError: ordinary reasons.
         :raises TransportError: ordinary reasons.
@@ -294,7 +293,7 @@ class SteamConfirmations:
         """
         Perform `sell listing` confirmation.
 
-        :param obj: ``UserMarketListing``, ``EconItem`` that you listed, `listing id` or `asset id`.
+        :param obj: listed ``UserMarketListing``, ``EconItem``, `listing id` or `asset id`.
         :param app_ctx: ``AppContext`` of item. Required when ``obj`` is `asset id`.
         :return: processed ``Confirmation``.
         :raises KeyError: if confirmation not found.

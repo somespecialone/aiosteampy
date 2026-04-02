@@ -262,9 +262,8 @@ class SteamGuard:
         with ``export_account`` or ``export_mafile`` method from current instance.
 
         .. note::
-            It is worth mentioning, that **DATA BETTER BE SAVED ASAP**
+            It is worth mentioning that **DATA BETTER BE SAVED ASAP**
             to prevent possible loss after successful finalization.
-            You have been warned.
 
         :param activation_code: code from `Steam` received either by `SMS` or `email`.
         :return: activated account data.

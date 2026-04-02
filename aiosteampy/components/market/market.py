@@ -2,19 +2,18 @@ import re
 from collections.abc import AsyncGenerator, Awaitable
 from contextlib import suppress
 from datetime import datetime
-from typing import TYPE_CHECKING, Callable, Literal, overload
+from typing import TYPE_CHECKING, Callable, overload
 
 from ...app import App, AppContext
-from ...constants import STEAM_URL, Currency, EResult
+from ...constants import STEAM_URL, Currency
 from ...exceptions import (
     EmailConfirmationRequired,
     EResultError,
     MobileConfirmationRequired,
 )
-from ...id import SteamID
 from ...models import EconItem, ItemDescription
 from ...session import SteamSession
-from ...transport import BaseSteamTransport, TransportResponse, TransportResponseError
+from ...transport import TransportResponse, TransportResponseError
 from ...utils import create_ident_code
 from .._base import ItemDescriptionsMap
 from ..state import SteamState, WalletInfo
@@ -177,7 +176,7 @@ class MarketComponent(MarketPublicComponent):
         """
         Get current user market listings.
 
-        .. note:: Pagination of active listings can be achieved by passing ``start`` arg.
+        .. note:: Pagination of *active listings* can be achieved by passing ``start`` arg.
 
         :param start: start index.
         :param count: listings per page.
@@ -212,14 +211,13 @@ class MarketComponent(MarketPublicComponent):
             rj["num_active_listings"],
         )
 
-    async def user_listings(self, *, start: int = 0, count: int = 100) -> AsyncGenerator[UserListings, None]:
+    async def user_listings(self, *, start: int = 0, count: int = 100) -> AsyncGenerator[list[UserMarketListing], None]:
         """
         Get current user market listings as async generator to paginate over.
 
         :param start: start index.
         :param count: listings per page.
-        :return: ``AsyncGenerator`` that yields list of active listings as page,
-            listings to confirm, buy orders, total count of active listings.
+        :return: ``AsyncGenerator`` that yields list of active listings.
         :raises EResultError: ordinary reasons.
         :raises TransportError: ordinary reasons.
         """
@@ -236,7 +234,7 @@ class MarketComponent(MarketPublicComponent):
             start += count
             more_listings = listings_data.total > start
 
-            yield listings_data
+            yield listings_data.active
 
     @overload
     async def get_user_listing(
@@ -365,12 +363,11 @@ class MarketComponent(MarketPublicComponent):
             * Money should be only and **only in account wallet currency**.
             * ``price`` or ``to_receive`` is integers equal to cents.
 
-        :param obj: ``EconItem`` that you want to list on market or it's `asset id`.
+        :param obj: ``EconItem`` to list on market or it's `asset id`.
         :param app_ctx: ``AppContext`` of item.
         :param price: money that *buyer must pay*, including fees.
         :param to_receive: money that listener will *receive*.
         :return: `listing id` or ``None``.
-        :raises ValueError: item is not marketable, wrong arguments combination or types.
         :raises EResultError: ordinary reasons.
         :raises TransportError: ordinary reasons.
         :raises MobileConfirmationRequired: action requires mobile app confirmation.
@@ -391,11 +388,9 @@ class MarketComponent(MarketPublicComponent):
 
         # prevent user from mistake and potentially money loss
         if to_receive and price:
-            raise ValueError("The `price` and `to_receive` arguments are mutually exclusive!")
+            raise ValueError("The `price` and `to_receive` arguments are mutually exclusive")
         elif type(price) is float or type(to_receive) is float:
-            raise ValueError(
-                "The `price` and `to_receive` arguments should be integers. Did you forget to convert price to cents?"
-            )
+            raise ValueError("The `price` and `to_receive` arguments should be integers")
 
         if not to_receive:
             to_receive = buyer_pays_to_receive(
@@ -489,7 +484,7 @@ class MarketComponent(MarketPublicComponent):
         :param obj: ``ItemDescription`` or `market hash name` of item that needs to be bought.
         :param app: `Steam` app.
         :param price: how much will be paid for single item.
-        :param quantity: how much items need to be bought.
+        :param quantity: how many items need to be bought.
         :param confirmation_id: `confirmation id` of order.
         :return: `buy order id` or ``BuyOrder``.
         :raises EResultError: ordinary reasons.
@@ -625,15 +620,10 @@ class MarketComponent(MarketPublicComponent):
         )
 
     @overload
-    async def buy_market_listing(
-        self,
-        obj: MarketListing,
-        *,
-        confirmation_id: int = ...,
-    ) -> WalletInfo: ...
+    async def buy_listing(self, obj: MarketListing, *, confirmation_id: int = ...) -> WalletInfo: ...
 
     @overload
-    async def buy_market_listing(
+    async def buy_listing(
         self,
         obj: int,
         price: int,
@@ -644,7 +634,7 @@ class MarketComponent(MarketPublicComponent):
         confirmation_id: int = ...,
     ) -> WalletInfo: ...
 
-    async def buy_market_listing(
+    async def buy_listing(
         self,
         obj: int | MarketListing,
         price: int | None = None,
@@ -655,24 +645,23 @@ class MarketComponent(MarketPublicComponent):
         confirmation_id: int = 0,
     ) -> WalletInfo:
         """
-        Buy item listing from market.
-        Unfortunately, `Steam` requires `Referer` header to buy item,
-        so ``market_hash_name`` and ``app`` is mandatory args in case of ``obj`` being a market id.
+        Buy `item listing` from `Steam Market`.
+
+        .. note::
+            ``MarketListing`` converted values or ``price`` must be in
+            the **same currency as current user wallet**.
 
         :param obj: `listing id` (aka `market id`) or ``MarketListing``.
-        :param price: price of listing in *converted currency*.
+        :param price: price of `listing` in *converted currency*.
         :param market_hash_name: `market hash name` of item.
         :param app: `Steam` app.
-        :param fee: fee in *converted currency*.
-            If you don't know what this is - then you definitely do not need it.
-        :param confirmation_id: `confirmation id` of order.
-        :return: ``WalletInfo``.
+        :param fee: fee in *converted currency* (will be calculated automatically).
+        :param confirmation_id: `confirmation id` of `buy listing` request.
+        :return: ``WalletInfo`` after `listing` has been purchased.
         :raises EResultError: ordinary reasons.
         :raises TransportError: ordinary reasons.
-        :raises ValueError: listing already sold,
-            converted currency of ``MarketListing`` is different from wallet currency.
-        :raises InsufficientBalance: not enough money in wallet.
-        :raises ListingRemoved: listing has been removed from market.
+        :raises InsufficientBalance: not enough money in `wallet` to make purchase.
+        :raises ListingRemoved: `listing` has been removed from market.
         :raises MobileConfirmationRequired: action requires confirmation.
         """
 
@@ -699,13 +688,14 @@ class MarketComponent(MarketPublicComponent):
             if not all([app, market_hash_name, price]):
                 raise ValueError("`app`, `market_hash_name` and `price` arguments must be provided")
 
-        if not fee:
+        if fee is None:
             fee = calc_market_listing_fee(
                 price,
                 steam_fee=self._state.steam_fee,
                 publisher_fee=self._state.publisher_fee,
                 wallet_fee_min=self._state.wallet_fee_min,
             )
+
         data = {
             "sessionid": self._session.session_id,
             "currency": self._state.currency,
@@ -750,7 +740,7 @@ class MarketComponent(MarketPublicComponent):
             conf = await self._conf.get(confirmation_id)
             await self._conf.accept(conf)
 
-            return await self.buy_market_listing(
+            return await self.buy_listing(
                 obj,
                 price,
                 market_hash_name,
@@ -943,14 +933,14 @@ class MarketComponent(MarketPublicComponent):
         *,
         start: int = 0,
         count: int = 100,
-    ) -> AsyncGenerator[UserMarketHistory, None]:
+    ) -> AsyncGenerator[list[MarketHistoryEvent], None]:
         """
         Get market history of current user.
         Return async generator to paginate over history event pages.
 
         :param start: start index.
         :param count: listings per page.
-        :return: `AsyncGenerator` that yields list of ``MarketHistoryEvent``, total_count.
+        :return: `AsyncGenerator` that yields list of ``MarketHistoryEvent``.
         :raises EResultError: ordinary reasons.
         :raises TransportError: ordinary reasons.
         """
@@ -970,9 +960,9 @@ class MarketComponent(MarketPublicComponent):
                 _market_history_listings_map=_market_history_listings_map,
             )
             start += count
-            more_listings = history_data[1] > start
+            more_listings = history_data.total > start
 
-            yield history_data
+            yield history_data.events
 
     @overload
     async def get_price_history(self, obj: ItemDescription) -> list[PriceHistoryEntry]: ...

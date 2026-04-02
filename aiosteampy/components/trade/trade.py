@@ -812,12 +812,12 @@ class TradeComponent(BasePublicComponent, EconMixin):
         partner: SteamID | None = None,
     ) -> Awaitable[int]:
         """
-        Counter trade offer with another.
+        Counter `trade offer` with another.
 
-        :param obj: `TradeOffer` or trade offer id of which you want to counter
+        :param obj: `TradeOffer` or `trade offer ID` of countered offer.
         :param to_partner: items that will be sent to `partner`.
         :param from_partner: items that will be received from `partner`.
-        :param message: message that will attached to the offer.
+        :param message: message that will be attached to the offer.
         :param partner: user from which offer has been sent.
         :return: `trade offer ID`.
         :raises EResultError: ordinary reasons.

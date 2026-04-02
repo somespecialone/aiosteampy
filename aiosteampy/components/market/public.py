@@ -3,11 +3,11 @@ from collections.abc import AsyncGenerator, Mapping, Sequence
 from datetime import datetime
 from typing import Literal, overload
 
-from ...app import ADD_NEW_MEMBERS, App, AppContext
-from ...constants import STEAM_URL, Currency, EResult
+from ...app import ADD_NEW_MEMBERS, App
+from ...constants import STEAM_URL, Currency
 from ...exceptions import EResultError
-from ...models import AssetProperty, ItemAction, ItemDescription, ItemDescriptionEntry, ItemTag
-from ...transport import BaseSteamTransport, TransportError, format_http_date, parse_http_date
+from ...models import ItemDescription
+from ...transport import BaseSteamTransport, format_http_date, parse_http_date
 from ...utils import create_ident_code
 from .._base import BasePublicComponent, EconMixin, ItemDescriptionsMap
 from ..state import PublicSteamState
@@ -21,7 +21,6 @@ from .models import (
     MarketListing,
     MarketListingItem,
     MarketListings,
-    MarketListingStatus,
     MarketSearchItem,
     MarketSearchResult,
     MarketSearchSuggestion,
@@ -626,7 +625,7 @@ class MarketPublicComponent(BasePublicComponent, EconMixin):
         Get `Steam App` filter facets for `Steam Market` search.
 
         .. note::
-            You can see filter facets structure when you click on **"Show advanced options..."**
+            Filter facets structure can be seen when clicking on **"Show advanced options..."**
             button under search input field on `Steam` market page.
         """
 
@@ -647,7 +646,7 @@ class MarketPublicComponent(BasePublicComponent, EconMixin):
         Get `Steam App` accessory filter facets for `Steam Market` search.
 
         .. note::
-            You can see filter facets structure when you click on **"Show advanced options..."**
+            Filter facets structure can be seen when clicking on **"Show advanced options..."**
             button under search input field on `Steam` market page.
         """
 
@@ -682,7 +681,7 @@ class MarketPublicComponent(BasePublicComponent, EconMixin):
         Get search results from `Steam Market`.
 
         .. note::
-            You can find how to write filters by investigating how browser sends requests to a
+            Filters structure alongside examples can be found by investigating how browser sends requests to a
             https://steamcommunity.com/market/search/render/ endpoint with enabled at least one option from
             `advanced options` window.
 
@@ -790,7 +789,7 @@ class MarketPublicComponent(BasePublicComponent, EconMixin):
         Return async iterator to paginate over market search result pages.
 
         .. note::
-            You can find how to write filters by investigating how browser sends requests to a
+            Filters structure alongside examples can be found by investigating how browser sends requests to a
             https://steamcommunity.com/market/search/render/ endpoint with enabled at least one option from
             `advanced options` window.
 

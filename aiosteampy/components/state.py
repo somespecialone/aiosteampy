@@ -77,11 +77,9 @@ class PublicSteamState(BasePublicComponent):
                 Cookie(
                     LANG_COOKIE,
                     lang.value,
-                    domain=domain.host,
+                    domain.host,
+                    domain.path,
                     # expires in (365 * 5) - 1 days, but we don't need it
-                    host_only=True,
-                    same_site="None",
-                    secure=True,
                 )
             )
 

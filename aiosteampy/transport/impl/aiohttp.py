@@ -1,13 +1,16 @@
-"""AioHTTP implementation of HTTP transport."""
+"""``AioHTTP`` implementation of HTTP transport."""
 
 from http.cookies import BaseCookie, Morsel
+from importlib.metadata import version
 
-from aiohttp import ClientConnectionError, ClientSession, JsonPayload, MultipartWriter
+from aiohttp import ClientConnectionError, ClientSession, MultipartWriter
 from yarl import URL
 
-from aiosteampy.transport.base import BaseSteamTransport, Cookie, TransportResponse
-from aiosteampy.transport.exceptions import NetworkError
-from aiosteampy.transport.utils import format_http_date
+from ..base import BaseSteamTransport, Cookie, TransportResponse
+from ..exceptions import NetworkError
+from ..utils import format_http_date, parse_http_date
+
+AIOHTTP_VERSION = version("aiohttp")
 
 
 class AiohttpTransport(BaseSteamTransport):
@@ -21,72 +24,59 @@ class AiohttpTransport(BaseSteamTransport):
                 from aiohttp_socks import ProxyConnector
             except ImportError:
                 raise ImportError(
-                    "To use `socks` type proxies you need `aiohttp_socks` package. "
-                    "You can install it with `aiosteampy[socks]` dependency install target."
+                    "`aiohttp_socks` package is required to use `socks` type proxies. "
+                    "It can be installed with `aiosteampy[socks]` dependency install target."
                 )
 
             connector = ProxyConnector.from_url(proxy)
             proxy = None
 
-        self._session = ClientSession(proxy=proxy, connector=connector, **session_kwargs)
-
         if user_agent := ctx.get("user_agent"):
-            self.user_agent = user_agent
+            headers = {"User-Agent": f"{user_agent}(AioHTTP/{AIOHTTP_VERSION})"}
+        else:
+            headers = None
+
+        self._session = ClientSession(proxy=proxy, connector=connector, headers=headers, **session_kwargs)
 
     @property
     def proxy(self):
         return str(self._session._default_proxy) if self._session._default_proxy else None
 
-    def get_headers(self):
-        return self._session.headers
-
-    def set_headers(self, headers):
-        self._session.headers.clear()
-        self._session.headers.update(headers)
-
-    def get_header(self, name):
-        return self._session.headers.get(name)
-
-    def set_header(self, name, value):
-        if value is None:
-            self._session.headers.pop(name, None)
-        else:
-            self._session.headers[name] = value
-
-    def _check_if_cookie_is_host_only(self, m: Morsel) -> bool:
-        return (m["domain"], m.key) in self._session.cookie_jar._host_only_cookies
+    @staticmethod
+    def _c_from_morsel(m: Morsel) -> Cookie:
+        return Cookie(
+            name=m.key,
+            value=m.value,
+            domain=m["domain"],
+            path=m["path"],
+            expires=parse_http_date(m["expires"]),
+            http_only=m["httponly"],
+            secure=m["secure"],
+            same_site=m["samesite"] if m["samesite"] != "None" else None,
+        )
 
     def get_cookie(self, url, name):
         for m in self._session.cookie_jar:
             if m.key == name and m["domain"] == url.host and m["path"] == url.path:
-                return Cookie.from_morsel(m, host_only=self._check_if_cookie_is_host_only(m))
+                return self._c_from_morsel(m)
 
     def add_cookie(self, cookie):
         c = BaseCookie({cookie.name: cookie.value})
         m = c[cookie.name]
 
-        if cookie.host_only:
-            response_url = URL("https://" + cookie.domain)  # only host and path will be extracted however
-        else:
-            response_url = URL()  # update_cookies arg default
-            m["domain"] = cookie.domain
-
-        m["path"] = cookie.path
         m["expires"] = format_http_date(cookie.expires) if cookie.expires is not None else None
         m["secure"] = cookie.secure
         m["httponly"] = cookie.http_only
-        m["samesite"] = cookie.same_site
-        m["comment"] = cookie.comment
+        m["samesite"] = str(cookie.same_site)  # safe way to convert None to "None"
 
-        self._session.cookie_jar.update_cookies(c, response_url=response_url)
+        # let all cookies be host only as it does not matter much
+        self._session.cookie_jar.update_cookies(c, response_url=URL("https://" + cookie.domain + cookie.path))
 
     def remove_cookie(self, url, name):
         self._session.cookie_jar.clear(lambda m: m.key == name and m["domain"] == url.host and m["path"] == url.path)
 
     def get_cookies(self):
-        return [
-            Cookie.from_morsel(m, host_only=self._check_if_cookie_is_host_only(m)) for m in self._session.cookie_jar
-        ]
+        return [self._c_from_morsel(m) for m in self._session.cookie_jar]
 
     def has_cookie(self, url, name):
         key = (url.host, url.path[1:])
@@ -133,7 +123,7 @@ class AiohttpTransport(BaseSteamTransport):
                 TransportResponse(
                     url=hr.url,
                     status=hr.status,
-                    headers={**hr.headers},
+                    headers=hr.headers,
                     reason=hr.reason,
                 )
                 for hr in r.history
@@ -142,8 +132,8 @@ class AiohttpTransport(BaseSteamTransport):
         return TransportResponse(
             url=r.url,
             status=r.status,
-            headers={**r.headers},  # hope there will be no problems with multi headers
+            headers=r.headers,
             content=content,
             reason=r.reason,
-            redirects=history,
+            history=history,
         )

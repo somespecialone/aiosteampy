@@ -1,14 +1,12 @@
 from abc import ABCMeta, abstractmethod
-from typing import Any, overload
+from collections.abc import Sequence
+from typing import overload
 
 from yarl import URL
 
 from .exceptions import RateLimitExceeded, ResourceNotModified, TransportError, TransportResponseError, Unauthenticated
 from .models import Context, Cookie, TransportResponse
 from .types import Headers, HttpMethod, Params, Payload, ResponseMode
-from .utils import parse_http_date
-
-Cookies = list[Cookie]
 
 
 class BaseSteamTransport(metaclass=ABCMeta):
@@ -17,20 +15,17 @@ class BaseSteamTransport(metaclass=ABCMeta):
     Intended to use only to make request to `Steam` within library.
 
     This class defines the contract for `HTTP transports`, standardizing how requests are sent
-    and how session state (cookies and headers) is managed.
+    and how cookies is managed.
 
     **Responsibilities for Subclasses:**
     1.  **Cookie Management**:
       -   Transport is responsible for parsing `Set-Cookie` headers from responses
           and storing them for subsequent requests.
       -   Cookies must be persisted internally or synchronized with the underlying client's cookie jar.
-    2.  **Header Management**:
-      -   Transport is responsible for storing global headers (e.g. `User-Agent`)
-          and merging global headers with request-specific headers.
-    3.  **Request Execution**:
+    2.  **Request Execution**:
       -   The ``request`` method (public API) handles argument validation and error wrapping,
           delegating actual network I/O work to ``_request`` method, that subclasses must implement.
-    4.  **Resource Management**:
+    3.  **Resource Management**:
       -   Should override ``close`` method to release resources (connections, sessions) if necessary.
     """
 
@@ -43,40 +38,6 @@ class BaseSteamTransport(metaclass=ABCMeta):
     @abstractmethod
     def proxy(self) -> str | None:
         """Proxy URL."""
-
-    @property
-    def user_agent(self) -> str | None:
-        """Get user agent HTTP header."""
-        return self.get_header("User-Agent")
-
-    @user_agent.setter
-    def user_agent(self, value: str | None):
-        """Set user agent HTTP header."""
-        self.set_header("User-Agent", value)
-
-    @abstractmethod
-    def get_headers(self) -> Headers:
-        """Get HTTP headers mapping."""
-
-    @abstractmethod
-    def set_headers(self, headers: Headers) -> None:
-        """Set HTTP headers. Replace existing mapping."""
-
-    def get_header(self, name: str) -> str | None:
-        """Get header value."""
-
-        return self.get_headers().get(name)
-
-    def set_header(self, name: str, value: str | None) -> None:
-        """Set header value. If ``value`` is None, header will be removed."""
-
-        headers = {**self.get_headers()}
-        if value is None:
-            headers.pop(name, None)
-        else:
-            headers[name] = value
-
-        self.set_headers(headers)
 
     @abstractmethod
     def get_cookie(self, url: URL, name: str) -> Cookie | None:
@@ -101,10 +62,10 @@ class BaseSteamTransport(metaclass=ABCMeta):
         return self.get_cookie(url, name) is not None
 
     @abstractmethod
-    def get_cookies(self) -> Cookies:
+    def get_cookies(self) -> list[Cookie]:
         """Get all HTTP cookies from transport internal storage."""
 
-    def add_cookies(self, cookies: Cookies) -> None:
+    def add_cookies(self, cookies: Sequence[Cookie]) -> None:
         """Add HTTP cookies from list. Replace existing."""
 
         for cookie in cookies:
@@ -135,7 +96,7 @@ class BaseSteamTransport(metaclass=ABCMeta):
 
         1.  **Request Execution**: Perform the HTTP request using ``method``, ``url``, and payloads
             (``data``, ``json``, ``multipart``).
-        2.  **Header Management**: Merge the request-specific `headers` argument with the
+        2.  **Header Management**: Merge the request-specific ``headers`` argument with the
             transport's global headers.
         3.  **Cookie Persistence**: Ensure that cookies received in the response are persisted
             to transport's state by syncing them with the underlying client's cookie jar.

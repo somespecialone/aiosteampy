@@ -1,8 +1,9 @@
 """`Steam` HTTP transport layer implementing a bridge between `Steam API` and library's core."""
 
+from contextlib import suppress
 from typing import cast
 
-from .base import BaseSteamTransport, Cookies
+from .base import BaseSteamTransport
 from .exceptions import (
     NetworkError,
     RateLimitExceeded,
@@ -18,9 +19,7 @@ from .utils import format_http_date, parse_http_date
 
 DefaultSteamTransport = cast(type[BaseSteamTransport], AiohttpTransport)
 
-try:
+with suppress(ImportError):
     from .impl.wreq import WreqTransport
-except ImportError:
-    pass
-else:
+
     DefaultSteamTransport = cast(type[BaseSteamTransport], WreqTransport)

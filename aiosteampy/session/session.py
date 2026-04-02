@@ -15,7 +15,6 @@ from ..transport import (
     TransportError,
     TransportResponse,
     Unauthenticated,
-    format_http_date,
 )
 from ..webapi import SteamWebAPIClient
 from ..webapi.client import API_HEADERS, BROWSER_HEADERS
@@ -29,8 +28,8 @@ from .exceptions import *
 from .models import SteamJWT
 from .utils import encrypt_password, generate_session_id, parse_qr_challenge_url
 
-STEAM_ACCESS_TOKEN_COOKIE = "steamLoginSecure"
-STEAM_REFRESH_TOKEN_COOKIE = "steamRefresh_steam"
+ACCESS_TOKEN_COOKIE = "steamLoginSecure"
+REFRESH_TOKEN_COOKIE = "steamRefresh_steam"
 
 LOGIN_URL = URL("https://login.steampowered.com")
 SESSION_ID_COOKIE = "sessionid"
@@ -272,14 +271,11 @@ class SteamSession:
 
         if token.for_web:  # set cookie if session is for web
             cookie = Cookie(
-                STEAM_REFRESH_TOKEN_COOKIE,
+                REFRESH_TOKEN_COOKIE,
                 token.cookie_value,
                 LOGIN_URL.host,
+                LOGIN_URL.path,
                 expires=token.expires_at,  # token expire value instead of 400 days from browser
-                host_only=True,
-                http_only=True,
-                secure=True,
-                same_site="None",
             )
 
             self._service.webapi.transport.add_cookie(cookie)
@@ -568,7 +564,7 @@ class SteamSession:
             "sessionid": self._session_id,
             "redir": str(STEAM_URL.COMMUNITY / "login/home/?goto="),
         }
-        # Steam will set refresh token cookie there
+        # here Steam will rewrite refresh token cookie again without expiration
         r = await self._service.webapi.transport.request(
             "POST",
             LOGIN_URL / "jwt/finalizelogin",
@@ -598,6 +594,13 @@ class SteamSession:
                     )
                 )
 
+        # compare stored and received refresh token and rewrite just in case
+        refresh_token_cookie = self.transport.get_cookie_value(LOGIN_URL, REFRESH_TOKEN_COOKIE)
+        if refresh_token_cookie != self.refresh_token.cookie_value:
+            self._set_refresh_token(SteamJWT.from_cookie_value(refresh_token_cookie))
+        else:
+            self._set_refresh_token(self._refresh_token)  # rewrite cookie with expiration
+
         cookies = []
 
         # rewrite sessionid, get auth cookies, set access token
@@ -607,7 +610,7 @@ class SteamSession:
             cookies.append(self._set_session_id_cookie(url))  # set & add session id cookie
 
             # access token cookie flow
-            cookie = self.transport.get_cookie(url, STEAM_ACCESS_TOKEN_COOKIE)
+            cookie = self.transport.get_cookie(url, ACCESS_TOKEN_COOKIE)
             token = SteamJWT.from_cookie_value(cookie.value)
 
             # replace expiration date of cookie (~5 years) with token expiration
@@ -629,9 +632,7 @@ class SteamSession:
             SESSION_ID_COOKIE,
             self._session_id,
             domain.host,
-            host_only=True,
-            secure=True,
-            same_site="None",
+            domain.path,
         )
 
         self._service.webapi.transport.add_cookie(cookie)
@@ -642,14 +643,11 @@ class SteamSession:
         """Set access token cookie."""
 
         cookie = Cookie(
-            STEAM_ACCESS_TOKEN_COOKIE,
+            ACCESS_TOKEN_COOKIE,
             self._access_token.cookie_value,
             domain.host,
+            domain.path,
             expires=self._access_token.expires_at,
-            host_only=True,
-            http_only=True,
-            secure=True,
-            same_site="None",
         )
 
         self._service.webapi.transport.add_cookie(cookie)
@@ -691,7 +689,7 @@ class SteamSession:
         """Check whether auth web cookies are valid (set and not expired)."""
 
         for url in DOMAINS:
-            access_token_cookie = self.transport.get_cookie(url, STEAM_ACCESS_TOKEN_COOKIE)
+            access_token_cookie = self.transport.get_cookie(url, ACCESS_TOKEN_COOKIE)
             if access_token_cookie is None or (
                 access_token_cookie.expires
                 and access_token_cookie.expires < datetime.now(access_token_cookie.expires.tzinfo)
@@ -721,7 +719,7 @@ class SteamSession:
 
         await self._service.webapi.transport.request("GET", location, redirects=False, response_mode="meta")
 
-        cookie = self._service.webapi.transport.get_cookie(location.with_path("/"), STEAM_ACCESS_TOKEN_COOKIE)
+        cookie = self._service.webapi.transport.get_cookie(location.with_path("/"), ACCESS_TOKEN_COOKIE)
         self._set_access_token(SteamJWT.from_cookie_value(cookie.value))
 
         return self._access_token

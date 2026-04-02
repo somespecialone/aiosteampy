@@ -1,6 +1,8 @@
 from dataclasses import dataclass, field
 from typing import NamedTuple
 from datetime import datetime
+import re
+from urllib.parse import unquote
 
 from yarl import URL
 
@@ -98,10 +100,20 @@ class ItemDescription:
     def _set_ident_code(self):
         object.__setattr__(self, "id", create_ident_code(self.instance_id, self.class_id, self.app.value))
 
+    @staticmethod
+    def _extract_inspect_d_id(link: str) -> str | None:
+        decoded_link = unquote(link)
+        if (match := re.search(r"csgo_econ_action_preview\s+([SM]\d+A\d+D\d+|D\d+)", decoded_link)) is not None:
+            return match.group(1)
+        if (match := re.search(r"(?<![A-Z])D(\d+)", decoded_link)) is not None:
+            return f"D{match.group(1)}"
+        return None
+
     def _set_d_id(self):
         if self.app is App.CS2:
             if (i_action := next(filter(lambda a: "Inspect" in a.name, self.actions), None)) is not None:
-                object.__setattr__(self, "d_id", i_action.link.split("%20")[1])
+                if (d_id := self._extract_inspect_d_id(i_action.link)) is not None:
+                    object.__setattr__(self, "d_id", d_id)
 
     @property
     def ident_code(self) -> str:

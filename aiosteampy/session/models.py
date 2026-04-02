@@ -33,13 +33,13 @@ class SteamJWTClaims(TypedDict, total=False):
 
 @dataclass(slots=True)
 class SteamJWT:
-    raw: str = field(repr=False)
+    raw: str
     """Raw encoded JWT."""
     header: JWTHeader
     """JWT header."""
     claims: SteamJWTClaims
     """Known Steam JWT claims from payload."""
-    signature: bytes = field(repr=False)
+    signature: bytes
     """JWT signature."""
 
     subject: SteamID = field(init=False)
@@ -136,3 +136,9 @@ class SteamJWT:
 
     def __eq__(self, other):
         return isinstance(other, SteamJWT) and self.raw == other.raw
+
+    def __repr__(self):
+        return (
+            f"{self.__class__.__name__}({'Access' if self.is_access_token else 'Refresh'}, {self.platform.name}, "
+            f"subject={self.subject}, issued={self.issued_at.isoformat()}, expires={self.expires_at.isoformat()})"
+        )

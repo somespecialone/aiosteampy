@@ -1,13 +1,11 @@
 import json
 import re
-from base64 import b64encode
 from dataclasses import dataclass
 from datetime import datetime
 from enum import IntEnum
 from typing import NotRequired, Self, TypedDict
 
 from ..id import SteamID
-from ..session import SteamJWT
 from ..utils import create_ident_code
 
 ITEM_INFO_RE = re.compile(r"'confiteminfo', (.+), UserYou")  # lang safe

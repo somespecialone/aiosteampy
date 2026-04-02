@@ -1,11 +1,7 @@
 """Component responsible for `Steam` profile wallet logic."""
 
-import json
-import re
-from typing import Awaitable, NamedTuple
+from typing import Awaitable
 
-from ..constants import Currency
-from ..exceptions import EResultError
 from ..session import SteamSession
 from .state import SteamState, WalletInfo
 

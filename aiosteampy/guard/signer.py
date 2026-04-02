@@ -4,7 +4,7 @@ from collections.abc import Awaitable
 from ..id import SteamID
 from ..webapi import SteamWebAPIClient
 from ..webapi.services.twofactor import CTwoFactorTimeResponse, TwoFactorServiceClient
-from .utils import generate_auth_code, generate_confirmation_key, generate_device_id, sign_auth_request
+from .utils import generate_auth_code, generate_confirmation_key, sign_auth_request
 
 
 class TwoFactorSigner:

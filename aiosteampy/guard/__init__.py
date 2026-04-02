@@ -7,7 +7,6 @@ from .confirmations import SteamConfirmations
 from .exceptions import (
     AuthenticatorAlreadyPresent,
     AuthenticatorError,
-    EmailConfirmationRequired,
     SmsConfirmationRequired,
     TooManyAttempts,
     TwoFactorCodeMismatch,

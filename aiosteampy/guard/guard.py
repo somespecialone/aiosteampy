@@ -1,12 +1,11 @@
 import time
 from base64 import b64encode
 from collections.abc import Awaitable
-from typing import cast
 
 from yarl import URL
 
 from ..constants import EResult
-from ..exceptions import EResultError
+from ..exceptions import EmailConfirmationRequired, EResultError
 from ..session import SteamSession, generate_session_id, parse_qr_challenge_url
 from ..session.session import QRChallengeUrl
 from ..transport import BaseSteamTransport, Unauthenticated
@@ -388,30 +387,27 @@ class SteamGuard:
         """Export `Steam Guard` account as `Steam Desktop Authenticator` file (maFile)."""
 
         if account := self.export_account():
-            return cast(
-                MaFile,
-                {
-                    "shared_secret": account.shared_secret,
-                    "serial_number": str(account.serial_number),
-                    "revocation_code": account.revocation_code,
-                    "uri": account.uri,
-                    "server_time": self._2fa_resp.server_time,
-                    "account_name": account.account_name,
-                    "token_gid": account.token_gid,
-                    "identity_secret": account.identity_secret,
-                    "secret_1": account.secret_1,
-                    "status": self._2fa_resp.status,
-                    "device_id": account.device_id,
-                    "phone_number_hint": self._2fa_resp.phone_number_hint,
-                    "confirm_type": self._2fa_resp.confirm_type,
-                    "fully_enrolled": self._2fa_finalized,
-                    "Session": {
-                        "SteamID": account.steam_id,
-                        "AccessToken": self._session.access_token.raw,
-                        "RefreshToken": self._session.refresh_token.raw,
-                        # if we don't obtained web cookies before, session will not have session id
-                        "SessionID": self._session.session_id or generate_session_id(),
-                    },
+            return MaFile(
+                shared_secret=account.shared_secret,
+                serial_number=str(account.serial_number),
+                revocation_code=account.revocation_code,
+                uri=account.uri,
+                server_time=self._2fa_resp.server_time,
+                account_name=account.account_name,
+                token_gid=account.token_gid,
+                identity_secret=account.identity_secret,
+                secret_1=account.secret_1,
+                status=self._2fa_resp.status,
+                device_id=account.device_id,
+                phone_number_hint=self._2fa_resp.phone_number_hint,
+                confirm_type=self._2fa_resp.confirm_type,
+                fully_enrolled=self._2fa_finalized,
+                Session={
+                    "SteamID": account.steam_id,
+                    "AccessToken": self._session.access_token.raw,
+                    "RefreshToken": self._session.refresh_token.raw,
+                    # if we don't obtained web cookies before, session will not have session id
+                    "SessionID": self._session.session_id or generate_session_id(),
                 },
             )
 

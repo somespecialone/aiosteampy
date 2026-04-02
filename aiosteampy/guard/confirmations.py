@@ -6,7 +6,7 @@ from typing import Literal, overload
 
 from ..app import AppContext
 
-# as components will be exposed at the top level anyway we can do runtime import here
+# we can do runtime import here as components will be exposed at the top level anyway
 from ..components.market import UserMarketListing
 from ..components.trade import TradeOffer
 from ..constants import STEAM_URL
@@ -67,7 +67,7 @@ class SteamConfirmations:
         Details will be attached to ``Confirmation`` if passed.
 
         :param obj: ``Confirmation`` or confirmation id.
-        :return: details as string containing html.
+        :return: details as string containing HTML.
         :raises EResultError: ordinary reasons.
         :raises TransportError: ordinary reasons.
         """
@@ -169,11 +169,11 @@ class SteamConfirmations:
         Get standing ``Confirmation``.
 
         .. note::
-            Details is required to identify for which ``MarketListing`` conf. belongs.
+            Details are required to identify for which ``MarketListing`` conf. belongs.
             So ``details`` need to be ``"listing"`` or ``"all"`` if ``key`` is ``MarketListingItem`` ident code.
 
         :param key: confirmation creator id. Can be a ``MarketListingItem`` ident code,
-            ``TradeOffer`` id or, more broad, `request id`.
+            ``TradeOffer`` id or, broader, `request id`.
         :param details: whether to update ``Confirmation`` details.
             Possible values are:
             ``"none"`` - no details will be fetched;
@@ -182,7 +182,7 @@ class SteamConfirmations:
         :return: ``Confirmation`` or ``None`` if not found.
         :raises EResultError: ordinary reasons.
         :raises TransportError: ordinary reasons.
-        :raises RuntimeError: when auth token is invalid or session expired.
+        :raises RuntimeError: when the auth token is invalid or session expired.
         """
 
         confs = await self.get_all(details)  # unfortunately we need details for all confs. to map to listing
@@ -211,16 +211,16 @@ class SteamConfirmations:
         EResultError.check_data(rj)
 
     def accept(self, conf: Confirmation) -> Awaitable[None]:
-        """Accept single confirmation."""
+        """Accept a single confirmation."""
         return self.send(conf, True)
 
     def deny(self, conf: Confirmation) -> Awaitable[None]:
-        """Deny single confirmation."""
+        """Deny a single confirmation."""
         return self.send(conf, False)
 
     async def send_multiple(self, confs: Iterable[Confirmation], accept: bool = True):
         """
-        Perform batch action with multiple `confirmations`.
+        Perform a batch action with multiple `confirmations`.
 
         :param confs: `confirmations` for proceeding.
         :param accept: whether confirmations should be accepted or canceled otherwise.
@@ -255,10 +255,10 @@ class SteamConfirmations:
         :return: list of processed confirmations.
         :raises EResultError: ordinary reasons.
         :raises TransportError: ordinary reasons.
-        :raises RuntimeError: when auth token is invalid or session expired.
+        :raises RuntimeError: when the auth token is invalid or session expired.
         """
 
-        # Is there are limit on confs count?
+        # Is there some limit on confs count?
         confs = await self.get_all()
         confs and await self.accept_multiple(confs)
         return confs
@@ -271,7 +271,7 @@ class SteamConfirmations:
         :return: list of processed confirmations.
         :raises EResultError: ordinary reasons.
         :raises TransportError: ordinary reasons.
-        :raises RuntimeError: when auth token is invalid or session expired.
+        :raises RuntimeError: when the auth token is invalid or session expired.
         """
 
         confs = await self.get_all()
@@ -296,7 +296,7 @@ class SteamConfirmations:
         :param obj: listed ``UserMarketListing``, ``EconItem``, `listing id` or `asset id`.
         :param app_ctx: ``AppContext`` of item. Required when ``obj`` is `asset id`.
         :return: processed ``Confirmation``.
-        :raises KeyError: if confirmation not found.
+        :raises KeyError: if confirmation is not found.
         :raises EResultError: ordinary reasons.
         :raises TransportError: ordinary reasons.
         """
@@ -339,7 +339,7 @@ class SteamConfirmations:
         Confirm `trade offer` countering or sending.
 
         :param obj: ``TradeOffer`` or `trade offer id`.
-        :raises KeyError: if confirmation not found.
+        :raises KeyError: if confirmation is not found.
         :raises EResultError: ordinary reasons.
         :raises TransportError: ordinary reasons.
         """

@@ -2,7 +2,6 @@ from datetime import datetime
 
 from ...constants import STEAM_URL
 from ...id import SteamID
-from ...transport import BaseSteamTransport
 from .._base import BasePublicComponent
 from .models import MiniProfileBadge, MiniProfileData, ProfileAliasHistoryEntry
 

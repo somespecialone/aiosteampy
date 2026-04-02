@@ -4,7 +4,6 @@ import asyncio
 import json
 import re
 from contextlib import suppress
-from datetime import datetime
 from typing import NamedTuple, Self
 
 from yarl import URL
@@ -12,7 +11,7 @@ from yarl import URL
 from ..constants import STEAM_URL, Currency, EResult, Language
 from ..exceptions import EResultError, MobileConfirmationRequired, SteamError
 from ..session import SteamSession
-from ..transport import BaseSteamTransport, Cookie, format_http_date
+from ..transport import BaseSteamTransport, Cookie
 from ._base import BasePublicComponent
 
 LANG_COOKIE = "Steam_Language"

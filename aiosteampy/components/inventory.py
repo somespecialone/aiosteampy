@@ -1,10 +1,10 @@
 """Components with functionality responsible for user inventory handling."""
 
-from collections.abc import AsyncGenerator, Awaitable
+from collections.abc import AsyncGenerator
 from contextlib import suppress
 from typing import Callable, NamedTuple, overload
 
-from ..app import App, AppContext
+from ..app import AppContext
 from ..constants import STEAM_URL
 from ..exceptions import EResultError, SteamError
 from ..id import SteamID

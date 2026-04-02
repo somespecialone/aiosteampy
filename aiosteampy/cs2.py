@@ -3,7 +3,7 @@
 import re
 from dataclasses import dataclass
 from enum import IntEnum, StrEnum
-from typing import TYPE_CHECKING, NamedTuple, Self, overload
+from typing import TYPE_CHECKING, NamedTuple, Self
 
 from .app import App
 

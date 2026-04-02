@@ -1,5 +1,3 @@
-"""Utils, models and component to work with current user profile."""
-
 import json
 import re
 from collections.abc import Awaitable
@@ -7,11 +5,10 @@ from pathlib import Path
 
 from yarl import URL
 
-from ...constants import STEAM_URL, Currency, EResult, Language
-from ...exceptions import EResultError, MobileConfirmationRequired, SteamError
-from ...id import SteamID
+from ...constants import STEAM_URL
+from ...exceptions import EResultError
 from ...session import SteamSession
-from ...transport import BaseSteamTransport, TransportResponse
+from ...transport import TransportResponse
 from ..state import SteamState
 from .models import (
     AvatarUploadData,
@@ -19,7 +16,6 @@ from .models import (
     CommentPrivacySettingsOptions,
     GoldenProfileDataEntry,
     LocationData,
-    MiniProfileBadge,
     MiniProfileData,
     MiniprofileMovie,
     PrivacySettingsOptions,

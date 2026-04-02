@@ -1,4 +1,4 @@
-from ..exceptions import ConfirmationRequired, EmailConfirmationRequired, SteamError
+from ..exceptions import ConfirmationRequired, SteamError
 
 
 class AuthenticatorError(SteamError):

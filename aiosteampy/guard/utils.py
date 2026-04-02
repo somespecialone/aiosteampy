@@ -1,7 +1,6 @@
 import hashlib
 import hmac
 import struct
-import time
 from base64 import b64decode, b64encode
 
 

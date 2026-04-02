@@ -2,6 +2,7 @@ from dataclasses import dataclass, field
 from typing import NamedTuple
 from datetime import datetime
 import re
+from urllib.parse import unquote
 
 from yarl import URL
 
@@ -58,7 +59,7 @@ class ItemDescription:
     class_id: int
     instance_id: int
 
-    d_id: int | None = field(init=False, default=None)  # optional CSGO inspect id
+    d_id: str | None = field(init=False, default=None)  # optional CSGO inspect id
 
     app: App
 
@@ -100,13 +101,12 @@ class ItemDescription:
         object.__setattr__(self, "id", create_ident_code(self.instance_id, self.class_id, self.app.value))
 
     @staticmethod
-    def _extract_inspect_d_id(link: str) -> int | None:
-        # Steam inspect links can be emitted in multiple formats depending on endpoint/source.
-        # Accept both encoded "%D123" and direct "D123" patterns.
-        if (match := re.search(r"%D(\d+)", link)) is not None:
-            return int(match.group(1))
-        if (match := re.search(r"(?<!%)D(\d+)", link)) is not None:
-            return int(match.group(1))
+    def _extract_inspect_d_id(link: str) -> str | None:
+        decoded_link = unquote(link)
+        if (match := re.search(r"csgo_econ_action_preview\s+([SM]\d+A\d+D\d+|D\d+)", decoded_link)) is not None:
+            return match.group(1)
+        if (match := re.search(r"(?<![A-Z])D(\d+)", decoded_link)) is not None:
+            return f"D{match.group(1)}"
         return None
 
     def _set_d_id(self):
@@ -195,7 +195,7 @@ class EconItem:
     @property
     def inspect_url(self) -> str | None:
         if self.description.d_id:
-            return make_inspect_url(owner_id=self.owner_id, asset_id=self.asset_id, d_id=self.description.d_id)
+            return make_inspect_url(d_id=self.description.d_id)
 
     def __eq__(self, other):
         if isinstance(other, EconItem):
@@ -260,7 +260,7 @@ class MarketListingItem(EconItem):
     @property
     def inspect_url(self) -> str | None:
         if self.description.d_id:
-            return make_inspect_url(market_id=self.market_id, asset_id=self.asset_id, d_id=self.description.d_id)
+            return make_inspect_url(d_id=self.description.d_id)
 
 
 @dataclass(eq=False, slots=True)
@@ -439,7 +439,7 @@ class BaseTradeOfferItem(EconItem):
     @property
     def inspect_url(self) -> str | None:
         if self.description is not None and self.description.d_id:  # can't do super().inspect_url due to an error
-            return make_inspect_url(owner_id=self.owner_id, asset_id=self.asset_id, d_id=self.description.d_id)
+            return make_inspect_url(d_id=self.description.d_id)
 
 
 @dataclass(eq=False, slots=True, kw_only=True)

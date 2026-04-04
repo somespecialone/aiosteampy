@@ -51,6 +51,8 @@ class SteamID(int):
         or a `Steam3` format string (`[U:X:Y]`). Creates *blank (invalid) ID* in case of no input.
     """
 
+    __slots__ = ()
+
     _STEAM_2_FORMAT_RE = re.compile(r"^STEAM_([0-5]):([0-1]):(\d+)$")
     _STEAM_3_FORMAT_RE = re.compile(r"^\[([a-zA-Z]):([0-5]):(\d+)(?::(\d+))?]$")
 
@@ -77,15 +79,16 @@ class SteamID(int):
         AccountType.ANON_USER: "a",
     }
 
-    def __new__(cls, _x: str | int | None = None) -> Self:
+    def __new__(cls, _x: str | int = 0) -> Self:
         # all underscored due to a strange PyCharm love to inherit variables from __new__ as properties
-        _type = AccountType.INVALID
-        _instance = Instance.ALL
 
         if not _x:
             return super().__new__(cls, 0)
 
-        elif isinstance(_x, int) or (isinstance(_x, str) and _x.isdigit()):  # numeric formats
+        _type = AccountType.INVALID
+        _instance = Instance.ALL
+
+        if isinstance(_x, int) or (isinstance(_x, str) and _x.isdigit()):  # numeric formats
             _x = int(_x)
 
             if _x < 0:

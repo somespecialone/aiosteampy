@@ -2,7 +2,7 @@ import asyncio
 from collections.abc import Awaitable
 from datetime import datetime
 from functools import wraps
-from typing import Any, Callable
+from typing import Any, Callable, Self
 
 from yarl import URL
 
@@ -53,8 +53,8 @@ def mobile_platform[F: Callable[..., Any]](func: F) -> F:
 def refresh_token_required[F: Callable[..., Any]](func: F) -> F:
     @wraps(func)
     def wrapper(self: "SteamSession", *args, **kwargs):
-        if self._refresh_token is None or self._refresh_token.expired:
-            raise RuntimeError("Refresh token is not set or expired")
+        if self._refresh_token is None:
+            raise RuntimeError("Refresh token is not set")
         return func(self, *args, **kwargs)
 
     return wrapper
@@ -71,7 +71,6 @@ class SteamSession:
         "_request_id",
         "_client_id",
         "_poll_interval",
-        "_phase",
         "_steam_id",
     )
 
@@ -83,6 +82,7 @@ class SteamSession:
         platform: Platform = Platform.WEB,
         transport: BaseSteamTransport | None = None,
         proxy: str | None = None,
+        _ignore_expired: bool = False,
     ):
         """
         Authentication session.
@@ -154,7 +154,7 @@ class SteamSession:
             if not isinstance(access_token, SteamJWT):
                 access_token = SteamJWT.parse(access_token)
 
-            if access_token.expired:
+            if not _ignore_expired and access_token.expired:
                 raise ValueError("Provided access token is expired")
 
             if access_token.is_refresh_token:
@@ -171,7 +171,7 @@ class SteamSession:
             if not isinstance(refresh_token, SteamJWT):
                 refresh_token = SteamJWT.parse(refresh_token)
 
-            if refresh_token.expired:
+            if not _ignore_expired and refresh_token.expired:
                 import warnings
 
                 # issue a warning for now as early measure
@@ -658,7 +658,7 @@ class SteamSession:
     async def obtain_cookies(self) -> list[Cookie]:
         """
         Obtain auth cookies for `Steam` websites using ``refresh_token``.
-        Rewrite existing ``access_token`` with a new one.
+        Rewrite the existing ``access_token`` with a new one if required.
         Store resulting cookies in the underlying ``transport`` cookie jar.
 
         :return: list of auth cookies including session id.
@@ -688,6 +688,8 @@ class SteamSession:
     def cookies_are_valid(self) -> bool:
         """Check whether auth web cookies are valid (set and not expired)."""
 
+        # potential weak point: if Steam changes login urls we can find ourselves in a situation
+        # where DOMAINS > urls from Steam and cookies_are_valid will always return False
         for url in DOMAINS:
             access_token_cookie = self.transport.get_cookie(url, ACCESS_TOKEN_COOKIE)
             if access_token_cookie is None or (
@@ -762,7 +764,7 @@ class SteamSession:
     @refresh_token_required
     def renew_refresh_token(self) -> Awaitable[SteamJWT]:
         """
-        Request new `refresh` token alongside with `access` token.
+        Request a new `refresh` token alongside with `access` token.
         Whether a new token will be actually issued is at the `Steam` discretion.
         Existed tokens will be overwritten.
 
@@ -772,5 +774,41 @@ class SteamSession:
 
         return self._generate_access_token_for_app(True)
 
-    def close(self) -> Awaitable[None]:
-        return self._service.webapi.transport.close()
+    def serialize(self) -> dict:
+        """Serialize only auth-related (tokens, cookies) `session` state to a `JSON-safe` dict."""
+
+        return {
+            "platform": self._platform,
+            "access_token": self._access_token.raw if self._access_token is not None else None,
+            "refresh_token": self._refresh_token.raw if self._refresh_token is not None else None,
+            "steam_id": self._steam_id,
+            "account_name": self._account_name,
+            "session_id": self._session_id,
+            "cookies": self.transport.get_serialized_cookies(),
+        }
+
+    @classmethod
+    def deserialize(
+        cls,
+        serialized: dict,
+        transport: BaseSteamTransport | None = None,
+        proxy: str | None = None,
+    ) -> Self:
+        """Create `session` from `serialized` data. This will not verify tokens and cookies validity."""
+
+        session = cls(
+            serialized["access_token"],
+            serialized["refresh_token"],
+            platform=Platform(serialized["platform"]),
+            transport=transport,
+            proxy=proxy,
+            _ignore_expired=True,
+        )
+
+        session._steam_id = SteamID(serialized["steam_id"])
+        session._account_name = serialized["account_name"]
+        session._session_id = serialized["session_id"]
+
+        session.transport.update_serialized_cookies(serialized["cookies"])
+
+        return session

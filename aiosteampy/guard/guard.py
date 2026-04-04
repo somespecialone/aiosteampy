@@ -1,6 +1,7 @@
 import time
 from base64 import b64encode
 from collections.abc import Awaitable
+from typing import Self
 
 from yarl import URL
 
@@ -25,7 +26,6 @@ class SteamGuard:
         "_session",
         "_device_id",
         "_conf",
-        "_cookies_valid",
         "_phone",
         "_2fa",
         "_2fa_resp",
@@ -37,6 +37,7 @@ class SteamGuard:
     def __init__(
         self,
         session: SteamSession,
+        *,
         shared_secret: str | None = None,
         identity_secret: str | None = None,
         device_id: str | None = None,
@@ -62,7 +63,7 @@ class SteamGuard:
         if not session.is_mobile:
             raise ValueError("Session must be mobile")
         if session.access_token is None:
-            raise ValueError("Session must be authenticated")
+            raise Unauthenticated
         if (not shared_secret and identity_secret) or (shared_secret and not identity_secret):
             raise ValueError("Both shared and identity secrets must be provided")
 
@@ -70,12 +71,13 @@ class SteamGuard:
         self._device_id = device_id or generate_device_id(session.steam_id)
 
         if shared_secret:
+            if not session.cookies_are_valid:  # preventing user from accessing confirmations with missing cookies
+                raise Unauthenticated
+
             signer = TwoFactorSigner(session.steam_id, shared_secret, identity_secret, session.webapi, time_offset)
             self._conf = SteamConfirmations(session, signer, self._device_id)
         else:
             self._conf = None
-
-        self._cookies_valid = False  # whether auth cookies are valid, avoiding excessive checks
 
         self._phone = PhoneServiceClient(session.webapi)
         self._2fa = TwoFactorServiceClient(session.webapi)
@@ -95,14 +97,6 @@ class SteamGuard:
     @property
     def confirmations(self) -> SteamConfirmations | None:
         """`Steam` mobile confirmations manager."""
-
-        # preventing user from accessing confirmations with missing cookies
-        if self._conf is not None and self._cookies_valid is False:
-            if self._session.cookies_are_valid:
-                self._cookies_valid = True
-            else:
-                raise Unauthenticated
-
         return self._conf
 
     @property
@@ -272,9 +266,6 @@ class SteamGuard:
         :raises RuntimeError: when something goes wrong during finalization.
         """
 
-        if self._2fa_resp is None:
-            raise ValueError("Two-factor enabling is not in progress")
-
         account = self._get_account()
 
         signer = TwoFactorSigner(
@@ -298,7 +289,7 @@ class SteamGuard:
         except Exception as e:
             import warnings
 
-            account_data = account.to_dict()
+            account_data = account.serialize()
 
             msg = (
                 "Unknown error have happened during two-factor activation. "
@@ -359,72 +350,120 @@ class SteamGuard:
         """Get current `Steam Guard` status."""
         return self._2fa.query_status(self._session.steam_id, include_last_usage)
 
-    def _get_account(self) -> SteamGuardAccount | None:
+    def _get_account(self) -> SteamGuardAccount:
         """Create account without marking it as exported."""
 
-        if self._2fa_resp is not None:
-            return SteamGuardAccount(
-                account_name=self._2fa_resp.account_name,
-                steam_id=self._session.steam_id,
-                device_id=self._device_id,
-                shared_secret=b64encode(self._2fa_resp.shared_secret).decode(),
-                identity_secret=b64encode(self._2fa_resp.identity_secret).decode(),
-                secret_1=b64encode(self._2fa_resp.secret_1).decode(),
-                revocation_code=self._2fa_resp.revocation_code,
-                uri=self._2fa_resp.uri,
-                serial_number=self._2fa_resp.serial_number,
-                token_gid=self._2fa_resp.token_gid,
-                finalized=self._2fa_finalized,
-            )
+        if self._2fa_resp is None:
+            raise ValueError("There is no account data a two-factor enabling is not in the progress")
 
-    def export_account(self) -> SteamGuardAccount | None:
+        return SteamGuardAccount(
+            account_name=self._2fa_resp.account_name,
+            steam_id=self._session.steam_id,
+            device_id=self._device_id,
+            shared_secret=b64encode(self._2fa_resp.shared_secret).decode(),
+            identity_secret=b64encode(self._2fa_resp.identity_secret).decode(),
+            secret_1=b64encode(self._2fa_resp.secret_1).decode(),
+            revocation_code=self._2fa_resp.revocation_code,
+            uri=self._2fa_resp.uri,
+            serial_number=self._2fa_resp.serial_number,
+            token_gid=self._2fa_resp.token_gid,
+            finalized=self._2fa_finalized,
+        )
+
+    def export_account(self) -> SteamGuardAccount:
         """Export enabled `Steam Guard` (two-factor) account data."""
 
+        account = self._get_account()
         self._account_has_been_exported = True
-        return self._get_account()
+        return account
 
-    def export_mafile(self) -> MaFile | None:
+    def export_mafile(self) -> MaFile:
         """Export `Steam Guard` account as `Steam Desktop Authenticator` file (maFile)."""
 
-        if account := self.export_account():
-            return MaFile(
-                shared_secret=account.shared_secret,
-                serial_number=str(account.serial_number),
-                revocation_code=account.revocation_code,
-                uri=account.uri,
-                server_time=self._2fa_resp.server_time,
-                account_name=account.account_name,
-                token_gid=account.token_gid,
-                identity_secret=account.identity_secret,
-                secret_1=account.secret_1,
-                status=self._2fa_resp.status,
-                device_id=account.device_id,
-                phone_number_hint=self._2fa_resp.phone_number_hint,
-                confirm_type=self._2fa_resp.confirm_type,
-                fully_enrolled=self._2fa_finalized,
-                Session={
-                    "SteamID": account.steam_id,
-                    "AccessToken": self._session.access_token.raw,
-                    "RefreshToken": self._session.refresh_token.raw,
-                    # if we don't obtained web cookies before, session will not have session id
-                    "SessionID": self._session.session_id or generate_session_id(),
-                },
-            )
+        account = self.export_account()
+        return MaFile(
+            shared_secret=account.shared_secret,
+            serial_number=str(account.serial_number),
+            revocation_code=account.revocation_code,
+            uri=account.uri,
+            server_time=self._2fa_resp.server_time,
+            account_name=account.account_name,
+            token_gid=account.token_gid,
+            identity_secret=account.identity_secret,
+            secret_1=account.secret_1,
+            status=self._2fa_resp.status,
+            device_id=account.device_id,
+            phone_number_hint=self._2fa_resp.phone_number_hint,
+            confirm_type=self._2fa_resp.confirm_type,
+            fully_enrolled=self._2fa_finalized,
+            Session={
+                "SteamID": account.steam_id,
+                "AccessToken": self._session.access_token.raw,
+                "RefreshToken": self._session.refresh_token.raw,
+                "SessionID": self._session.session_id or generate_session_id(),
+            },
+        )
 
     # async def add_phone_number(self, country_code: str, phone_number: str):
     #     """Add phone number to account."""
     #     raise NotImplementedError
 
-    def close(self) -> Awaitable[None]:
-        return self._session.close()
-
     def __del__(self):
         if self._2fa_resp is not None and self._2fa_finalized and not self._account_has_been_exported:
-            # warn user that account data was not exported and instance is about to be destroyed
+            # warn user that account data was not exported and the instance is about to be destroyed
             import warnings
 
-            data = self.export_account().to_dict()
+            data = self.export_account().serialize()
             warnings.warn(
                 "Steam Guard account data was not exported! Store it somewhere safe: " + str(data),
                 UserWarning,
             )
+
+    @classmethod
+    def from_account(cls, account: SteamGuardAccount, session: SteamSession) -> Self:
+        """Create ``SteamGuard`` from a finalized and previously exported ``account``."""
+
+        if not account.finalized:
+            raise ValueError("Account is not finalized")
+
+        return cls(
+            session,
+            shared_secret=account.shared_secret,
+            identity_secret=account.identity_secret,
+            device_id=account.device_id,
+        )
+
+    @classmethod
+    async def from_mafile(
+        cls,
+        mafile: MaFile,
+        transport: BaseSteamTransport | None = None,
+        proxy: str | None = None,
+    ) -> Self:
+        """Create ``SteamGuard`` from ``mafile``. Will obtain auth cookies automatically."""
+
+        if not mafile["fully_enrolled"]:
+            raise ValueError("Account from maFile must be fully enrolled")
+
+        session = SteamSession(
+            mafile["Session"]["AccessToken"],
+            mafile["Session"]["RefreshToken"],
+            transport=transport,
+            proxy=proxy,
+            _ignore_expired=True,
+        )
+
+        session._session_id = mafile["Session"]["SessionID"]
+
+        if session.access_token.expired:
+            await session.refresh_access_token()
+            await session.obtain_cookies()
+        elif not session.cookies_are_valid:
+            await session.obtain_cookies()
+
+        return cls(
+            session,
+            shared_secret=mafile["shared_secret"],
+            identity_secret=mafile["identity_secret"],
+            device_id=mafile["device_id"],
+        )

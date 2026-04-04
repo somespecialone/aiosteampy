@@ -1,6 +1,6 @@
 import json
 import re
-from dataclasses import dataclass
+from dataclasses import asdict, dataclass
 from datetime import datetime
 from enum import IntEnum
 from typing import NotRequired, Self, TypedDict
@@ -60,31 +60,19 @@ class SteamGuardAccount:
     finalized: bool
     """Whether represents data of activated (enrolled) `Steam Guard` account."""
 
-    def to_dict(self) -> dict[str, str]:
-        """Export account data as JSON-safe dict."""
-
-        return {
-            "account_name": self.account_name,
-            "steam_id": str(self.steam_id),
-            "device_id": self.device_id,
-            "shared_secret": self.shared_secret,
-            "identity_secret": self.identity_secret,
-            "secret_1": self.secret_1,
-            "revocation_code": self.revocation_code,
-            "uri": self.uri,
-            "serial_number": str(self.serial_number),
-            "token_gid": self.token_gid,
-            "finalized": self.finalized,
-        }
+    def serialize(self) -> dict:
+        """Export account data as `JSON-safe` dict."""
+        return asdict(self)
 
     @classmethod
-    def from_dict(cls, data: dict[str, str]) -> Self:
-        """Import account data from JSON-safe dict."""
+    def deserialize(cls, serialized: dict[str, str]) -> Self:
+        """Import account data from `JSON-safe` dict."""
 
-        data = {**data, "steam_id": SteamID(data["steam_id"]), "serial_number": int(data["serial_number"])}
-        return cls(**data)
+        account = cls(**serialized)
+        account.steam_id = SteamID(account.steam_id)
+        account.serial_number = int(account.serial_number)
+        return account
 
-    # just in case
     @classmethod
     def from_mafile(cls, mafile: MaFile) -> Self:
         cls(

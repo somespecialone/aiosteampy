@@ -76,7 +76,7 @@ class AiohttpTransport(BaseSteamTransport):
         self._session.cookie_jar.clear(lambda m: m.key == name and m["domain"] == url.host and m["path"] == url.path)
 
     def get_cookies(self):
-        return [self._c_from_morsel(m) for m in self._session.cookie_jar]
+        return tuple(self._c_from_morsel(m) for m in self._session.cookie_jar)
 
     def has_cookie(self, url, name):
         key = (url.host, url.path[1:])

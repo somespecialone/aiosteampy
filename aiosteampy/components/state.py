@@ -24,8 +24,12 @@ API_KEY_ERROR_RE = re.compile(r"<div id=\"bodyContents_lo\">\s+?<p>(.+)</p>")
 WALLET_INFO_RE = re.compile(r"g_rgWalletInfo = (.+);")
 
 
-# single source of truth. Contain only sync logic
-# TODO need load/dump methods
+DEF_COUNTRY = "UA"
+DEF_CURRENCY = Currency.USD
+DEF_LANGUAGE = Language.ENGLISH
+
+
+# single source of truth. Must contain only sync logic
 class PublicSteamState(BasePublicComponent):
     __slots__ = ("_country", "_currency", "_language")
 
@@ -33,9 +37,9 @@ class PublicSteamState(BasePublicComponent):
         self,
         transport: BaseSteamTransport,
         *,
-        country: str = "UA",
-        currency: Currency = Currency.USD,
-        language: Language = Language.ENGLISH,
+        country: str = DEF_COUNTRY,
+        currency: Currency = DEF_CURRENCY,
+        language: Language = DEF_LANGUAGE,
     ):
         """
         Handle state of non-authenticated user, therefore
@@ -96,9 +100,13 @@ class PublicSteamState(BasePublicComponent):
 
         self._set_language_cookie(lang)
 
+    def serialize(self) -> dict:
+        """Serialize the inner state to a `JSON-safe` dict."""
+        return {"country": self._country, "currency": self._currency, "language": self._language}
+
 
 class WalletInfo(NamedTuple):
-    """Wallet info of current user."""
+    """Wallet information of the current user."""
 
     currency: Currency
     """Wallet currency."""
@@ -146,6 +154,12 @@ class WalletInfo(NamedTuple):
         )
 
 
+DEF_STEAM_FEE = 0.5
+DEF_PUBLISHER_FEE = 0.10
+DEF_FEE_MIN = 1
+DEF_FEE_BASE = 0
+
+
 class SteamState(PublicSteamState):
     __slots__ = (
         "_session",
@@ -163,12 +177,16 @@ class SteamState(PublicSteamState):
         self,
         session: SteamSession,
         *,
-        country: str = "UA",
-        currency: Currency = Currency.USD,
-        language: Language = Language.ENGLISH,
+        country: str = DEF_COUNTRY,
+        currency: Currency = DEF_CURRENCY,
+        language: Language = DEF_LANGUAGE,
         web_api_key: str | None = None,
         trade_token: str | None = None,
         alias: str | None = None,
+        steam_fee: float = DEF_STEAM_FEE,
+        publisher_fee: float = DEF_PUBLISHER_FEE,
+        fee_min: int = DEF_FEE_MIN,
+        fee_base: int = DEF_FEE_BASE,
     ):
         """
         Handle state of authenticated user.
@@ -191,10 +209,10 @@ class SteamState(PublicSteamState):
         self._alias = alias
 
         # safe defaults
-        self._steam_fee = 0.5  # wallet_fee_percent
-        self._publisher_fee = 0.10  # wallet_publisher_fee_percent_default
-        self._fee_min = 1  # wallet_fee_minimum
-        self._fee_base = 0  # wallet_fee_base
+        self._steam_fee = steam_fee  # wallet_fee_percent
+        self._publisher_fee = publisher_fee  # wallet_publisher_fee_percent_default
+        self._fee_min = fee_min  # wallet_fee_minimum
+        self._fee_base = fee_base  # wallet_fee_base
 
     @property
     def web_api_key(self) -> str | None:
@@ -371,7 +389,7 @@ class SteamState(PublicSteamState):
 
     # wallet method, but no better way to handle codependence :(
     async def sync_wallet_info(self) -> WalletInfo:
-        """Update country, currency and fees from `Steam`."""
+        """Update country, currency, and fees from `Steam`."""
 
         # get wallet info
         profile_url = self.profile_url
@@ -399,7 +417,7 @@ class SteamState(PublicSteamState):
         return info
 
     async def actualize(self):
-        """Actualize component state for current user by updating them from `Steam`."""
+        """Actualize component state for current user by updating it from `Steam`."""
 
         async def sync_api_key():  # skip if unavailable
             with suppress(SteamError):
@@ -410,3 +428,15 @@ class SteamState(PublicSteamState):
             tg.create_task(self.sync_alias())
             tg.create_task(self.sync_trade_token())
             tg.create_task(self.sync_wallet_info())
+
+    def serialize(self) -> dict:
+        return {
+            **super().serialize(),
+            "web_api_key": self._web_api_key,
+            "trade_token": self._trade_token,
+            "alias": self._alias,
+            "steam_fee": self._steam_fee,
+            "publisher_fee": self._publisher_fee,
+            "fee_min": self._fee_min,
+            "fee_base": self._fee_base,
+        }

@@ -1,5 +1,5 @@
 from abc import ABCMeta, abstractmethod
-from collections.abc import Sequence
+from collections.abc import Iterable, Sequence
 from typing import overload
 
 from yarl import URL
@@ -62,14 +62,24 @@ class BaseSteamTransport(metaclass=ABCMeta):
         return self.get_cookie(url, name) is not None
 
     @abstractmethod
-    def get_cookies(self) -> list[Cookie]:
+    def get_cookies(self) -> Sequence[Cookie]:
         """Get all HTTP cookies from transport internal storage."""
 
-    def add_cookies(self, cookies: Sequence[Cookie]) -> None:
-        """Add HTTP cookies from list. Replace existing."""
+    def get_serialized_cookies(self) -> list[dict]:
+        """Get all serialized cookies from transport internal storage."""
+        return [c.serialize() for c in self.get_cookies()]
+
+    def update_cookies(self, cookies: Iterable[Cookie]) -> None:
+        """Update internal storage HTTP cookies. Replace existing."""
 
         for cookie in cookies:
             self.add_cookie(cookie)
+
+    def update_serialized_cookies(self, cookies: Iterable[dict]) -> None:
+        """Update internal storage HTTP cookies from serialized. Replace existing."""
+
+        for cookie in cookies:
+            self.add_cookie(Cookie.deserialize(cookie))
 
     @abstractmethod
     async def _request(

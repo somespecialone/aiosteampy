@@ -28,8 +28,8 @@ class Cookie:
     secure: bool = True
     same_site: Literal["Lax", "Strict", None] = None
 
-    def to_dict(self) -> dict:
-        """Convert current model to a json-safe dict."""
+    def serialize(self) -> dict:
+        """Convert to a `JSON-safe` dict."""
 
         data = asdict(self)
         if self.expires is not None:
@@ -38,14 +38,14 @@ class Cookie:
         return data
 
     @classmethod
-    def from_dict(cls, cookie: dict) -> Self:
-        """Create ``Cookie`` from json-safe dict."""
+    def deserialize(cls, serialized: dict) -> Self:
+        """Create ``Cookie`` from `JSON-safe` dict."""
 
-        cookie = cls(**cookie)
-        if cookie.expires is not None:
-            cookie.expires = parse_http_date(cookie.expires)
+        serialized = serialized.copy()
+        if serialized["expires"] is not None:
+            serialized["expires"] = parse_http_date(serialized["expires"])
 
-        return cookie
+        return cls(**serialized)
 
 
 @dataclass(slots=True, kw_only=True)

@@ -151,7 +151,7 @@ class WreqTransport(BaseSteamTransport):
         self._client.cookie_jar.remove(name, str(url))
 
     def get_cookies(self):
-        return [self._c_from_wreq_c(c) for c in self._client.cookie_jar.get_all()]
+        return tuple(self._c_from_wreq_c(c) for c in self._client.cookie_jar.get_all())
 
     async def close(self):
         self._client.close()

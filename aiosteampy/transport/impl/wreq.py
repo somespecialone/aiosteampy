@@ -49,7 +49,8 @@ class HeadersProxy(Mapping[str, str]):
         self._hdrs = headers
 
     def __getitem__(self, key):
-        return self._hdrs[key].decode()  # whole proxy only for this
+        if item := self._hdrs.__getitem__(key):
+            return item.decode()  # whole proxy only for this
 
     def __contains__(self, key):
         return self._hdrs.__contains__(key)

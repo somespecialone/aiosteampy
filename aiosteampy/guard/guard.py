@@ -1,5 +1,4 @@
 import time
-from base64 import b64encode
 from collections.abc import Awaitable
 from typing import Self
 
@@ -38,8 +37,8 @@ class SteamGuard:
         self,
         session: SteamSession,
         *,
-        shared_secret: str | None = None,
-        identity_secret: str | None = None,
+        shared_secret: str | bytes | None = None,
+        identity_secret: str | bytes | None = None,
         device_id: str | None = None,
         time_offset: int | None = None,
     ):
@@ -49,8 +48,8 @@ class SteamGuard:
         Both `secrets` must be provided.
 
         :param session: authenticated session.
-        :param shared_secret: `Steam Guard` linked shared secret.
-        :param identity_secret: `Steam Guard` linked identity secret.
+        :param shared_secret: shared secret of an account in bytes or base64 encoded string.
+        :param identity_secret: identity secret of an account in bytes or base64 encoded string.
         :param device_id: generated device id.
         :param time_offset: known offset in seconds from server time.
         """
@@ -68,13 +67,19 @@ class SteamGuard:
             raise ValueError("Both shared and identity secrets must be provided")
 
         self._session = session
-        self._device_id = device_id or generate_device_id(session.steam_id)
+        self._device_id = device_id or generate_device_id()
 
         if shared_secret:
             if not session.cookies_are_valid:  # preventing user from accessing confirmations with missing cookies
                 raise Unauthenticated
 
-            signer = TwoFactorSigner(session.steam_id, shared_secret, identity_secret, session.webapi, time_offset)
+            signer = TwoFactorSigner(
+                session.steam_id,
+                shared_secret=shared_secret,
+                identity_secret=identity_secret,
+                webapi=session.webapi,
+                time_offset=time_offset,
+            )
             self._conf = SteamConfirmations(session, signer, self._device_id)
         else:
             self._conf = None
@@ -124,25 +129,9 @@ class SteamGuard:
         """HTTP transport instance."""
         return self._session.transport
 
-    def confirm_auth_request(
-        self,
-        qr: QRChallengeUrl,
-        *,
-        confirm: bool = True,
-        persistence: bool = True,
-    ) -> Awaitable[None]:
-        """
-        Perform mobile confirmation of the other `login session` login request.
-
-        Equivalent of scanning auth QR with Steam App on a mobile device and tapping "Approve" or "Decline" button
-        as the next step.
-
-        :param qr: QR challenge url of `session` or tuple of version and client id.
-        :param confirm: confirm the `session` or not.
-        :param persistence: should `session` be persistent.
-        :raises TransportError: ordinary reasons.
-        :raises EResultError: ordinary reasons.
-        """
+    def _confirm_auth_request(self, qr: QRChallengeUrl, confirm: bool, *, persistence: bool = True) -> Awaitable[None]:
+        if self._conf is None:
+            raise ValueError("Current account must posses enabled two-factor with secrets to confirm auth request")
 
         if isinstance(qr, (str, URL)):
             version, client_id = parse_qr_challenge_url(qr)
@@ -159,6 +148,33 @@ class SteamGuard:
             confirm=confirm,
             persistence=persistence,
         )
+
+    def approve_auth_request(self, qr: QRChallengeUrl, *, persistence: bool = True) -> Awaitable[None]:
+        """
+        Approvee other `login session` auth request.
+
+        Equivalent of scanning auth QR with Steam App on a mobile device and tapping "Approve".
+
+        :param qr: QR challenge url of `session` or tuple of version and client id.
+        :param persistence: should `session` be persistent.
+        :raises TransportError: ordinary reasons.
+        :raises EResultError: ordinary reasons.
+        """
+
+        return self._confirm_auth_request(qr, True, persistence=persistence)
+
+    def deny_auth_request(self, qr: QRChallengeUrl) -> Awaitable[None]:
+        """
+        Deny other `login session` auth request.
+
+        Equivalent of scanning auth QR with Steam App on a mobile device and tapping "Decline".
+
+        :param qr: QR challenge url of `session` or tuple of version and client id.
+        :raises TransportError: ordinary reasons.
+        :raises EResultError: ordinary reasons.
+        """
+
+        return self._confirm_auth_request(qr, False)
 
     async def approve_session(
         self,
@@ -178,7 +194,7 @@ class SteamGuard:
             Must be **blank**, from the same account and with **non-mobile app** platform type.
         :param persistence: should `session` be persistent.
         :param device_friendly_name: name of the device used for authentication.
-            Should be unique, identifiable, and human readable. Used when managing account sessions.
+            Should be unique, identifiable, and human-readable. Used when managing account sessions.
         :raises TransportError: ordinary reasons.
         :raises EResultError: ordinary reasons.
         :raises LoginError: ordinary reasons.
@@ -191,9 +207,11 @@ class SteamGuard:
             raise ValueError("Only session with non-mobile app platform type can be approved")
         if session.refresh_token is not None:
             raise ValueError("Passed session is not blank")
+        if self._conf is None:
+            raise ValueError("Current account must posses enabled two-factor with secrets to confirm auth request")
 
         version, client_id, _, _ = await session.with_qr(device_friendly_name)
-        await self.confirm_auth_request((version, client_id), persistence=persistence)
+        await self.approve_auth_request((version, client_id), persistence=persistence)
         await session.finalize()
 
     async def enable(self):
@@ -213,7 +231,7 @@ class SteamGuard:
         """
 
         if self._2fa_resp is not None:
-            raise ValueError("Two-factor enabling is already in progress")
+            raise ValueError("Two-factor is already enabled or in progress")
 
         try:
             r = await self._2fa.add_authenticator(self._session.steam_id, self._device_id)
@@ -266,14 +284,17 @@ class SteamGuard:
         :raises RuntimeError: when something goes wrong during finalization.
         """
 
-        account = self._get_account()
+        if self._2fa_finalized:
+            raise ValueError("Two-factor is already enabled")
+
+        account = self._get_account()  # 2fa resp will be checked there
 
         signer = TwoFactorSigner(
             self._session.steam_id,
-            account.shared_secret,
-            account.identity_secret,
-            self.webapi,
-            self._time_offset,
+            shared_secret=account.shared_secret,
+            identity_secret=account.identity_secret,
+            webapi=self.webapi,
+            time_offset=self._time_offset,
         )
 
         try:
@@ -354,15 +375,15 @@ class SteamGuard:
         """Create account without marking it as exported."""
 
         if self._2fa_resp is None:
-            raise ValueError("There is no account data a two-factor enabling is not in the progress")
+            raise ValueError("There is no account data as two-factor enabling is not in the progress")
 
         return SteamGuardAccount(
             account_name=self._2fa_resp.account_name,
             steam_id=self._session.steam_id,
             device_id=self._device_id,
-            shared_secret=b64encode(self._2fa_resp.shared_secret).decode(),
-            identity_secret=b64encode(self._2fa_resp.identity_secret).decode(),
-            secret_1=b64encode(self._2fa_resp.secret_1).decode(),
+            shared_secret=self._2fa_resp.shared_secret,
+            identity_secret=self._2fa_resp.identity_secret,
+            secret_1=self._2fa_resp.secret_1,
             revocation_code=self._2fa_resp.revocation_code,
             uri=self._2fa_resp.uri,
             serial_number=self._2fa_resp.serial_number,
@@ -380,24 +401,24 @@ class SteamGuard:
     def export_mafile(self) -> MaFile:
         """Export `Steam Guard` account as `Steam Desktop Authenticator` file (maFile)."""
 
-        account = self.export_account()
+        account = self.export_account().serialize()
         return MaFile(
-            shared_secret=account.shared_secret,
-            serial_number=str(account.serial_number),
-            revocation_code=account.revocation_code,
-            uri=account.uri,
+            shared_secret=account["shared_secret"],
+            serial_number=str(account["serial_number"]),
+            revocation_code=account["revocation_code"],
+            uri=account["uri"],
             server_time=self._2fa_resp.server_time,
-            account_name=account.account_name,
-            token_gid=account.token_gid,
-            identity_secret=account.identity_secret,
-            secret_1=account.secret_1,
+            account_name=account["account_name"],
+            token_gid=account["token_gid"],
+            identity_secret=account["identity_secret"],
+            secret_1=account["secret_1"],
             status=self._2fa_resp.status,
-            device_id=account.device_id,
+            device_id=account["device_id"],
             phone_number_hint=self._2fa_resp.phone_number_hint,
             confirm_type=self._2fa_resp.confirm_type,
             fully_enrolled=self._2fa_finalized,
             Session={
-                "SteamID": account.steam_id,
+                "SteamID": account["steam_id"],
                 "AccessToken": self._session.access_token.raw,
                 "RefreshToken": self._session.refresh_token.raw,
                 "SessionID": self._session.session_id or generate_session_id(),
@@ -425,13 +446,18 @@ class SteamGuard:
 
         if not account.finalized:
             raise ValueError("Account is not finalized")
+        if account.steam_id != session.steam_id:
+            raise ValueError("Steam Guard steam ID does not match session steam ID")
 
-        return cls(
+        guard = cls(
             session,
             shared_secret=account.shared_secret,
             identity_secret=account.identity_secret,
             device_id=account.device_id,
         )
+        guard._2fa_finalized = True
+
+        return guard
 
     @classmethod
     async def from_mafile(
@@ -461,9 +487,12 @@ class SteamGuard:
         elif not session.cookies_are_valid:
             await session.obtain_cookies()
 
-        return cls(
+        guard = cls(
             session,
             shared_secret=mafile["shared_secret"],
             identity_secret=mafile["identity_secret"],
             device_id=mafile["device_id"],
         )
+        guard._2fa_finalized = True
+
+        return guard

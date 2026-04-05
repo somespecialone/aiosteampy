@@ -1,4 +1,5 @@
 import time
+from base64 import b64decode
 from collections.abc import Awaitable
 
 from ..id import SteamID
@@ -13,16 +14,17 @@ class TwoFactorSigner:
     def __init__(
         self,
         steam_id: SteamID,
-        shared_secret: str,
-        identity_secret: str,
+        *,  # to prevent secrets mix up
+        shared_secret: bytes | str,
+        identity_secret: bytes | str,
         webapi: SteamWebAPIClient | None = None,
         time_offset: int | None = None,
     ):
         """
         Crypto functionality of `Steam Guard`.
 
-        :param shared_secret: shared secret of account.
-        :param identity_secret: identity secret of account.
+        :param shared_secret: shared secret of an account in bytes or base64 encoded string.
+        :param identity_secret: identity secret of an account in bytes or base64 encoded string.
         :param webapi: client instance to make requests to.
         :param time_offset: known offset in seconds from server time.
         """
@@ -31,6 +33,12 @@ class TwoFactorSigner:
         self._service = TwoFactorServiceClient(api)
 
         self._steam_id = steam_id
+
+        if isinstance(shared_secret, str):
+            shared_secret = b64decode(shared_secret)
+        if isinstance(identity_secret, str):
+            identity_secret = b64decode(identity_secret)
+
         self._shared_secret = shared_secret
         self._identity_secret = identity_secret
 
@@ -60,7 +68,7 @@ class TwoFactorSigner:
         return int(time.time()) + self.time_offset
 
     def gen_auth_code(self) -> str:
-        """Generate 5 character alphanumeric `Steam` two-factor (TOTP) auth code."""
+        """Generate 5-character alphanumeric `Steam` two-factor (TOTP) auth code."""
         return generate_auth_code(self._shared_secret, self._calc_server_time())
 
     def gen_confirmation_key(self, tag: str) -> tuple[str, int]:

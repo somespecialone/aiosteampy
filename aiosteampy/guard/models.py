@@ -1,5 +1,6 @@
 import json
 import re
+from base64 import b64decode, b64encode
 from dataclasses import asdict, dataclass
 from datetime import datetime
 from enum import IntEnum
@@ -46,10 +47,9 @@ class SteamGuardAccount:
     steam_id: SteamID
     device_id: str
 
-    # base64 encoded
-    shared_secret: str
-    identity_secret: str
-    secret_1: str
+    shared_secret: bytes
+    identity_secret: bytes
+    secret_1: bytes
 
     revocation_code: str
 
@@ -62,15 +62,21 @@ class SteamGuardAccount:
 
     def serialize(self) -> dict:
         """Export account data as `JSON-safe` dict."""
-        return asdict(self)
+
+        data = asdict(self)
+        data["shared_secret"] = b64encode(self.shared_secret).decode()
+        data["identity_secret"] = b64encode(self.identity_secret).decode()
+        return data
 
     @classmethod
-    def deserialize(cls, serialized: dict[str, str]) -> Self:
+    def deserialize(cls, serialized: dict) -> Self:
         """Import account data from `JSON-safe` dict."""
 
         account = cls(**serialized)
         account.steam_id = SteamID(account.steam_id)
-        account.serial_number = int(account.serial_number)
+        account.shared_secret = b64decode(serialized["shared_secret"])
+        account.identity_secret = b64decode(serialized["identity_secret"])
+        account.secret_1 = b64decode(serialized["secret_1"])
         return account
 
     @classmethod
@@ -79,9 +85,9 @@ class SteamGuardAccount:
             account_name=mafile["account_name"],
             steam_id=SteamID(mafile["Session"]["SteamID"]),
             device_id=mafile["device_id"],
-            shared_secret=mafile["shared_secret"],
-            identity_secret=mafile["identity_secret"],
-            secret_1=mafile["secret_1"],
+            shared_secret=b64decode(mafile["shared_secret"]),
+            identity_secret=b64decode(mafile["identity_secret"]),
+            secret_1=b64decode(mafile["secret_1"]),
             revocation_code=mafile["revocation_code"],
             uri=mafile["uri"],
             serial_number=int(mafile["serial_number"]),

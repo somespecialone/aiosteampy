@@ -38,7 +38,7 @@ class SteamConfirmations:
         self._session = session
         self._signer = signer
 
-        self._device_id = generate_device_id(self._session.steam_id) if device_id is None else device_id
+        self._device_id = generate_device_id() if not device_id else device_id
 
     @property
     def signer(self) -> TwoFactorSigner:

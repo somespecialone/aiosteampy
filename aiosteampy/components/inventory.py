@@ -12,7 +12,7 @@ from ..models import AssetAccessory, AssetProperty, EconItem
 from ..session import SteamSession
 from ..transport import BaseSteamTransport, TransportResponseError, Unauthenticated
 from ..utils import create_ident_code
-from ._base import EconMixin, ItemDescriptionsMap
+from ._base import BasePublicComponent, EconMixin, ItemDescriptionsMap
 from .state import PublicSteamState, SteamState
 
 # Steam current limit
@@ -32,13 +32,13 @@ class Inventory(NamedTuple):
     """Last `asset id` of the list returned by `Steam`."""
 
 
-class InventoryPublicComponent(EconMixin):
+class InventoryPublicComponent(BasePublicComponent, EconMixin):
     """Component with public `Steam Inventory` methods. Available without authentication."""
 
-    __slots__ = ("_transport", "_state")
+    __slots__ = ("_state", )
 
     def __init__(self, transport: BaseSteamTransport, state: PublicSteamState):
-        self._transport = transport
+        super().__init__(transport)
         self._state = state
 
     @classmethod

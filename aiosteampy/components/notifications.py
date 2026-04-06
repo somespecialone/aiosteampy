@@ -1,4 +1,4 @@
-"""Component responsible for `Steam` user notifications."""
+"""Component responsible for `Steam` user notifications functionality."""
 
 from collections.abc import Awaitable
 
@@ -8,6 +8,8 @@ from ._base import BasePublicComponent
 
 
 class NotificationsComponent(BasePublicComponent):
+    """Component responsible for `Steam` user notifications functionality."""
+
     __slots__ = ("_session", "_service")
 
     def __init__(self, session: SteamSession):

@@ -1,8 +1,5 @@
 """Client for interacting with `ITwoFactorService`."""
 
-import time
-from collections.abc import Awaitable
-
 from ...exceptions import EResultError
 from ._base import SteamWebApiServiceBase
 from .protobufs import *
@@ -15,7 +12,7 @@ class TwoFactorServiceClient(SteamWebApiServiceBase):
 
     SERVICE_NAME = "ITwoFactorService"
 
-    async def query_time(self, sender_time: int | None = None) -> CTwoFactorTimeResponse:
+    async def query_time(self, sender_time: int = 0) -> CTwoFactorTimeResponse:
         msg = CTwoFactorTimeRequest(sender_time=sender_time)
         r = await self._proto("QueryTime", msg)
         return CTwoFactorTimeResponse.parse(r)
@@ -32,9 +29,9 @@ class TwoFactorServiceClient(SteamWebApiServiceBase):
         # https://github.com/dyc3/steamguard-cli/blob/a7b6aaed1729f26c68413e7316ea5fd9a89d34c7/steamguard/src/accountlinker.rs#L58
         version: int = 2,
         authenticator_type: int = 1,
-        authenticator_time: int | None = None,
-        serial_number: int | None = None,
-        http_headers: list[str] | None = None,
+        authenticator_time: int = 0,
+        serial_number: int = 0,
+        http_headers: list[str] = (),
     ) -> CTwoFactorAddAuthenticatorResponse:
         msg = CTwoFactorAddAuthenticatorRequest(
             steamid=steamid,
@@ -53,14 +50,14 @@ class TwoFactorServiceClient(SteamWebApiServiceBase):
         steamid: int,
         authenticator_code: str,
         activation_code: str,
-        authenticator_time: int | None = None,
+        authenticator_time: int,
         validate_sms_code: bool = False,
-        http_headers: list[str] | None = None,
+        http_headers: list[str] = (),
     ) -> CTwoFactorFinalizeAddAuthenticatorResponse:
         msg = CTwoFactorFinalizeAddAuthenticatorRequest(
             steamid=steamid,
             authenticator_code=authenticator_code,
-            authenticator_time=authenticator_time or int(time.time()),
+            authenticator_time=authenticator_time,
             activation_code=activation_code,
             http_headers=http_headers,
             validate_sms_code=validate_sms_code,

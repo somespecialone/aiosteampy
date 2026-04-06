@@ -243,17 +243,3 @@ class EconItem(BaseEntityWithIdentCode):
                 self._cs2_ctx = cs2.ItemContext.from_item(self)
 
             return self._cs2_ctx
-
-
-class Notifications(NamedTuple):
-    trades: int  # 1
-    game_turns: int  # 2
-    moderator_messages: int  # 3
-    comments: int  # 4
-    items: int  # 5
-    invites: int  # 6
-    # 7 missing
-    gifts: int  # 8
-    chats: int  # 9
-    help_request_replies: int  # 10
-    account_alerts: int  # 11

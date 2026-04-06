@@ -1,6 +1,5 @@
 from base64 import b64encode
 from collections.abc import Awaitable
-from enum import Enum, auto
 from typing import Any, Literal
 
 from betterproto2 import Message
@@ -27,9 +26,10 @@ API_HEADERS = {
     "Sec-Fetch-Site": "cross-site",
 }
 
+COMMUNITY_ORIGIN = str(STEAM_URL.COMMUNITY)
 BROWSER_HEADERS = {
     "Referer": str(STEAM_URL.COMMUNITY) + "/",
-    "Origin": str(STEAM_URL.COMMUNITY),
+    "Origin": COMMUNITY_ORIGIN,
 }
 
 
@@ -151,7 +151,7 @@ class SteamWebAPIClient:
             if self.is_mobile:
                 params["origin"] = "SteamMobile"
             else:  # web
-                params["origin"] = BROWSER_HEADERS["Origin"]
+                params["origin"] = COMMUNITY_ORIGIN
 
         if protobuf is not None:
             if response_mode != "meta":

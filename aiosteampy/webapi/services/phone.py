@@ -24,7 +24,7 @@ class PhoneServiceClient(SteamWebApiServiceBase):
 
     def send_phone_verification_code(self, language: int = 0) -> Awaitable[None]:
         msg = CPhoneSendPhoneVerificationCodeRequest(language=language)
-        return self._proto("SendPhoneVerificationCode", msg)
+        return self._proto("SendPhoneVerificationCode", msg, response_mode="meta")
 
     async def set_account_phone_number(
         self,
@@ -37,7 +37,7 @@ class PhoneServiceClient(SteamWebApiServiceBase):
 
     def verify_account_phone_with_code(self, code: str) -> Awaitable[None]:
         msg = CPhoneVerifyAccountPhoneWithCodeRequest(code=code)
-        return self._proto("VerifyAccountPhoneWithCode", msg)
+        return self._proto("VerifyAccountPhoneWithCode", msg, response_mode="meta")
 
     async def account_phone_status(self) -> CPhoneAccountPhoneStatusResponse:
         r = await self._proto("AccountPhoneStatus", auth=True)

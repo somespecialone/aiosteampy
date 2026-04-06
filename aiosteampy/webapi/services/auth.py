@@ -169,6 +169,3 @@ class AuthenticationServiceClient(SteamWebApiServiceBase):
     ) -> Awaitable[None]:
         msg = CAuthenticationTokenRevokeRequest(token=token, revoke_action=revoke_action)
         return self._proto("RevokeToken", msg, auth=True, response_mode="meta")
-
-    def close(self) -> Awaitable[None]:
-        return self._api.close()

@@ -139,5 +139,3 @@ dmypy.json
 cython_debug/
 
 *.lock
-
-protobufs/generated/*

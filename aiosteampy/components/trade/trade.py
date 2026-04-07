@@ -555,7 +555,7 @@ class TradeComponent(BasePublicComponent, EconMixin):
         offer_data = await self._perform_offer_action(offer_id, "cancel")
         resp_offer_id = int(offer_data.get("tradeofferid", 0))
         if not resp_offer_id or resp_offer_id != offer_id:
-            raise SteamError(f"Failed to cancel trade offer", offer_data)
+            raise SteamError("Failed to cancel trade offer", offer_data)
 
     async def decline(self, obj: int | TradeOffer):
         """
@@ -580,7 +580,7 @@ class TradeComponent(BasePublicComponent, EconMixin):
         offer_data = await self._perform_offer_action(offer_id, "decline")
         resp_offer_id = int(offer_data.get("tradeofferid", 0))
         if not resp_offer_id or resp_offer_id != offer_id:
-            raise SteamError(f"Failed to decline trade offer", offer_data)
+            raise SteamError("Failed to decline trade offer", offer_data)
 
     @overload
     async def accept(self, obj: TradeOffer): ...

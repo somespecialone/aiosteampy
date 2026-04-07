@@ -8,13 +8,11 @@ from typing import NamedTuple, Self
 
 from yarl import URL
 
-from ..constants import STEAM_URL, Currency, EResult, Language
-from ..exceptions import EResultError, MobileConfirmationRequired, SteamError
+from ..constants import STEAM_URL, Currency, Language
+from ..exceptions import EResultError, SteamError
 from ..session import SteamSession
-from ..transport import BaseSteamTransport, Cookie
+from ..transport import BaseSteamTransport
 from ._base import BasePublicComponent
-
-LANG_COOKIE = "Steam_Language"
 
 TRADE_TOKEN_RE = re.compile(r"\d+&token=(.+)\" readonly")
 
@@ -56,8 +54,7 @@ class PublicSteamState(BasePublicComponent):
         self._country = country
         self._currency = currency
 
-        self._language = language  # will be doubled in cookie just like session id
-        self._set_language_cookie(language)
+        self._language = language
 
     @property
     def country(self) -> str:
@@ -73,32 +70,6 @@ class PublicSteamState(BasePublicComponent):
     def language(self) -> Language:
         """Language of `Steam` responses, descriptions, et cetera."""
         return self._language
-
-    def _set_language_cookie(self, lang: Language):
-        for domain in (STEAM_URL.COMMUNITY, STEAM_URL.STORE):
-            self._transport.add_cookie(
-                Cookie(
-                    LANG_COOKIE,
-                    lang.value,
-                    domain.host,
-                    domain.path,
-                    # expires in (365 * 5) - 1 days, but we don't need it
-                )
-            )
-
-    def set_language(self, lang: Language):
-        """
-        Set main `language` of `Steam` domains.
-
-        Language other than `English` will **break some methods and lead to unexpected behavior**.
-        """
-
-        # browser behavior:
-        # POST https://store.steampowered.com/account/setlanguage/ json=language, sessionid
-        # POST  https://steamcommunity.com/actions/SetLanguage/ json=language, sessionid
-        # all work from above just to set cookies, so we can bypass requests and set it manually
-
-        self._set_language_cookie(lang)
 
     def serialize(self) -> dict:
         """Serialize the inner state to a `JSON-safe` dict."""
@@ -263,24 +234,6 @@ class SteamState(PublicSteamState):
         """Wallet `base` fee."""
         return self._fee_base
 
-    async def set_language(self, lang: Language):
-        # backup option
-        # POST https://store.steampowered.com/account/savelanguagepreferences json=primary_language, sessionid
-
-        await self._transport.request(
-            "POST",
-            STEAM_URL.COMMUNITY / "actions/SetLanguage",
-            data={"sessionid": self._session.session_id, "language": lang},
-            response_mode="meta",
-        )
-        # We can set lang cookie to store domain, but let's follow browser behaviour
-        await self._transport.request(
-            "GET",
-            STEAM_URL.STORE / "account/languagepreferences/",
-            redirects=False,  # we don't need to load page in new language, enough first request with cookie
-            response_mode="meta",
-        )
-
     async def sync_api_key(self) -> str | None:
         """
         Update `Steam Web API` key from `Steam`.
@@ -305,58 +258,6 @@ class SteamState(PublicSteamState):
             self._web_api_key = search.group(1)
         else:
             self._web_api_key = None
-
-        return self._web_api_key
-
-    # TODO those methods can belong to a different components
-    async def revoke_api_key(self):
-        """Revoke old `Steam Web API` key."""
-
-        data = {
-            "sessionid": self._session.session_id,
-            "Revoke": "Revoke My Steam Web API Key",  # whatever
-        }
-        await self._transport.request("POST", STEAM_URL.COMMUNITY / "dev/revokekey", data=data, response_mode="meta")
-
-        self._web_api_key = None
-
-    async def register_new_api_key(self, domain: str, *, request_id: int = 0) -> str:
-        """
-        Request registration of a new `Steam Web API` key.
-
-        :param domain: on which domain api key will be registered.
-        :param request_id: `confirmation id` of registration request.
-        :raises TransportError: ordinary reasons.
-        :raises EResultError: ordinary reasons.
-        :raises MobileConfirmationRequired: action requires mobile app confirmation.
-        """
-
-        await self.revoke_api_key()  # revoke old one as browser do
-
-        data = {
-            "domain": domain,
-            "request_id": request_id,
-            "sessionid": self._session.session_id,
-            "agreeToTerms": "true",
-        }
-        url = STEAM_URL.COMMUNITY / "dev/requestkey"
-        r = await self._transport.request("POST", url, data=data, response_mode="json")
-        rj: dict = r.content
-
-        if EResult(rj.get("success")) is EResult.PENDING and rj.get("requires_confirmation"):
-            if self._conf is None:
-                raise MobileConfirmationRequired(rj["request_id"])
-
-            await self._conf.confirm_api_key_request(rj["request_id"])
-
-            data["request_id"] = rj["request_id"]
-
-            r = await self._transport.request("POST", url, data=data, response_mode="json")  # repeat
-            rj = r.content
-
-        EResultError.check_data(rj)
-
-        self._web_api_key = rj["api_key"]
 
         return self._web_api_key
 

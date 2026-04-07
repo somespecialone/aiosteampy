@@ -1,8 +1,10 @@
+import json
 import re
 from collections.abc import AsyncGenerator, Awaitable
 from contextlib import suppress
-from datetime import datetime
+from datetime import UTC, datetime
 from typing import TYPE_CHECKING, Callable, overload
+from urllib.parse import unquote
 
 from ...app import App, AppContext
 from ...constants import STEAM_URL, Currency
@@ -10,6 +12,7 @@ from ...exceptions import (
     EmailConfirmationRequired,
     EResultError,
     MobileConfirmationRequired,
+    SteamError,
 )
 from ...models import EconItem, ItemDescription
 from ...session import SteamSession
@@ -27,6 +30,7 @@ from .models import (
     BuyOrderStatus,
     ListingValues,
     MarketAvailability,
+    MarketEligibility,
     MarketHistoryEvent,
     MarketHistoryEventType,
     MarketHistoryListing,
@@ -43,6 +47,7 @@ from .public import MARKET_URL, MarketPublicComponent
 from .utils import buyer_pays_to_receive, calc_market_listing_fee
 
 PRICE_ENTRY_TIME_FORMAT = "%b %d %Y %H: %z"
+TRADE_ELIGIBILITY_COOKIE = "webTradeEligibility"
 
 
 class MarketComponent(MarketPublicComponent):
@@ -106,7 +111,7 @@ class MarketComponent(MarketPublicComponent):
             UserMarketListing(
                 id=int(l_data["listingid"]),
                 lister=self._session.steam_id,  # no need to parse data again
-                created_at=datetime.fromtimestamp(l_data["time_created"]),
+                created_at=datetime.fromtimestamp(l_data["time_created"], UTC),
                 item=MarketListingItem(
                     context_id=int(l_data["asset"]["contextid"]),
                     asset_id=int(l_data["asset"]["id"]),
@@ -839,7 +844,7 @@ class MarketComponent(MarketPublicComponent):
                     received_currency=Currency(int(p_data["received_currencyid"]) - 2000),
                     paid_amount=int(p_data["paid_amount"]),
                     paid_fee=int(p_data["paid_fee"]),
-                    time_sold=datetime.fromtimestamp(p_data["time_sold"]),
+                    time_sold=datetime.fromtimestamp(p_data["time_sold"], UTC),
                     item=econ_item_map[
                         create_ident_code(
                             p_data["asset"]["id"],
@@ -870,7 +875,7 @@ class MarketComponent(MarketPublicComponent):
             events.append(
                 MarketHistoryEvent(
                     listing=listings_map[listing_key],
-                    time=datetime.fromtimestamp(e_data["time_event"]),
+                    time=datetime.fromtimestamp(e_data["time_event"], UTC),
                     type=MarketHistoryEventType(e_data["event_type"]),
                 )
             )
@@ -1013,9 +1018,46 @@ class MarketComponent(MarketPublicComponent):
             for e_data in rj["prices"]
         ]
 
-    async def verify_market_availability(self) -> MarketAvailability:
+    async def get_trade_eligibility(self) -> MarketEligibility:
         """
-        Return market availability info that contains status, tips and possibly date.
+        Get `Steam Market` trade eligibility info from received cookie.
+
+        :raises EResultError: ordinary reasons.
+        :raises TransportError: ordinary reasons.
+        :raises SteamError: trade eligibility cookie was not found.
+        """
+
+        await self._transport.request(
+            "GET",
+            MARKET_URL / "eligibilitycheck/",
+            params={"goto": "/market/"},
+            headers={"Referer": f"{MARKET_URL}/"},
+            redirects=False,
+            response_mode="meta",
+        )
+
+        if value := self._transport.get_cookie_value(STEAM_URL.COMMUNITY, TRADE_ELIGIBILITY_COOKIE):
+            data = json.loads(unquote(value))
+            data["allowed"] = allowed = bool(data["allowed"])
+            data["time_checked"] = datetime.fromtimestamp(data["time_checked"], UTC)
+            if not allowed:
+                data["allowed_at_time"] = datetime.fromtimestamp(data["allowed_at_time"], UTC)
+                data["expiration"] = datetime.fromtimestamp(data["expiration"], UTC)
+            else:
+                data["allowed_at_time"] = None
+
+            return MarketEligibility(**data)
+
+        else:
+            raise SteamError("Trade Eligibility cookie was not found")
+
+    async def get_availability(self) -> MarketAvailability:
+        """
+        Return market availability info that contains status, tips, and possibly date.
+
+        .. note::
+            If only boolean status of whether `Steam Market` is available is needed
+            ``get_trade_eligibility`` method is preferred as more lightweight.
 
         .. seealso:: https://help.steampowered.com/en/faqs/view/451E-96B3-D194-50FC.
         """
@@ -1058,6 +1100,3 @@ class MarketComponent(MarketPublicComponent):
         # as at time of writing: last app purchase older than a year and market still available
 
         return MarketAvailability(available, tips, when)
-
-    # TODO get asset prices, also access token instead of api key
-    # https://api.steampowered.com/ISteamEconomy/GetAssetPrices/v1/?key=<API KEY>&appid=...

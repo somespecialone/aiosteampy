@@ -403,6 +403,16 @@ class MarketSearchSuggestion(NamedTuple):
     search_score: int
 
 
+class MarketEligibility(NamedTuple):
+    allowed: bool
+    time_checked: datetime
+    new_device_cooldown_days: int
+    steamguard_required_days: int
+    allowed_at_time: datetime | None = None
+    expiration: datetime | None = None
+    reason: int | None = None
+
+
 class MarketAvailability(NamedTuple):
     available: bool
     tips: list[str]

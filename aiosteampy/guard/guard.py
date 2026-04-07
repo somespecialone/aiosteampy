@@ -16,6 +16,7 @@ from ..webapi.services.twofactor import CTwoFactorAddAuthenticatorResponse, TwoF
 from .confirmations import SteamConfirmations
 from .exceptions import *
 from .models import MaFile, SteamGuardAccount
+from .secrets import IdentitySecret, SharedSecret, TwoFactorSecret
 from .signer import TwoFactorSigner
 from .utils import generate_device_id
 
@@ -381,9 +382,9 @@ class SteamGuard:
             account_name=self._2fa_resp.account_name,
             steam_id=self._session.steam_id,
             device_id=self._device_id,
-            shared_secret=self._2fa_resp.shared_secret,
-            identity_secret=self._2fa_resp.identity_secret,
-            secret_1=self._2fa_resp.secret_1,
+            shared_secret=SharedSecret(self._2fa_resp.shared_secret),
+            identity_secret=IdentitySecret(self._2fa_resp.identity_secret),
+            secret_1=TwoFactorSecret(self._2fa_resp.secret_1),
             revocation_code=self._2fa_resp.revocation_code,
             uri=self._2fa_resp.uri,
             serial_number=self._2fa_resp.serial_number,

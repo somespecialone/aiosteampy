@@ -1,6 +1,5 @@
 import json
 import re
-from base64 import b64decode, b64encode
 from dataclasses import asdict, dataclass
 from datetime import datetime
 from enum import IntEnum
@@ -8,6 +7,7 @@ from typing import NotRequired, Self, TypedDict
 
 from ..id import SteamID
 from ..utils import create_ident_code
+from .secrets import IdentitySecret, SharedSecret, TwoFactorSecret
 
 ITEM_INFO_RE = re.compile(r"'confiteminfo', (.+), UserYou")  # lang safe
 
@@ -47,9 +47,9 @@ class SteamGuardAccount:
     steam_id: SteamID
     device_id: str
 
-    shared_secret: bytes
-    identity_secret: bytes
-    secret_1: bytes
+    shared_secret: SharedSecret
+    identity_secret: IdentitySecret
+    secret_1: TwoFactorSecret
 
     revocation_code: str
 
@@ -64,8 +64,9 @@ class SteamGuardAccount:
         """Export account data as `JSON-safe` dict."""
 
         data = asdict(self)
-        data["shared_secret"] = b64encode(self.shared_secret).decode()
-        data["identity_secret"] = b64encode(self.identity_secret).decode()
+        data["shared_secret"] = self.shared_secret.serialize()
+        data["identity_secret"] = self.identity_secret.serialize()
+        data["secret_1"] = self.secret_1.serialize()
         return data
 
     @classmethod
@@ -74,9 +75,9 @@ class SteamGuardAccount:
 
         account = cls(**serialized)
         account.steam_id = SteamID(account.steam_id)
-        account.shared_secret = b64decode(serialized["shared_secret"])
-        account.identity_secret = b64decode(serialized["identity_secret"])
-        account.secret_1 = b64decode(serialized["secret_1"])
+        account.shared_secret = SharedSecret(serialized["shared_secret"])
+        account.identity_secret = IdentitySecret(serialized["identity_secret"])
+        account.secret_1 = TwoFactorSecret(serialized["secret_1"])
         return account
 
     @classmethod
@@ -85,9 +86,9 @@ class SteamGuardAccount:
             account_name=mafile["account_name"],
             steam_id=SteamID(mafile["Session"]["SteamID"]),
             device_id=mafile["device_id"],
-            shared_secret=b64decode(mafile["shared_secret"]),
-            identity_secret=b64decode(mafile["identity_secret"]),
-            secret_1=b64decode(mafile["secret_1"]),
+            shared_secret=SharedSecret(mafile["shared_secret"]),
+            identity_secret=IdentitySecret(mafile["identity_secret"]),
+            secret_1=TwoFactorSecret(mafile["secret_1"]),
             revocation_code=mafile["revocation_code"],
             uri=mafile["uri"],
             serial_number=int(mafile["serial_number"]),

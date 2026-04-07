@@ -13,5 +13,6 @@ from .exceptions import (
 )
 from .guard import SteamGuard
 from .models import Confirmation, ConfirmationType, SteamGuardAccount
+from .secrets import IdentitySecret, SharedSecret
 from .signer import TwoFactorSigner
-from .utils import generate_auth_code, generate_confirmation_key, generate_device_id, sign_auth_request
+from .utils import generate_device_id, get_server_time_offset

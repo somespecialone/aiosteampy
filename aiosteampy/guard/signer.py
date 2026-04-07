@@ -1,11 +1,11 @@
 import time
-from base64 import b64decode
 from collections.abc import Awaitable
 
 from ..id import SteamID
 from ..webapi import SteamWebAPIClient
 from ..webapi.services.twofactor import CTwoFactorTimeResponse, TwoFactorServiceClient
-from .utils import generate_auth_code, generate_confirmation_key, sign_auth_request
+from .secrets import IdentitySecret, SharedSecret
+from .utils import get_server_time_offset
 
 
 class TwoFactorSigner:
@@ -23,10 +23,10 @@ class TwoFactorSigner:
         """
         Crypto functionality of `Steam Guard`.
 
-        :param shared_secret: shared secret of an account in bytes or base64 encoded string.
-        :param identity_secret: identity secret of an account in bytes or base64 encoded string.
-        :param webapi: client instance to make requests to.
-        :param time_offset: known offset in seconds from server time.
+        :param shared_secret: `shared secret` of an account in `bytes` or `base64 encoded` string.
+        :param identity_secret: `identity secret` of an account in `bytes` or `base64 encoded` string.
+        :param webapi: client instance to make requests from.
+        :param time_offset: known `offset` in seconds from server time.
         """
 
         api = webapi or SteamWebAPIClient()
@@ -34,13 +34,8 @@ class TwoFactorSigner:
 
         self._steam_id = steam_id
 
-        if isinstance(shared_secret, str):
-            shared_secret = b64decode(shared_secret)
-        if isinstance(identity_secret, str):
-            identity_secret = b64decode(identity_secret)
-
-        self._shared_secret = shared_secret
-        self._identity_secret = identity_secret
+        self._shared_secret = SharedSecret(shared_secret)
+        self._identity_secret = IdentitySecret(identity_secret)
 
         self.time_offset: int = time_offset or 0
         """Time offset in seconds from server time."""
@@ -52,6 +47,16 @@ class TwoFactorSigner:
         """TwoFactor service client."""
         return self._service
 
+    @property
+    def shared_secret(self) -> SharedSecret:
+        """Shared secret of the current account with activated `Steam Guard`."""
+        return self._shared_secret
+
+    @property
+    def identity_secret(self) -> IdentitySecret:
+        """Identity secret of the current account with activated `Steam Guard`."""
+        return self._identity_secret
+
     def get_server_time(self) -> Awaitable[CTwoFactorTimeResponse]:
         """Query `Steam` servers for current time."""
         return self._service.query_time()
@@ -59,8 +64,7 @@ class TwoFactorSigner:
     async def sync_time(self):
         """Sync time offset with `Steam` servers."""
 
-        serv_time = await self.get_server_time()
-        self.time_offset = serv_time.server_time - int(time.time())
+        self.time_offset = await get_server_time_offset(service=self._service)
         self.synced = True
 
     def _calc_server_time(self) -> int:
@@ -69,7 +73,7 @@ class TwoFactorSigner:
 
     def gen_auth_code(self) -> str:
         """Generate 5-character alphanumeric `Steam` two-factor (TOTP) auth code."""
-        return generate_auth_code(self._shared_secret, self._calc_server_time())
+        return self._shared_secret.generate_auth_code(self._calc_server_time())
 
     def gen_confirmation_key(self, tag: str) -> tuple[str, int]:
         """
@@ -80,7 +84,7 @@ class TwoFactorSigner:
         """
 
         ts = self._calc_server_time()
-        return generate_confirmation_key(self._identity_secret, tag, ts), ts
+        return self._identity_secret.generate_confirmation_key(tag, ts), ts
 
     def sign_auth_request(self, version: int, client_id: int) -> bytes:
         """
@@ -90,4 +94,4 @@ class TwoFactorSigner:
         :param client_id: client id. Also can be extracted from challenge QR.
         """
 
-        return sign_auth_request(self._steam_id, self._shared_secret, version, client_id)
+        return self._shared_secret.sign_auth_request(self._steam_id, version, client_id)

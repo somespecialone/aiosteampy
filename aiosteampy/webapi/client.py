@@ -28,7 +28,7 @@ API_HEADERS = {
 
 COMMUNITY_ORIGIN = str(STEAM_URL.COMMUNITY)
 BROWSER_HEADERS = {
-    "Referer": str(STEAM_URL.COMMUNITY) + "/",
+    "Referer": COMMUNITY_ORIGIN + "/",
     "Origin": COMMUNITY_ORIGIN,
 }
 
@@ -109,6 +109,7 @@ class SteamWebAPIClient:
         protobuf: Message | bytes | None = None,
         headers: Headers | None = None,
         response_mode: ResponseMode = "json",
+        # There are some methods working only with api key and vice versa, and that better be handled
         auth: bool = False,
     ) -> bytes | str | Any | None:
         """

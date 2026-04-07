@@ -17,7 +17,7 @@ from ..transport import (
     Unauthenticated,
 )
 from ..webapi import SteamWebAPIClient
-from ..webapi.client import API_HEADERS, BROWSER_HEADERS
+from ..webapi.client import API_HEADERS, BROWSER_HEADERS, COMMUNITY_ORIGIN
 from ..webapi.services.auth import (
     AuthenticationServiceClient,
     CAuthenticationGetAuthSessionInfoResponse,
@@ -709,7 +709,7 @@ class SteamSession:
             r = await self._service.webapi.transport.request(
                 "GET",
                 LOGIN_URL / "jwt/refresh",
-                params={"redir": str(STEAM_URL.COMMUNITY)},
+                params={"redir": COMMUNITY_ORIGIN},
                 headers={**API_HEADERS, **BROWSER_HEADERS},
                 redirects=False,
                 response_mode="meta",

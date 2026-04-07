@@ -9,6 +9,7 @@ from ...exceptions import EResultError
 from ...models import ItemDescription
 from ...transport import BaseSteamTransport, format_http_date, parse_http_date
 from ...utils import create_ident_code
+from ...webapi.client import COMMUNITY_ORIGIN
 from .._base import BasePublicComponent, EconMixin, ItemDescriptionsMap
 from ..state import PublicSteamState
 from .models import (
@@ -608,7 +609,7 @@ class MarketPublicComponent(BasePublicComponent, EconMixin):
         r = await self._transport.request(
             "GET",
             url,
-            headers={"Referer": str(STEAM_URL.COMMUNITY)},
+            headers={"Referer": COMMUNITY_ORIGIN},
             response_mode="text",
         )
 

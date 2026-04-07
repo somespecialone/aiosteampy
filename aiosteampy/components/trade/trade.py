@@ -15,6 +15,7 @@ from ...models import EconItem
 from ...session import SteamSession
 from ...transport import TransportResponse
 from ...utils import create_ident_code
+from ...webapi.client import COMMUNITY_ORIGIN
 from ...webapi.services.econ import HISTORY_LIMIT, EconServiceClient
 from .._base import BasePublicComponent, EconMixin, ItemDescriptionsMap
 from ..state import SteamState
@@ -101,7 +102,7 @@ class TradeComponent(BasePublicComponent, EconMixin):
             "POST",
             TRADE_NEW_URL / "acknowledge",
             data={"sessionid": self._session.session_id, "message": 1},
-            headers={"Referer": str(self._state.profile_url / "tradeoffers/"), "Origin": str(STEAM_URL.COMMUNITY)},
+            headers={"Referer": str(self._state.profile_url / "tradeoffers/"), "Origin": COMMUNITY_ORIGIN},
             redirects=True,  # handle eligibility check
             response_mode="meta",
         )

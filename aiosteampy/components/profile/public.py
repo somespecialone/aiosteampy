@@ -2,6 +2,7 @@ from datetime import datetime
 
 from ...constants import STEAM_URL
 from ...id import SteamID
+from ...webapi.client import COMMUNITY_ORIGIN
 from .._base import BasePublicComponent
 from .models import MiniProfileBadge, MiniProfileData, ProfileAliasHistoryEntry
 
@@ -25,7 +26,7 @@ class ProfilePublicComponent(BasePublicComponent):
         r = await self._transport.request(
             "GET",
             STEAM_URL.COMMUNITY / f"miniprofile/{user_id.account_id}/json/",
-            params={"origin": str(STEAM_URL.COMMUNITY)},
+            params={"origin": COMMUNITY_ORIGIN},
             response_mode="json",
         )
 

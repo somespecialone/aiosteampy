@@ -139,6 +139,6 @@ class SteamJWT:
 
     def __repr__(self):
         return (
-            f"{self.__class__.__name__}({'Access' if self.is_access_token else 'Refresh'}, {self.platform}, "
+            f"{self.__class__.__name__}({'Access' if self.is_access_token else 'Refresh'}/{self.platform}, "
             f"subject={self.subject}, issued={self.issued_at.isoformat()}, expires={self.expires_at.isoformat()})"
         )

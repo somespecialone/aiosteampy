@@ -1,4 +1,4 @@
-from dataclasses import asdict, dataclass
+from dataclasses import asdict, dataclass, field
 from datetime import datetime
 from typing import Literal, Self, Sequence, TypedDict
 
@@ -17,7 +17,7 @@ class Cookie:
     # https://developer.mozilla.org/en-US/docs/Web/HTTP/Reference/Headers/Set-Cookie
 
     name: str
-    value: str
+    value: str = field(repr=False)
     domain: str  # browsers and aiohttp store origin url in domain + path so we
     path: str = "/"  # def value as path rarely used in real world
 

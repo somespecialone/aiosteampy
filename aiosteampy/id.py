@@ -82,7 +82,9 @@ class SteamID(int):
     def __new__(cls, _x: str | int = 0) -> Self:
         # all underscored due to a strange PyCharm love to inherit variables from __new__ as properties
 
-        if not _x:
+        if isinstance(_x, cls):
+            return _x
+        elif not _x:
             return super().__new__(cls, 0)
 
         _type = AccountType.INVALID

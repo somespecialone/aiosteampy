@@ -378,13 +378,7 @@ class ProfileComponent(ProfilePublicComponent):
         )
 
     def get_name_history(self) -> Awaitable[list[ProfileAliasHistoryEntry]]:
-        """
-        Get nickname history of current user.
-
-        :return: list of profile alias history.
-        :raises TransportError: ordinary reasons.
-        """
-
+        """Get nickname history of current user."""
         return self.get_user_name_history(self._session.steam_id)
 
     def clear_name_history(self) -> Awaitable[TransportResponse]:
@@ -394,5 +388,17 @@ class ProfileComponent(ProfilePublicComponent):
             "POST",
             self.url / "ajaxclearaliashistory",
             data={"sessionid": self._session.session_id},
+            response_mode="meta",
+        )
+
+    def setup(self) -> Awaitable[TransportResponse]:
+        """Setup current **new** user profile by passing through the welcome page."""
+
+        profile_url = self.url
+        return self._transport.request(
+            "GET",
+            profile_url / "edit",
+            params={"welcomed": "1"},
+            headers={"Referer": str(profile_url / "home")},
             response_mode="meta",
         )

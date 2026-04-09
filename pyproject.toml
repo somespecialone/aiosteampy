@@ -1,7 +1,7 @@
 [project]
 name = "aiosteampy"
-version = "0.8.0a0"
-description = "Trade and interact with steam market, webapi, guard"
+version = "1.0.0a1"
+description = "Manage Steam sessions, Guard, Market, trade offers and more."
 readme = "README.md"
 license = "MIT"
 authors = [{ name = "somespecialone", email = "itsme@somespecial.one" }]
@@ -31,6 +31,7 @@ dependencies = [
 
 [project.optional-dependencies]
 socks = ["aiohttp-socks>=0.8.4,<1.0.0"]
+wreq = ["wreq>=0.10.2,<1.0.0"]
 
 [project.urls]
 Homepage = "https://github.com/somespecialone/aiosteampy"

@@ -1,124 +1,118 @@
-## First words
+{%
+include-markdown "../README.md"
+start="<!--usage-start-->"
+end="<!--usage-end-->"
+%}
 
-First of all, main entity to hold all interaction with `SteamCommunity` is **client**. There are two type of **clients**:
+#### Public
 
-* `SteamPublicClient` - for methods that do not require authentication, such as getting market data, listings,
-  getting non-private inventory of users, etc...
-* `SteamClient` - all from `SteamPublicClient` plus methods related to personal `Steam` account: login, inventory of
-  self, trade offers creation, declining, countering, buying market listings, creating sell orders and more.
-  _This page contains examples based on this **client**._
-
-### Client creation, login and preparing
-
-`SteamClient` with minimal setup, must be instantiated in **async context** (within **event loop**, or,
-for simplicity, function defined with `async def`):
+`SteamPublicClient` encompasses all domain methods that can be done without a need to be authenticated.
+Smiply, it allows us to interact with `Steam` domains without a need to do a login:
 
 ```python
-from aiosteampy import SteamClient
+import asyncio
 
-client = SteamClient(
-    112233,  # steam id(64) or account id(32)
-    "username",
-    "password",
-    "shared secret",
-    "identity secret",  # almost optional
-    user_agent="my user agent"  # strongly recommended
-)
+from aiosteampy.client import SteamPublicClient, App
 
-await client.login()
 
-# load properties required for all methods to work
-# (currency, country, trade token)
-await client.prepare()
+async def get_market_listings():
+    client = SteamPublicClient()
+
+    listings = await client.market.get_listings(
+        "FAMAS | Rapid Eye Movement (Field-Tested)",
+        App.CS2,
+    )
+
+    print(listings.listings)
+
+
+asyncio.run(get_market_listings())
 ```
 
-!!! info "Prepare client to work"
-    Consider preparing client to make code below work by calling `client.prepare` method after `client.login`
-    or pass required properties to constructor. [Read more](./client.md)
+## More examples
 
-!!! tip "User-Agent header"
-    [Aiohttp](https://docs.aiohttp.org/en/stable/) uses its own `User-Agent` header by default.
-    **It is strongly recommended to replace it with your own**.
-    You can easily get one from [randua.somespecial.one](https://randua.somespecial.one)
-    or use [User Agent Service](./ext/user_agents.md).
+Below are more comprehensive examples to help understand how things work.
 
 ### Do work
 
-Simple showcase. For more details, please, continue reading
-
 ```python
-from aiosteampy import AppContext
+from aiosteampy.client import SteamClient, AppContext
 
-# get self inventory
-my_inventory, _, _ = await client.get_inventory(AppContext.CS2)
+client = SteamClient(...)
 
-first_item = my_inventory[0]
+# get inventory of the current user
+my_inventory = await client.inventory.get(AppContext.CS2)
+first_item = my_inventory.items[0]
 
-# fetch listings for this item
-listings, _, _ = await client.get_item_listings(first_item.description)
-first_listing = listings[0]
+# fetch listings for this item class
+listings = await client.market.get_listings(first_item.description)
+first_listing = listings.listings[0]
 
-await client.buy_market_listing(first_listing)  # buy first listing
+# buy first listing
+wallet_info = await client.market.buy_listing(first_listing)
+print("Remaining balance: ", wallet_info.balance)
 
-# let's increase price for about 10%
-price = int(first_listing.price * 1.1)
+# let's increase price for about 20%
+my_price = int(first_listing.converted.price * 1.2)
 
-# place sell order on market
-listing_id = await client.place_sell_listing(first_item, price=price)
+# place sell order on a market
+listing_id = await client.market.place_sell_listing(first_item, price=my_price)
 
-# hmm, I've changed my mind and want to cancel my sell listing
-await client.cancel_sell_listing(listing_id)
+# hmm, we've changed our idea and want to cancel sell listing
+await client.market.cancel_sell_listing(listing_id)
 ```
 
 ### Do another work
 
 ```python
-from aiosteampy import AppContext, SteamClient
+from aiosteampy.client import SteamClient, AppContext
+from aiosteampy.id import SteamID
 
-# get self inventory
-inv, _, _ = await client.get_inventory(AppContext.CS2)
+client = SteamClient(...)
+
+# get inventory of the current user
+my_inventory = await client.inventory.get(AppContext.CS2)
 # get all Nova Mandrel items from inventory 
-gifts = list(filter(lambda i: "Nova Mandrel" in i.description.name, inv))
+gifts = list(filter(lambda i: "Nova Mandrel" in i.description.name, my_inventory.items))
 
-partner_id = 123456789  # partner, which in friends list, id
+partner = SteamID(123456789)  # partner, which is in a friends list
 
 # make and confirm trade, fetch and return trade offer
-trade = await client.make_trade_offer(
-    partner_id, 
-    gifts, 
-    message="Gift for my friend!", 
-    fetch=True,
+trade_offer_id = await client.trade.send(
+    partner,
+    gifts,
+    message="Gift for my friend!",
 )
+
+trade = await client.trade.get(trade_offer_id)
+
+# wait some time to give partner a time to react
 
 if trade.accepted:
     print("yeeahs")
 elif trade.declined:
     print("Bbut wmhhy?")
 elif trade.active:
-    await client.cancel_trade_offer(trade)  # haha, I revoke my gift
+    await client.trade.cancel(trade)  # haha, we revoke our gift
 ```
 
 ### Catch errors
 
 ```python
-from aiosteampy import App, RateLimitExceeded, EResultError
+from aiosteampy.client import SteamClient, EResultError
+from aiosteampy.transport import NetworkError
+
+client = SteamClient(...)
 
 try:
-    listings, _, _ = await client.get_item_listings(
-        "AWP | Chromatic Aberration (Field-Tested)",
-        App.CS2,
-    )
-except RateLimitExceeded:
-    print("Whhosh, I need to rest a bit")
+    await client.profile.set_alias("my_awesome_alias")
+    notifications = await client.notifications.get()
+except NetworkError:
+    print("Need to pay my internet bills :(")
 except EResultError as e:
-    print(f"Steam response with error ({e.result}, {e.data}), what a surprise!")
+    print(f"Steam response with error ({e.result} | {e.msg} | {e.data}), what a surprise!")
 ```
 
-[Dedicated exceptions chapter](./exceptions.md)
+[//]: # (!!!info "Exceptions")
 
-## Second words
-
-Corresponding docs pages contain more detailed information on how to use this project, what capabilities does it have
-and how things work.
-
-Also, it is worth reading the [design page](./design.md). Check it out at least once, you won't want to miss out 😉
+[//]: # (    [Dedicated exceptions chapter]&#40;./exceptions.md&#41;)

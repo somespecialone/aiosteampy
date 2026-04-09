@@ -6,187 +6,262 @@
 [![steam](https://shields.io/badge/steam-1b2838?logo=steam)](https://store.steampowered.com/)
 [![license](https://img.shields.io/github/license/somespecialone/aiosteampy)](https://github.com/somespecialone/aiosteampy/blob/main/LICENSE)
 [![Poetry](https://img.shields.io/endpoint?url=https://python-poetry.org/badge/v0.json)](https://python-poetry.org/)
-[![black](https://img.shields.io/badge/code%20style-black-000000.svg)](https://github.com/psf/black)
+[![Ruff](https://img.shields.io/endpoint?url=https://raw.githubusercontent.com/astral-sh/ruff/main/assets/badge/v2.json)](https://github.com/astral-sh/ruff)
 [![Snyk Badge](https://img.shields.io/badge/Snyk-4C4A73?logo=snyk&logoColor=fff&style=flat)](https://security.snyk.io/package/pip/aiosteampy)
 [![pypi](https://img.shields.io/pypi/v/aiosteampy)](https://pypi.org/project/aiosteampy)
-[![versions](https://img.shields.io/pypi/pyversions/aiosteampy)](https://pypi.org/project/aiosteampy)
-[![Tests](https://github.com/somespecialone/aiosteampy/actions/workflows/tests.yml/badge.svg)](https://github.com/somespecialone/aiosteampy/actions/workflows/tests.yml)
-[![Publish](https://github.com/somespecialone/aiosteampy/actions/workflows/publish.yml/badge.svg)](https://github.com/somespecialone/aiosteampy/actions/workflows/publish.yml)
+[![Release](https://github.com/somespecialone/aiosteampy/actions/workflows/release.yml/badge.svg)](https://github.com/somespecialone/aiosteampy/actions/workflows/release.yml)
 [![Docs](https://github.com/somespecialone/aiosteampy/actions/workflows/docs.yml/badge.svg)](https://github.com/somespecialone/aiosteampy/actions/workflows/docs.yml)
-[![codecov](https://codecov.io/gh/somespecialone/aiosteampy/branch/main/graph/badge.svg?token=SP7EQKPIQ3)](https://codecov.io/gh/somespecialone/aiosteampy)
-[![CodeFactor](https://www.codefactor.io/repository/github/somespecialone/aiosteampy/badge)](https://www.codefactor.io/repository/github/somespecialone/aiosteampy)
-[![health](https://snyk.io//advisor/python/aiosteampy/badge.svg)](https://snyk.io//advisor/python/aiosteampy)
+[![Ask DeepWiki](https://deepwiki.com/badge.svg)](https://deepwiki.com/somespecialone/aiosteampy)
 
-Previously this library was a soft fork of [bukson/steampy](https://github.com/bukson/steampy) with intend to
-provide asynchronous methods and proxies support.
-But now it _standalone_ project.
-
-> Created for steam trading purposes mostly.
-> Inspired by [DoctorMcKay/node-steamcommunity](https://github.com/DoctorMcKay/node-steamcommunity)
+Manage Steam sessions, Guard, Market, trade offers and more.
 
 ---
 
 [![Stand With Ukraine](https://raw.githubusercontent.com/vshymanskyy/StandWithUkraine/main/banner-direct-single.svg)](https://stand-with-ukraine.pp.ua)
 
-## 0.8
-
-The `0.7` line is now entering its sunset phase 🌇.
-`main` branch will receive only minor fixes as part of the final maintenance.
-
-All major development is now happening in the `0.8.0` branch.
-Expect significant changes that may break existing code, you can preview the **work-in-progress** 
-[here](https://github.com/somespecialone/aiosteampy/tree/0.8.0).
-
-Once the full migration to `0.8.0` is complete, the branch will be merged back into `main`.
-
 <!--header-end-->
 
 > [!IMPORTANT]
-> The project is unstable and there might be some breaking changes in the future unless stable (**first major**) version
-> is released.
->
-> Take a look at [TODO](#todo-)
->
-> See full documentation [here](https://aiosteampy.somespecial.one/) 📖
+> The project is heading toward `1.0.0` and there can be some changes until stable release
+> but library design as a whole with most API will stay.
+
+## Documentation
+
+- 📖 Project documentation is available at [aiosteampy.somespecial.one](https://aiosteampy.somespecial.one).
+- 🧠 Generated [DeepWiki](https://deepwiki.com/somespecialone/aiosteampy).
 
 <!--install-start-->
 
 ## Installation
 
-```shell
+Project published on [PyPI](https://pypi.org/) under [aiosteampy](https://pypi.org/project/aiosteampy/) name
+so can be installed with:
+
+```sh
 pip install aiosteampy
-```
-
-```shell
-pipenv install aiosteampy
-```
-
-```shell
 poetry add aiosteampy
-```
-
-```shell
 uv add aiosteampy
 ```
 
-Project does have extras as [socks](https://aiosteampy.somespecial.one/proxies) proxies
-and currencies [converter](https://aiosteampy.somespecial.one/ext/converter/).
+### Prereleases
 
-Either of extras can be installed separately with the appropriate **installation target**:
-`aiosteampy[socks]` or `aiosteampy[converter]`.
+To install _prerelease_ versions (alpha, beta, release candidates),
+consider allowing the package manager to do it:
 
-Or all extras at once `aiosteampy[all]`.
-
-An **UV** example
-
-```shell
-uv add aiosteampy[socks]
+```sh
+pip install --pre aiosteampy
+poetry add --allow-prereleases aiosteampy
+uv add --prerelease aiosteampy
 ```
 
+### Extras
+
+Extras can be installed with `aiosteampy[<extra>]` install target.
+
+Project uses [aiohttp](https://github.com/aio-libs/aiohttp) as default _HTTP transport_ with all its
+capabilities and limitations.
+
+- `socks` - enable **socks** type web proxy support for **default** _HTTP transport_.
+- `wreq` - [wreq-python](https://github.com/0x676e67/wreq-python) _HTTP transport_ implementation.
+  Supports *proxies, HTTP/2, and browser impersonification*. Will be **used automatically** once installed.
+
 <!--install-end-->
+<!--usage-start-->
 
-> [!TIP]
-> [aiohttp docs](https://docs.aiohttp.org/en/stable/#installing-all-speedups-in-one-command) recommends installing
-> speedups (`aiodns`, `cchardet`, ...)
+## Quick start
 
+Package separated into *main modules* which can be imported from ``aiosteampy`` namespace:
+
+- `session` - `Steam Session` management and auth tokens negotiation.
+- `guard` - `Steam Guard/Mobile Authenticator` (2FA) functionality.
+- `client` - abstract container for `Steam` domains implementations (`Market`, `Trade Offers`, etc.).
+
+### Session
+
+Simple demonstrative example of using `SteamSession` to log in into account
+with credentials and then print `access` and `refresh` tokens:
+
+```python
+import asyncio
+import json
+
+from aiosteampy.session import SteamSession, GuardConfirmationRequired
+
+
+async def login_with_credentials():
+    session = SteamSession()
+
+    account_name = input("Input login: ")
+    password = input("Input password: ")
+
+    try:
+        await session.with_credentials(account_name, password)
+    except GuardConfirmationRequired as e:
+        if e.email_code:
+            code = input("Code from Steam has been sent to your email. Paste it here: ")
+            await session.submit_auth_code(code, "email")
+        elif e.device_code:
+            code = input("Input code from Mobile Device Authenticator: ")
+            await session.submit_auth_code(code, "device")
+        else:
+            input(
+                ("Steam requests device or email confirmation. "
+                 "Click on the link from email or mobile application and press enter.")
+            )
+
+    await session.finalize()
+
+    print("Access token: ", session.access_token.raw)
+    print("Refresh token: ", session.refresh_token.raw)
+
+    await session.transport.close()
+
+
+asyncio.run(login_with_credentials())
+```
+
+### Guard
+
+Using `SteamGuard` to enable `Steam Mobile Auhtenticator`
+(similar to using [SDA](https://github.com/Jessecar96/SteamDesktopAuthenticator) functionality)
+and dump `SteamGuardAccount` data into a file:
+
+```python
+import json
+import asyncio
+
+from aiosteampy.session import SteamSession
+from aiosteampy.guard import SteamGuard, SmsConfirmationRequired, EmailConfirmationRequired
+
+
+async def enable_two_fa():
+    session = SteamSession(...)  # authenticated session
+
+    guard = SteamGuard(session)
+
+    try:
+        guard.enable()
+    except SmsConfirmationRequired as e:
+        code = input(f"Guard activation code has been sent to your phone ({e.phone_hint}). Paste it here: ")
+    except EmailConfirmationRequired:
+        code = input("Guard activation code has been sent to your email. Paste it here: ")
+
+    await guard.finalize(code)
+
+    # Exported guard account contains secrets that cannot be retrieved once more
+    # therefore, data must be saved ASAP to prevent loss of access to a user's Steam account
+    guard_account = guard.export_account()
+    with open(f"./{session.account_name}.guard.json", "w") as f:
+        json.dump(guard_account.serialize(), f)
+
+    await session.transport.close()
+
+
+asyncio.run(enable_two_fa())
+```
+
+### Client
+
+Using `SteamClient` with authenticated `SteamSession` to get _current user inventory items_:
+
+```python
+import asyncio
+
+from aiosteampy.session import SteamSession
+from aiosteampy.client import SteamClient, AppContext, App
+
+
+async def get_inventory():
+    session = SteamSession(...)  # authenticated session
+
+    client = SteamClient(session)
+
+    cs2_default = await client.inventory.get(AppContext.CS2)
+    print("CS2 items: ", cs2_default.items)
+
+    cs2_trade_protected = await client.inventory.get(AppContext.CS2_PROTECTED)
+    print("CS2 items in hold: ", cs2_trade_protected.items)
+
+    # create new App and AppContext
+    BongoCatApp = App(3419430, "Bongo Cat")
+    BongoCatDefault = AppContext(BongoCatApp, 2)
+
+    bongo_cat = await client.inventory.get(BongoCatDefault)
+    print("Bongo Cat items: ", bongo_cat.items)
+
+    await session.transport.close()
+
+
+asyncio.run(get_inventory())
+```
+
+<!--usage-end-->
 <!--intro-start-->
-
-AIOSTEAMPY use [aiohttp](https://github.com/aio-libs/aiohttp) underneath to do asynchronous requests to steam servers,
-with modern async/await syntax.
 
 ## Key features ✨
 
-- **Stateless**: low-middle layer API wrapper of some steam services and methods like market,
-  tradeoffers, confirmations, steamguard, etc.
-- **Declarative**: there is models or `TypedDict`s for every data.
-- **Typed**: High-end support with extensive typing, tested on `VSCode` and `PyCharm`.
-- **Simple**: Fit most important related to steam trading process methods.
-- **Web proxy** support.
+- **Stateful**: Manages user sessions state throughout the lifecycle.
+- **Declarative**: There are models for ~~almost~~ every data.
+- **Typed**: High-end support with extensive typing.
+- **Friendly**: Intuitive and straightforward API.
+- **Flexible**: Custom _HTTP transport_ layer can be implemented to fit user needs.
+- **Asynchronous**: Fully async implementation using `asyncio`.
 
-## What can I do with this
+### What I can do with this
 
-- Operate with steam trade offers.
-- Sell, buy items on market. Place, cancel orders.
-- Login trough steam to 3rd party sites.
-- Fetch data from market.
-- Manipulate many accounts with proxies for each session.
-- Get and load cookies to stay logged in (session persistence).
-- Convert market prices into different currencies.
+- Login using credentials and QR, obtain auth web cookies.
+- Operate `Trade Offers`: send, accept, decline, and counter.
+- Place and cancel buy/sell orders, purchase listings directly on `Steam Market`.
+- Dump & Load tokens and cookies to enable `Session` persistence.
+- De/serialize `Client` state reducing boilerplate and unnecessary work.
+- Accept, deny, and retrieve `Steam Mobile Device` confirmations.
+- Enable `Steam Mobile Authenticator` for user account and save secrets.
+- Import secrets from famous `SDA` format (`maFile`).
+- Setup, edit information of user `Steam` profile.
+- Get user account wallet balance, redeem `Wallet` or `Gift` codes.
+- Lost access to a user account by denying guidelines and warnings
+  while being unvigilant.
+- And more!
 
-## What I can't do
+### What I can't do
 
-- Chat.
-- Get apps, packages.
-- All, that need connection to CM.
-- Interact with game servers (inspect CS2 (ex. CSGO) items, ...).
-- Social interaction(groups, clans).
-- Handle entities (listings, items, tradeoffers) lifecycle for easy if you need to store it.
+- Buy app and their package on `Steam Store`.
+- `WebSocket` connection to `Steam` servers.
+- Interact with game servers (inspect `CS2` items, find game match, etc.).
+- Social interaction like groups, clans, and chat.
+- Get confused with the complexity of usage.
 
 <!--intro-end-->
-
-## Tests 🧪
-
-> [!WARNING]
-> Test cases and test code as a whole are deprecated and will not work until they are updated (a lot of work).
-> I'll leave the code and this heading here as a reminder 🫣
-
-[//]: # (Read [test documentation]&#40;https://aiosteampy.somespecial.one/tests/&#41; 📖)
-
 <!--footer-start-->
-
-## TODO 📃
-
-> Hard to say **roadmap**. Can be a little changed or updated later, get ready.
-
-Path to first **stable release**. Non-exhaustive list, scheduled tasks can be done earlier than the version mentioned,
-but not otherwise.
-
-### v0.6.0
-
-- [x] Listings, items, offers pagination/iteration
-- [x] Get single item from inventory as browser does
-- [x] Change client username method
-
-### v0.7.0
-
-- [x] Remove storage methods. Caching entities must be user responsibility
-- [x] Rename `fetch_...` methods to `get_...` to remove annoying methods symantic mess
-- [x] ~~Web browser mechanism to fetch trade offers from `Steam`, avoiding `Steam Web Api`~~
-- [x] Edit profile privacy settings
-
-### v0.8.0
-
-- [ ] Context managers as helpers to login/logout, load/dump or get/put cookies
-- [x] Fetch/paginate over market search pages
-
-### v0.9.0
-
-- [ ] `Steam user` model with minimal attrs, retrieving/fetching
-- [x] Refresh `access_token` mechanism
-
-### v1.0.0
-
-- [ ] Tests with `Steam API` mocking. Target coverage ~70%. Key points (listings, inventory items, trade offers) testing
-  suits is mandatory
-- [ ] Maturity, battle-testing in **more** different cases by **more** participants/users
 
 ## Contribution 💛
 
-There is no rules or requirements to contribute. Feedbacks, suggests, other are welcome.
-I will be very grateful for helping me get the things right.
+> Feedback, suggestions, and bug reports are welcome!
+
+Please **keep project style and code quality** while contributing, thanks.
+Use formatter (currently [Ruff](https://github.com/astral-sh/ruff))
+whenever possible respecting configuration in `pyproject.toml`.
+Remove unrelated code changes from PR and generally be concise, thanks again.
 
 ## Credits
 
-- [bukson/steampy](https://github.com/bukson/steampy)
-- [aiohttp-socks](https://github.com/romis2012/aiohttp-socks)
-- [croniter](https://github.com/kiorky/croniter)
+Sources of inspiration and ideas, concepts, and general knowledge:
+
+- [DoctorMcKay/node-steam-session](https://github.com/DoctorMcKay/node-steam-session)
 - [DoctorMcKay/node-steamcommunity](https://github.com/DoctorMcKay/node-steamcommunity)
-- [Identifying Steam items](https://dev.doctormckay.com/topic/332-identifying-steam-items/)
-- [Revadike/InternalSteamWebAPI](https://github.com/Revadike/InternalSteamWebAPI)
+- [dyc3/steamguard-cli](https://github.com/dyc3/steamguard-cli)
+- [SteamRE/SteamKit](https://github.com/SteamRE/SteamKit)
+- [DoctorMcKay/node-steamstore](https://github.com/DoctorMcKay/node-steamstore)
+- [DoctorMcKay/node-steam-totp](https://github.com/DoctorMcKay/node-steam-totp)
+- [SteamTracking/Protobufs](https://github.com/SteamTracking/Protobufs)
 - [Gobot1234/steam.py](https://github.com/Gobot1234/steam.py)
-- [Steam Market id's storage repo](https://github.com/somespecialone/steam-item-name-ids)
 - [steamapi.xpaw.me](https://steamapi.xpaw.me/)
-- [Steam Exchange Rate Tracker](https://github.com/somespecialone/sert)
-- [ethanfurman/aenum](https://github.com/ethanfurman/aenum)
+- [bukson/steampy](https://github.com/bukson/steampy)
+
+### Helpful links
+
+- [Steam Market id's storage repo](https://github.com/somespecialone/steam-item-name-ids)
+- [Jessecar96/SteamDesktopAuthenticator](https://github.com/Jessecar96/SteamDesktopAuthenticator)
+- [Identifying Steam items](https://dev.doctormckay.com/topic/332-identifying-steam-items/)
 
 <!--footer-end-->

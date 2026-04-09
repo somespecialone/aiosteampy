@@ -1,12 +1,12 @@
 site_name: AIOSTEAMPY
 site_url: https://aiosteampy.somespecial.one
 site_author: Somespecialone
-site_description: Trade and interact with steam market, webapi, guard.
+site_description: Manage Steam sessions, Guard, Market, trade offers and more.
 
 repo_name: aiosteampy
 repo_url: https://github.com/somespecialone/aiosteampy
 
-copyright: Copyright &copy; 2022 - 2025 By Somespecialone with 💛
+copyright: Copyright &copy; 2022 - 2026 By Somespecialone with 💛
 
 theme:
   name: material
@@ -72,21 +72,12 @@ nav:
   - Overview: index.md
   - Install: install.md
   - "Getting started 🚀": get_started.md
-  - Design: design.md
-  - Exceptions: exceptions.md
-  - "Proxies 🌐": proxies.md
-  - Session: session.md
-  - "Scraping 🕷️": scraping.md
-  - Enums: enums.md
-  - Client: client.md
-  - "Market 💹": market.md
-  - Trade: trade.md
-  - Public: public.md
-  - "Utils&helpers": utils_helpers.md
-  - Extensions:
-      - "Converter 💱": ext/converter.md
-      - "User Agents Service 🕶️": ext/user_agents.md
-  - Examples:
-      - "Session persistence": examples/session.md
-      - "3rd party sites auth": examples/auth_3rd_party_site.md
-  - "Testing 🧪": tests.md
+#  - Session: session.md
+#  - Guard: guard.md
+#  - Client: client.md
+#  - Exceptions: exceptions.md
+#  - "Proxies 🌐": proxies.md
+#  - "Scraping 🕷️": scraping.md
+#  - "Market 💹": market.md
+#  - Trade: trade.md
+#  - Public: public.md

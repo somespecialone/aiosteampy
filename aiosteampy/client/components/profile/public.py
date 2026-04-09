@@ -1,18 +1,21 @@
 from datetime import datetime
 
-from ...constants import STEAM_URL
-from ...id import SteamID
-from ...webapi.client import COMMUNITY_ORIGIN
-from .._base import BasePublicComponent
+from ....constants import SteamURL
+from ....id import SteamID
+from ....transport import BaseSteamTransport
+from ....webapi.client import COMMUNITY_ORIGIN
 from .models import MiniProfileBadge, MiniProfileData, ProfileAliasHistoryEntry
 
 PROFILE_ALIAS_TIME_FORMAT = "%d %b, %Y @ %I:%M%p"
 
 
-class ProfilePublicComponent(BasePublicComponent):
+class ProfilePublicComponent:
     """Component responsible for working with `Steam` profile and related data."""
 
-    __slots__ = ()
+    __slots__ = ("_transport",)
+
+    def __init__(self, transport: BaseSteamTransport):
+        self._transport = transport
 
     async def get_user_mini_profile(self, user_id: SteamID) -> MiniProfileData:
         """
@@ -25,7 +28,7 @@ class ProfilePublicComponent(BasePublicComponent):
 
         r = await self._transport.request(
             "GET",
-            STEAM_URL.COMMUNITY / f"miniprofile/{user_id.account_id}/json/",
+            SteamURL.COMMUNITY / f"miniprofile/{user_id.account_id}/json/",
             params={"origin": COMMUNITY_ORIGIN},
             response_mode="json",
         )
@@ -58,9 +61,9 @@ class ProfilePublicComponent(BasePublicComponent):
         """
 
         if isinstance(obj, str):  # alias
-            url = STEAM_URL.COMMUNITY / f"id/{obj}"
+            url = SteamURL.COMMUNITY / f"id/{obj}"
         else:
-            url = STEAM_URL.COMMUNITY / f"profiles/{obj}"
+            url = SteamURL.COMMUNITY / f"profiles/{obj}"
 
         r = await self._transport.request("GET", url / "ajaxaliases", redirects=True, response_mode="json")
 
@@ -73,8 +76,3 @@ class ProfilePublicComponent(BasePublicComponent):
             )
             for data in rj
         ]
-
-    # TODO query locations
-    # https://steamcommunity.com/actions/QueryLocations/
-    # https://steamcommunity.com/actions/QueryLocations/UA/
-    # https://steamcommunity.com/actions/QueryLocations/UA/05

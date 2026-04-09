@@ -2,11 +2,8 @@
 
 from typing import ClassVar, Self
 
-__all__ = ("App", "AppContext", "ADD_NEW_MEMBERS", "change_members_mode")
-
-
 ADD_NEW_MEMBERS: bool = False
-"""Boolean flag whether to add new ``App`` and ``AppContext`` members when instance created."""
+"""Mode: whether to add ``App`` and ``AppContext`` members when **new** instance created."""
 
 
 def change_members_mode():

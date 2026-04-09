@@ -6,16 +6,9 @@ from typing import Any, Callable, Self
 
 from yarl import URL
 
-from ..constants import LIB_ID, STEAM_URL, EResult, Platform
-from ..exceptions import EResultError
+from ..constants import LIB_ID, EResult, Platform, SteamURL
 from ..id import SteamID
-from ..transport import (
-    BaseSteamTransport,
-    Cookie,
-    TransportError,
-    TransportResponse,
-    Unauthenticated,
-)
+from ..transport import BaseSteamTransport, Cookie, TransportError, TransportResponse, Unauthenticated
 from ..webapi import SteamWebAPIClient
 from ..webapi.client import API_HEADERS, BROWSER_HEADERS, COMMUNITY_ORIGIN
 from ..webapi.services.auth import (
@@ -30,13 +23,9 @@ from .utils import encrypt_password, generate_session_id, parse_qr_challenge_url
 
 ACCESS_TOKEN_COOKIE = "steamLoginSecure"
 REFRESH_TOKEN_COOKIE = "steamRefresh_steam"
-
-LOGIN_URL = URL("https://login.steampowered.com")
 SESSION_ID_COOKIE = "sessionid"
 
 QRChallengeUrl = URL | str | tuple[int, int]
-
-DOMAINS = (STEAM_URL.COMMUNITY, STEAM_URL.STORE, STEAM_URL.HELP, STEAM_URL.CHECKOUT, STEAM_URL.TV)
 
 
 # https://typing.python.org/en/latest/guides/libraries.html#annotating-decorators
@@ -273,8 +262,8 @@ class SteamSession:
             cookie = Cookie(
                 REFRESH_TOKEN_COOKIE,
                 token.cookie_value,
-                LOGIN_URL.host,
-                LOGIN_URL.path,
+                SteamURL.LOGIN_URL.host,
+                SteamURL.LOGIN_URL.path,
                 expires=token.expires_at,  # token expire value instead of 400 days from browser
             )
 
@@ -510,7 +499,7 @@ class SteamSession:
             end = loop.time()
             await asyncio.sleep(self._poll_interval - (end - start))  # respect steam interval and avoid drift
 
-    async def finalize(self, timeout: float | None = None) -> tuple[SteamJWT, SteamJWT]:
+    async def finalize(self, *, timeout: float = 0) -> tuple[SteamJWT, SteamJWT]:
         """
         Finalize login process for current `session` by obtaining `tokens`.
         Fill ``steam_id`` if it was not provided during initialization.
@@ -518,6 +507,8 @@ class SteamSession:
         Must be called after a **performed action**
         or after the current `session` has been **approved**.
 
+        :param timeout: max. time to spend on status polling.
+            Will be based on `poll interval` received from `Steam` if not provided.
         :return: `access` and `refresh` tokens.
         :raises LoginError: timeout has been exceeded when polling for refresh token.
         """
@@ -562,12 +553,12 @@ class SteamSession:
         data = {
             "nonce": self._refresh_token.raw,
             "sessionid": self._session_id,
-            "redir": str(STEAM_URL.COMMUNITY / "login/home/?goto="),
+            "redir": str(SteamURL.COMMUNITY / "login/home/?goto="),
         }
         # here Steam will rewrite refresh token cookie again without expiration
         r = await self._service.webapi.transport.request(
             "POST",
-            LOGIN_URL / "jwt/finalizelogin",
+            SteamURL.LOGIN_URL / "jwt/finalizelogin",
             multipart=data,
             headers={**API_HEADERS, **BROWSER_HEADERS},
             response_mode="json",
@@ -595,7 +586,7 @@ class SteamSession:
                 )
 
         # compare stored and received refresh token and rewrite just in case
-        refresh_token_cookie = self.transport.get_cookie_value(LOGIN_URL, REFRESH_TOKEN_COOKIE)
+        refresh_token_cookie = self.transport.get_cookie_value(SteamURL.LOGIN_URL, REFRESH_TOKEN_COOKIE)
         if refresh_token_cookie != self.refresh_token.cookie_value:
             self._set_refresh_token(SteamJWT.from_cookie_value(refresh_token_cookie))
         else:
@@ -618,7 +609,7 @@ class SteamSession:
 
             self.transport.add_cookie(cookie)
 
-            if cookie.domain == STEAM_URL.COMMUNITY.host:  # choose community token as main
+            if cookie.domain == SteamURL.COMMUNITY.host:  # choose community token as main
                 self._set_access_token(token)
 
             cookies.append(cookie)
@@ -678,7 +669,7 @@ class SteamSession:
 
             cookies = []
             # presumably urls from _finalize_login
-            for url in DOMAINS:
+            for url in SteamURL.DOMAINS:
                 cookies.append(self._set_session_id_cookie(url))
                 cookies.append(self._set_access_token_cookie(url))
 
@@ -690,7 +681,7 @@ class SteamSession:
 
         # potential weak point: if Steam changes login urls we can find ourselves in a situation
         # where DOMAINS > urls from Steam and cookies_are_valid will always return False
-        for url in DOMAINS:
+        for url in SteamURL.DOMAINS:
             access_token_cookie = self.transport.get_cookie(url, ACCESS_TOKEN_COOKIE)
             if access_token_cookie is None or (
                 access_token_cookie.expires
@@ -708,7 +699,7 @@ class SteamSession:
         try:
             r = await self._service.webapi.transport.request(
                 "GET",
-                LOGIN_URL / "jwt/refresh",
+                SteamURL.LOGIN_URL / "jwt/refresh",
                 params={"redir": COMMUNITY_ORIGIN},
                 headers={**API_HEADERS, **BROWSER_HEADERS},
                 redirects=False,
@@ -773,6 +764,12 @@ class SteamSession:
         """
 
         return self._generate_access_token_for_app(True)
+
+    def __repr__(self):
+        return (
+            f"{self.__class__.__name__}({self._steam_id}/{self._account_name}, {self._platform}, "
+            f"{self._access_token}, {self._refresh_token})"
+        )
 
     def serialize(self) -> dict:
         """Serialize only auth-related (tokens, cookies) `session` state to a `JSON-safe` dict."""

@@ -6,7 +6,6 @@ from enum import IntEnum
 from typing import NotRequired, Self, TypedDict
 
 from ..id import SteamID
-from ..utils import create_ident_code
 from .secrets import IdentitySecret, SharedSecret, TwoFactorSecret
 
 ITEM_INFO_RE = re.compile(r"'confiteminfo', (.+), UserYou")  # lang safe
@@ -166,6 +165,8 @@ class Confirmation:
         self._details = value
 
         if self.type is ConfirmationType.MARKET_LISTING and value:
+            from ..client.econ import create_ident_code  # will import all client module :(
+
             data: dict = json.loads(ITEM_INFO_RE.search(value).group(1))
             self._ident_code = create_ident_code(data["id"], data["contextid"], data["appid"])
 

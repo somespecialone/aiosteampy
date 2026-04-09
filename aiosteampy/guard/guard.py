@@ -5,14 +5,16 @@ from typing import Self
 from yarl import URL
 
 from ..constants import EResult
-from ..exceptions import EmailConfirmationRequired, EResultError
 from ..session import SteamSession, generate_session_id, parse_qr_challenge_url
 from ..session.session import QRChallengeUrl
 from ..transport import BaseSteamTransport, Unauthenticated
 from ..webapi import SteamWebAPIClient
 from ..webapi.services.phone import PhoneServiceClient
-from ..webapi.services.protobufs import CTwoFactorStatusResponse
-from ..webapi.services.twofactor import CTwoFactorAddAuthenticatorResponse, TwoFactorServiceClient
+from ..webapi.services.twofactor import (
+    CTwoFactorAddAuthenticatorResponse,
+    CTwoFactorStatusResponse,
+    TwoFactorServiceClient,
+)
 from .confirmations import SteamConfirmations
 from .exceptions import *
 from .models import MaFile, SteamGuardAccount
@@ -301,7 +303,7 @@ class SteamGuard:
         try:
             r = await self._2fa.finalize_add_authenticator(
                 steamid=self._session.steam_id,
-                authenticator_code=signer.gen_auth_code(),
+                authenticator_code=signer.generate_auth_code(),
                 # we generate codes respecting server time, do we need to pass here our time?
                 authenticator_time=int(time.time()),
                 activation_code=activation_code,

@@ -8,9 +8,9 @@ from typing import TYPE_CHECKING, NamedTuple, Self
 from .app import App
 
 if TYPE_CHECKING:
-    from .components.market.models import MarketListingItem
-    from .components.trade.models import TradeOfferItem
-    from .models import AssetAccessory, EconItem, ItemDescription
+    from .components.market import MarketListingItem
+    from .components.trade import TradeOfferItem
+    from .econ import AssetAccessory, EconItem, ItemDescription
 
 
 INSPECT_LINK_BASE = "steam://run/730//+csgo_econ_action_preview%20%"

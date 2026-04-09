@@ -5,11 +5,11 @@ from pathlib import Path
 
 from yarl import URL
 
-from ...constants import STEAM_URL
-from ...exceptions import EResultError
-from ...session import SteamSession
-from ...transport import TransportResponse
-from ..state import SteamState
+from ....constants import SteamURL
+from ....exceptions import EResultError
+from ....session import SteamSession
+from ....transport import TransportResponse
+from ...state import SteamState
 from .models import (
     AvatarUploadData,
     AvatarUploadImagesData,
@@ -360,7 +360,7 @@ class ProfileComponent(ProfilePublicComponent):
 
         r = await self._transport.request(
             "POST",
-            STEAM_URL.COMMUNITY / "actions/FileUploader",
+            SteamURL.COMMUNITY / "actions/FileUploader",
             data=data,
             response_mode="json",
         )

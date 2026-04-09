@@ -1,6 +1,3 @@
-from datetime import datetime
-
-from ..exceptions import SteamError
 from .models import TransportResponse
 from .utils import parse_http_date
 
@@ -20,7 +17,7 @@ class TransportResponseError(TransportError):
         self.response = response
 
     def __str__(self):
-        return f"Got {self.response.status} - {self.response.reason}"
+        return f"Got {self.response.status} - {self.response.reason or 'No specific message'}"
 
 
 class RateLimitExceeded(TransportResponseError):
@@ -43,11 +40,11 @@ class ResourceNotModified(TransportResponseError):
         self.expires = parse_http_date(response.headers["Expires"])
 
     def __str__(self):
-        return f"Resource not modified. Last modified: {self.last_modified}, Expires: {self.expires}."
+        return f"Resource not modified. Last modified: {self.last_modified.isoformat()}, Expires: {self.expires.isoformat()}."
 
 
 class Unauthenticated(TransportResponseError):
-    """Auth cookies or token are missing, expired or invalid."""
+    """Auth cookies or token are missing, expired, or invalid."""
 
     def __init__(self, response: TransportResponse | None = None):
         self.response = response

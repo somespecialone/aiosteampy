@@ -3,15 +3,14 @@ from collections.abc import AsyncGenerator, Mapping, Sequence
 from datetime import datetime
 from typing import Literal, overload
 
+from ....constants import SteamURL
+from ....exceptions import EResultError
+from ....transport import BaseSteamTransport, format_http_date, parse_http_date
+from ....webapi.client import COMMUNITY_ORIGIN
 from ...app import ADD_NEW_MEMBERS, App
-from ...constants import STEAM_URL, Currency
-from ...exceptions import EResultError
-from ...models import ItemDescription
-from ...transport import BaseSteamTransport, format_http_date, parse_http_date
-from ...utils import create_ident_code
-from ...webapi.client import COMMUNITY_ORIGIN
-from .._base import BasePublicComponent, EconMixin, ItemDescriptionsMap
-from ..state import PublicSteamState
+from ...constants import Currency
+from ...econ import EconMixin, ItemDescription, ItemDescriptionsMap, create_ident_code
+from ...state import PublicSteamState
 from .models import (
     ActivityEntry,
     ActivityType,
@@ -44,7 +43,7 @@ SEARCH_COUNT = 10
 SortColumn = Literal["price", "name", "quantity", "popular", "default"]
 SortDir = Literal["asc", "desc"]
 
-MARKET_URL = STEAM_URL.COMMUNITY / "market/"
+MARKET_URL = SteamURL.COMMUNITY / "market/"
 SEARCH_URL = MARKET_URL / "search"
 SEARCH_RENDER_URL = SEARCH_URL / "render/"
 
@@ -52,13 +51,13 @@ SEARCH_RENDER_URL = SEARCH_URL / "render/"
 CUSTOM_API_HEADERS = {"X-Prototype-Version": "1.7", "X-Requested-With": "XMLHttpRequest"}
 
 
-class MarketPublicComponent(BasePublicComponent, EconMixin):
+class MarketPublicComponent(EconMixin):
     """Component with public `Steam Market` methods. Available without authentication."""
 
-    __slots__ = ("_state",)
+    __slots__ = ("_transport", "_state")
 
     def __init__(self, transport: BaseSteamTransport, state: PublicSteamState):
-        super().__init__(transport)
+        self._transport = transport
 
         self._state = state
 

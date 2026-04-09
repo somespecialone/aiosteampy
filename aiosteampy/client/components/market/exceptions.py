@@ -1,4 +1,4 @@
-from ...exceptions import SteamError
+from ....exceptions import SteamError
 
 
 class InsufficientBalance(SteamError):

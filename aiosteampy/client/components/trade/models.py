@@ -3,10 +3,9 @@ from datetime import datetime
 from enum import IntEnum
 from typing import TYPE_CHECKING, NamedTuple, TypedDict
 
+from ....id import SteamID
 from ...app import App, AppContext
-from ...id import SteamID
-from ...models import EconItem, ItemDescription
-from ...utils import create_ident_code
+from ...econ import EconItem, ItemDescription, create_ident_code
 
 if TYPE_CHECKING:
     from ...cs2 import ItemContext as CS2ItemContext
@@ -77,19 +76,19 @@ class BaseTradeOffer:
         return self.status is TradeOfferStatus.ACTIVE
 
     @property
-    def accepted(self):
+    def accepted(self) -> bool:
         return self.status is TradeOfferStatus.ACCEPTED
 
     @property
-    def declined(self):
+    def declined(self) -> bool:
         return self.status is TradeOfferStatus.DECLINED
 
     @property
-    def canceled(self):
+    def canceled(self) -> bool:
         return self.status in (TradeOfferStatus.CANCELED, TradeOfferStatus.CANCELED_BY_SECOND_FACTOR)
 
     @property
-    def countered(self):
+    def countered(self) -> bool:
         return self.status is TradeOfferStatus.COUNTERED
 
     @property

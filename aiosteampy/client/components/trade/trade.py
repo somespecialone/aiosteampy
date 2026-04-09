@@ -7,18 +7,16 @@ from urllib.parse import quote
 
 from yarl import URL
 
+from ....constants import EResult, SteamURL
+from ....exceptions import EmailConfirmationRequired, EResultError, MobileConfirmationRequired, SteamError
+from ....id import SteamID
+from ....session import SteamSession
+from ....transport import TransportResponse
+from ....webapi.client import COMMUNITY_ORIGIN
+from ....webapi.services.econ import HISTORY_LIMIT, EconServiceClient
 from ...app import App
-from ...constants import STEAM_URL, EResult
-from ...exceptions import EmailConfirmationRequired, EResultError, MobileConfirmationRequired, SteamError
-from ...id import SteamID
-from ...models import EconItem
-from ...session import SteamSession
-from ...transport import TransportResponse
-from ...utils import create_ident_code
-from ...webapi.client import COMMUNITY_ORIGIN
-from ...webapi.services.econ import HISTORY_LIMIT, EconServiceClient
-from .._base import BasePublicComponent, EconMixin, ItemDescriptionsMap
-from ..state import SteamState
+from ...econ import EconItem, EconMixin, ItemDescriptionsMap, create_ident_code
+from ...state import SteamState
 from .models import (
     HistoryTradeOffer,
     HistoryTradeOfferItem,
@@ -32,14 +30,14 @@ from .models import (
 )
 
 if TYPE_CHECKING:  # decouple components from guard
-    from ...guard.confirmations import SteamConfirmations
+    from ....guard.confirmations import SteamConfirmations
 
 
-TRADE_URL = STEAM_URL.COMMUNITY / "tradeoffer"
+TRADE_URL = SteamURL.COMMUNITY / "tradeoffer"
 TRADE_NEW_URL = TRADE_URL / "new/"
 
 
-class TradeComponent(BasePublicComponent, EconMixin):
+class TradeComponent(EconMixin):
     """Handle trade-related actions."""
 
     __slots__ = ("_session", "_state", "_conf", "_service")
@@ -50,8 +48,6 @@ class TradeComponent(BasePublicComponent, EconMixin):
         state: SteamState,
         confirmations: "SteamConfirmations | None" = None,
     ):
-        super().__init__(session.transport)
-
         self._session = session
         self._state = state
         self._conf = confirmations
@@ -82,7 +78,7 @@ class TradeComponent(BasePublicComponent, EconMixin):
     async def generate_new_token(self) -> str:
         """Generates new `trade url` alongside `token`. Will update ``state.trade_token``."""
 
-        r = await self._transport.request(
+        r = await self._session.transport.request(
             "POST",
             self._state.profile_url / "tradeoffers/newtradeurl",
             data={"sessionid": self._session.session_id},
@@ -98,7 +94,7 @@ class TradeComponent(BasePublicComponent, EconMixin):
         Required only **once for new account** to access trade offers interactions.
         """
 
-        return self._transport.request(
+        return self._session.transport.request(
             "POST",
             TRADE_NEW_URL / "acknowledge",
             data={"sessionid": self._session.session_id, "message": 1},
@@ -524,7 +520,7 @@ class TradeComponent(BasePublicComponent, EconMixin):
         data: dict | None = None,
     ) -> dict[str, str]:
         url_base = TRADE_URL / str(trade_offer_id)
-        r = await self._transport.request(
+        r = await self._session.transport.request(
             "POST",
             url_base / action,
             data={"sessionid": self._session.session_id, **(data or {})},
@@ -762,7 +758,7 @@ class TradeComponent(BasePublicComponent, EconMixin):
         if countered_id:
             data["tradeofferid_countered"] = countered_id
 
-        r = await self._transport.request(
+        r = await self._session.transport.request(
             "POST",
             TRADE_NEW_URL / "send",
             data=data,

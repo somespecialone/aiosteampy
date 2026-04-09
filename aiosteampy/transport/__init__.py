@@ -12,7 +12,7 @@ from .exceptions import (
     TransportResponseError,
     Unauthenticated,
 )
-from .impl.aiohttp import AiohttpTransport  # export default transport
+from .impl.aiohttp import AiohttpTransport
 from .models import Cookie, TransportResponse
 from .types import Content, Headers, HttpMethod, Params, Payload, ResponseMode
 from .utils import format_http_date, parse_http_date

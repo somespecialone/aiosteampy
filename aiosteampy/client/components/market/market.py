@@ -6,23 +6,22 @@ from datetime import UTC, datetime
 from typing import TYPE_CHECKING, Callable, overload
 from urllib.parse import unquote
 
-from ...app import App, AppContext
-from ...constants import STEAM_URL, Currency
-from ...exceptions import (
+from ....constants import SteamURL
+from ....exceptions import (
     EmailConfirmationRequired,
     EResultError,
     MobileConfirmationRequired,
     SteamError,
 )
-from ...models import EconItem, ItemDescription
-from ...session import SteamSession
-from ...transport import TransportResponse, TransportResponseError
-from ...utils import create_ident_code
-from .._base import ItemDescriptionsMap
-from ..state import SteamState, WalletInfo
+from ....session import SteamSession
+from ....transport import TransportResponse, TransportResponseError
+from ...app import App, AppContext
+from ...constants import Currency
+from ...econ import EconItem, ItemDescription, ItemDescriptionsMap, create_ident_code
+from ...state import SteamState, WalletInfo
 
 if TYPE_CHECKING:  # decouple components from guard
-    from ...guard.confirmations import SteamConfirmations
+    from ....guard import SteamConfirmations
 
 from .exceptions import InsufficientBalance, ListingRemoved
 from .models import (
@@ -419,7 +418,7 @@ class MarketComponent(MarketPublicComponent):
             MARKET_URL / "sellitem/",
             data=data,
             # there must be profile alias, but who cares
-            headers={"Referer": str(STEAM_URL.COMMUNITY / f"profiles/{self._session.steam_id}/inventory")},
+            headers={"Referer": str(SteamURL.COMMUNITY / f"profiles/{self._session.steam_id}/inventory")},
             response_mode="json",
         )
         rj: dict = r.content
@@ -1036,7 +1035,7 @@ class MarketComponent(MarketPublicComponent):
             response_mode="meta",
         )
 
-        if value := self._transport.get_cookie_value(STEAM_URL.COMMUNITY, TRADE_ELIGIBILITY_COOKIE):
+        if value := self._transport.get_cookie_value(SteamURL.COMMUNITY, TRADE_ELIGIBILITY_COOKIE):
             data = json.loads(unquote(value))
             data["allowed"] = allowed = bool(data["allowed"])
             data["time_checked"] = datetime.fromtimestamp(data["time_checked"], UTC)
@@ -1065,7 +1064,7 @@ class MarketComponent(MarketPublicComponent):
         r = await self._transport.request(
             "GET",
             MARKET_URL,
-            headers={"Referer": str(STEAM_URL.STORE)},
+            headers={"Referer": str(SteamURL.STORE)},
             redirects=True,  # handle eligibility check
             response_mode="text",
         )

@@ -1,4 +1,4 @@
-from ..exceptions import ConfirmationRequired, SteamError
+from ..exceptions import ConfirmationRequired, EmailConfirmationRequired, EResultError, SteamError
 
 
 class AuthenticatorError(SteamError):
@@ -35,5 +35,5 @@ class TwoFactorCodeMismatch(AuthenticatorError):
 
     def __str__(self):
         if self.attempts_left is not None:
-            return f"Revocation attempt failed. {self.attempts_left} attempts left."
+            return f"Revocation attempt failed. {self.attempts_left} attempts left"
         return "Two-factor code mismatch"

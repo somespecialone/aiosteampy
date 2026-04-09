@@ -2,19 +2,19 @@
 
 from collections.abc import Awaitable
 
-from ..session import SteamSession
-from ..webapi.services.notification import CSteamNotificationGetSteamNotificationsResponse, NotificationServiceClient
-from ._base import BasePublicComponent
+from ...session import SteamSession
+from ...webapi.services.notification import (
+    CSteamNotificationGetSteamNotificationsResponse,
+    NotificationServiceClient,
+)
 
 
-class NotificationsComponent(BasePublicComponent):
+class NotificationsComponent:
     """Component responsible for `Steam` user notifications functionality."""
 
     __slots__ = ("_session", "_service")
 
     def __init__(self, session: SteamSession):
-        super().__init__(session.transport)
-
         self._session = session
         self._service = NotificationServiceClient(session.webapi)
 

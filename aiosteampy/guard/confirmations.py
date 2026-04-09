@@ -2,24 +2,22 @@ import asyncio
 from collections.abc import Awaitable, Iterable
 from datetime import datetime
 from itertools import batched
-from typing import Literal, overload
+from typing import TYPE_CHECKING, Literal, overload
 
-from ..app import AppContext
-
-# we can do runtime import here as components will be exposed at the top level anyway
-from ..components.market import UserMarketListing
-from ..components.trade import TradeOffer
-from ..constants import STEAM_URL
-from ..exceptions import EResultError
-from ..models import EconItem
-from ..session import SteamSession
+from ..constants import SteamURL
+from ..session import EResultError, SteamSession
 from ..transport import Unauthenticated
-from ..utils import create_ident_code
 from .models import Confirmation, ConfirmationType
 from .signer import TwoFactorSigner
 from .utils import generate_device_id
 
-CONF_URL = STEAM_URL.COMMUNITY / "mobileconf"
+if TYPE_CHECKING:  # separate guard from client
+    from ..client.app import AppContext
+    from ..client.components.market import UserMarketListing
+    from ..client.components.trade import TradeOffer
+    from ..client.econ import EconItem
+
+CONF_URL = SteamURL.COMMUNITY / "mobileconf"
 GET_ALL_URL = CONF_URL / "getlist"
 SEND_URL = CONF_URL / "ajaxop"
 SEND_MULTI_URL = CONF_URL / "multiajaxop"
@@ -51,7 +49,7 @@ class SteamConfirmations:
         return self._device_id
 
     def _create_confirmation_params(self, tag: str) -> dict:
-        conf_key, ts = self._signer.gen_confirmation_key(tag=tag)
+        conf_key, ts = self._signer.generate_confirmation_key(tag=tag)
         return {
             "p": self._device_id,
             "a": self._session.steam_id,
@@ -95,7 +93,7 @@ class SteamConfirmations:
 
         return details
 
-    async def get_all(self, details: DetailsMode = "none") -> list[Confirmation]:
+    async def get_all(self, details: DetailsMode = "none", *, concurrency: int = 10) -> list[Confirmation]:
         """
         Get all standing confirmations.
 
@@ -106,6 +104,7 @@ class SteamConfirmations:
             ``"none"`` - no details will be fetched;
             ``"listing"`` - will update only for ``ConfirmationType.MARKET_LISTING``;
             ``"all"`` - will update for all types.
+        :param concurrency: count of concurrent requests to get `details`.
         :return: list of ``Confirmation``.
         :raises EResultError: ordinary reasons.
         :raises TransportError: ordinary reasons.
@@ -157,9 +156,9 @@ class SteamConfirmations:
 
             confs.append(conf)
 
-        for chunk in batched(requiring_details, 10):  # concurrently get details with limit
+        for batch in batched(requiring_details, concurrency):  # concurrently get details with limit
             async with asyncio.TaskGroup() as tg:
-                for conf in chunk:
+                for conf in batch:
                     tg.create_task(self.get_confirmation_details(conf))
 
         return confs
@@ -280,15 +279,15 @@ class SteamConfirmations:
 
     # helper methods for components
     @overload
-    async def confirm_sell_listing(self, obj: int, app_ctx: AppContext) -> Confirmation: ...
+    async def confirm_sell_listing(self, obj: int, app_ctx: "AppContext") -> Confirmation: ...
 
     @overload
-    async def confirm_sell_listing(self, obj: UserMarketListing | EconItem | int) -> Confirmation: ...
+    async def confirm_sell_listing(self, obj: "UserMarketListing | EconItem | int") -> Confirmation: ...
 
     async def confirm_sell_listing(
         self,
-        obj: UserMarketListing | EconItem | int,
-        app_ctx: AppContext | None = None,
+        obj: "UserMarketListing | EconItem | int",
+        app_ctx: "AppContext | None" = None,
     ) -> Confirmation:
         """
         Perform `sell listing` confirmation.
@@ -300,6 +299,9 @@ class SteamConfirmations:
         :raises EResultError: ordinary reasons.
         :raises TransportError: ordinary reasons.
         """
+
+        from ..client.components.market import UserMarketListing
+        from ..client.econ import EconItem, create_ident_code
 
         details = "none"  # avoid unnecessary requests
         if isinstance(obj, UserMarketListing):
@@ -334,7 +336,7 @@ class SteamConfirmations:
             return conf
         raise KeyError(f"No confirmation found for `Steam Web API` request: {req_id}")
 
-    async def confirm_trade_offer(self, obj: int | TradeOffer) -> Confirmation:
+    async def confirm_trade_offer(self, obj: "int | TradeOffer") -> Confirmation:
         """
         Confirm `trade offer` countering or sending.
 
@@ -344,7 +346,7 @@ class SteamConfirmations:
         :raises TransportError: ordinary reasons.
         """
 
-        trade_offer_id = obj.trade_offer_id if isinstance(obj, TradeOffer) else obj
+        trade_offer_id = obj if isinstance(obj, int) else obj.trade_offer_id
         if conf := await self.get(trade_offer_id):
             await self.accept(conf)
             return conf

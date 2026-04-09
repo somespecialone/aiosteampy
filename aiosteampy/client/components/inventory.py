@@ -1,24 +1,29 @@
 """Components with functionality responsible for user inventory handling."""
 
 from collections.abc import AsyncGenerator
-from contextlib import suppress
+from contextlib import contextmanager, suppress
 from typing import Callable, NamedTuple, overload
 
+from ...constants import SteamURL
+from ...exceptions import EResultError, SteamError
+from ...id import SteamID
+from ...session import SteamSession
+from ...transport import BaseSteamTransport, TransportResponseError, Unauthenticated
 from ..app import AppContext
-from ..constants import STEAM_URL
-from ..exceptions import EResultError, SteamError
-from ..id import SteamID
-from ..models import AssetAccessory, AssetProperty, EconItem
-from ..session import SteamSession
-from ..transport import BaseSteamTransport, TransportResponseError, Unauthenticated
-from ..utils import create_ident_code
-from ._base import BasePublicComponent, EconMixin, ItemDescriptionsMap
-from .state import PublicSteamState, SteamState
+from ..econ import (
+    AssetAccessory,
+    AssetProperty,
+    EconItem,
+    EconMixin,
+    ItemDescriptionsMap,
+    create_ident_code,
+)
+from ..state import PublicSteamState, SteamState
 
 # Steam current limit
 INV_COUNT = 2000
 
-INVENTORY_URL = STEAM_URL.COMMUNITY / "inventory"
+INVENTORY_URL = SteamURL.COMMUNITY / "inventory"
 
 
 class Inventory(NamedTuple):
@@ -32,13 +37,13 @@ class Inventory(NamedTuple):
     """Last `asset id` of the list returned by `Steam`."""
 
 
-class InventoryPublicComponent(BasePublicComponent, EconMixin):
+class InventoryPublicComponent(EconMixin):
     """Component with public `Steam Inventory` methods. Available without authentication."""
 
-    __slots__ = ("_state", )
+    __slots__ = ("_transport", "_state")
 
     def __init__(self, transport: BaseSteamTransport, state: PublicSteamState):
-        super().__init__(transport)
+        self._transport = transport
         self._state = state
 
     @classmethod
@@ -224,6 +229,18 @@ class InventoryPublicComponent(BasePublicComponent, EconMixin):
                 return next(filter(predicate, items))
 
 
+@contextmanager
+def private_inventory_ctx():
+    """Convert ``SteamError`` raised in case of private inventory to a ``Unauthenticated`` exception."""
+    try:
+        yield
+    except SteamError as e:
+        if "private" in (e.args[0] if e.args else ()):
+            raise Unauthenticated from e  # inventory of self cannot be private
+        else:
+            raise e
+
+
 class InventoryComponent(InventoryPublicComponent):
     """Component responsible for working with current user inventory."""
 
@@ -256,10 +273,10 @@ class InventoryComponent(InventoryPublicComponent):
         :raises SteamError: inventory is private.
         :raises EResultError: ordinary reasons.
         :raises TransportError: ordinary reasons.
-        :raises Unauthenticated: Auth cookies or token are missing, expired or invalid.
+        :raises Unauthenticated: Auth cookies or token are missing, expired, or invalid.
         """
 
-        try:
+        with private_inventory_ctx():
             return await self.get_user_inventory(
                 self._session.steam_id,
                 app_ctx,
@@ -267,11 +284,6 @@ class InventoryComponent(InventoryPublicComponent):
                 count=count,
                 _item_descriptions_map=_item_descriptions_map,
             )
-        except SteamError as e:
-            if "private" in (e.args[0] if e.args else ()):
-                raise Unauthenticated from e  # inventory of self cannot be private
-            else:
-                raise e
 
     async def inventory(
         self,
@@ -291,13 +303,12 @@ class InventoryComponent(InventoryPublicComponent):
         :raises SteamError: inventory is private.
         :raises EResultError: ordinary reasons.
         :raises TransportError: ordinary reasons.
-        :raises Unauthenticated: Auth cookies or token are missing, expired or invalid.
+        :raises Unauthenticated: Auth cookies or token are missing, expired, or invalid.
         """
 
         _item_descriptions_map = {}  # shared descriptions instances across calls
 
-        # TODO private check can be pushed out to a func or context
-        try:
+        with private_inventory_ctx():
             async for items in self.user_inventory(
                 self._session.steam_id,
                 app_ctx,
@@ -305,11 +316,6 @@ class InventoryComponent(InventoryPublicComponent):
                 count=count,
             ):
                 yield items
-        except SteamError as e:
-            if "private" in (e.args[0] if e.args else ()):
-                raise Unauthenticated from e  # inventory of self cannot be private
-            else:
-                raise e
 
     @overload
     async def get_inventory_item(self, app_ctx: AppContext, obj: int) -> EconItem | None: ...
@@ -332,13 +338,8 @@ class InventoryComponent(InventoryPublicComponent):
         :raises SteamError: inventory is private.
         :raises EResultError: ordinary reasons.
         :raises TransportError: ordinary reasons.
-        :raises Unauthenticated: Auth cookies or token are missing, expired or invalid.
+        :raises Unauthenticated: Auth cookies or token are missing, expired, or invalid.
         """
 
-        try:
+        with private_inventory_ctx():
             return await self.get_user_item(self._session.steam_id, app_ctx, obj)
-        except SteamError as e:
-            if "private" in (e.args[0] if e.args else ()):
-                raise Unauthenticated from e  # inventory of self cannot be private
-            else:
-                raise e

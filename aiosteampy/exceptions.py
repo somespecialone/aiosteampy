@@ -1,9 +1,7 @@
-from typing import TYPE_CHECKING
+"""Package level exceptions shared across modules."""
 
 from .constants import EResult
-
-if TYPE_CHECKING:
-    from .transport import Content, Headers
+from .transport import Content, Headers
 
 
 class SteamError(Exception):
@@ -13,7 +11,7 @@ class SteamError(Exception):
 class EResultError(SteamError):
     """`Steam` response with error result code."""
 
-    def __init__(self, result: EResult, msg: str | None, data: "Content" = None):
+    def __init__(self, result: EResult, msg: str | None, data: Content = None):
         self.result = result
         self.msg = msg
         self.data = data
@@ -29,7 +27,7 @@ class EResultError(SteamError):
             raise cls(res, data.get("message"), data)
 
     @classmethod
-    def check_headers(cls, headers: "Headers", data: "Content" = None):
+    def check_headers(cls, headers: Headers, data: Content = None):
         """Check if ``headers`` contains error response from `Steam` API and raise ``EResultError`` if needed."""
 
         # Valves will not be Valves if they not to forgot send header in some API endpoints

@@ -8,11 +8,11 @@ from typing import NamedTuple, Self
 
 from yarl import URL
 
-from ..constants import STEAM_URL, Currency, Language
+from ..constants import EResult, SteamURL
 from ..exceptions import EResultError, SteamError
 from ..session import SteamSession
 from ..transport import BaseSteamTransport
-from ._base import BasePublicComponent
+from .constants import Currency, Language
 
 TRADE_TOKEN_RE = re.compile(r"\d+&token=(.+)\" readonly")
 
@@ -28,8 +28,8 @@ DEF_LANGUAGE = Language.ENGLISH
 
 
 # single source of truth. Must contain only sync logic
-class PublicSteamState(BasePublicComponent):
-    __slots__ = ("_country", "_currency", "_language")
+class PublicSteamState:
+    __slots__ = ("_transport", "_country", "_currency", "_language")
 
     def __init__(
         self,
@@ -49,7 +49,7 @@ class PublicSteamState(BasePublicComponent):
         :param language: language of `Steam` responses, descriptions, et cetera.
         """
 
-        super().__init__(transport)
+        self._transport = transport
 
         self._country = country
         self._currency = currency
@@ -169,6 +169,10 @@ class SteamState(PublicSteamState):
         :param web_api_key: `Steam Web API` key. Can be used for access `Web API`.
         :param trade_token: trade `token` from account trade url.
         :param alias: custom profile `alias`.
+        :param steam_fee: wallet fee percent.
+        :param publisher_fee: wallet `publisher` fee percent.
+        :param fee_min: wallet `fee` minimum.
+        :param fee_base: wallet `base` fee.
         """
 
         super().__init__(session.transport, country=country, currency=currency, language=language)
@@ -210,9 +214,9 @@ class SteamState(PublicSteamState):
         """
 
         if self._alias:
-            return STEAM_URL.COMMUNITY / f"id/{self._alias}"
+            return SteamURL.COMMUNITY / f"id/{self._alias}"
         else:
-            return STEAM_URL.COMMUNITY / f"profiles/{self._session.steam_id}"
+            return SteamURL.COMMUNITY / f"profiles/{self._session.steam_id}"
 
     @property
     def steam_fee(self) -> float:
@@ -240,12 +244,12 @@ class SteamState(PublicSteamState):
 
         :return: api key or ``None`` if not registered.
         :raises TransportError: ordinary reasons.
-        :raises SteamError: unable to get api key.
+        :raises SteamError: access denied to api key for current user.
         """
 
         r = await self._transport.request(
             "GET",
-            STEAM_URL.COMMUNITY / "dev/apikey",
+            SteamURL.COMMUNITY / "dev/apikey",
             params={"l": "english"},  # force english
         )
         rt: str = r.content
@@ -264,7 +268,7 @@ class SteamState(PublicSteamState):
     async def sync_alias(self) -> str | None:
         """Update profile ``alias`` from `Steam`."""
 
-        r = await self._transport.request("GET", STEAM_URL.COMMUNITY / "my", redirects=False, response_mode="meta")
+        r = await self._transport.request("GET", SteamURL.COMMUNITY / "my", redirects=False, response_mode="meta")
         location = r.headers["Location"]
         if "profiles/" in location:  # redirect to default url so there is no alias
             self._alias = None
@@ -290,7 +294,9 @@ class SteamState(PublicSteamState):
 
     # wallet method, but no better way to handle codependence :(
     async def sync_wallet_info(self) -> WalletInfo:
-        """Update country, currency, and fees from `Steam`."""
+        """
+        Update country, currency, and fees from `Steam`.
+        """
 
         # get wallet info
         profile_url = self.profile_url
@@ -304,7 +310,13 @@ class SteamState(PublicSteamState):
         rt: str = r.content
         data = json.loads(WALLET_INFO_RE.search(rt).group(1))
 
-        EResultError.check_data(data)
+        try:
+            EResultError.check_data(data)
+        except EResultError as e:
+            if e.result is EResult.INVALID:
+                raise SteamError(f"Account ({self._session.steam_id}) wallet not yet created") from e
+            else:
+                raise e
 
         info = WalletInfo.from_data(data)
 
@@ -320,15 +332,20 @@ class SteamState(PublicSteamState):
     async def actualize(self):
         """Actualize component state for current user by updating it from `Steam`."""
 
-        async def sync_api_key():  # skip if unavailable
+        # supress unavailable
+        async def sync_api_key():
             with suppress(SteamError):
                 await self.sync_api_key()
+
+        async def sync_wallet_info():
+            with suppress(SteamError):
+                await self.sync_wallet_info()
 
         async with asyncio.TaskGroup() as tg:
             tg.create_task(sync_api_key())
             tg.create_task(self.sync_alias())
             tg.create_task(self.sync_trade_token())
-            tg.create_task(self.sync_wallet_info())
+            tg.create_task(sync_wallet_info())
 
     def serialize(self) -> dict:
         return {

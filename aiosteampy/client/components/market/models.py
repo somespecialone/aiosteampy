@@ -3,10 +3,10 @@ from datetime import datetime
 from enum import IntEnum, StrEnum
 from typing import NamedTuple
 
+from ....id import SteamID
 from ...app import App, AppContext
 from ...constants import Currency
-from ...id import SteamID
-from ...models import EconItem, ItemDescription
+from ...econ import EconItem, ItemDescription
 
 
 class SellOrderTableEntry(NamedTuple):

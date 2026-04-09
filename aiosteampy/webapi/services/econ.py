@@ -2,7 +2,6 @@
 
 from datetime import datetime
 
-from ...constants import Language
 from ._base import JsonResponse, SteamWebApiServiceBase
 
 HISTORY_LIMIT = 100  # current effective limit for access token, for api key is 500
@@ -18,10 +17,12 @@ class EconServiceClient(SteamWebApiServiceBase):
     def get_trade_offer(
         self,
         trade_offer_id: int,
-        language: Language = Language.ENGLISH,
+        language: str | None = None,
         get_descriptions: bool = True,
     ) -> JsonResponse:
-        params = {"tradeofferid": trade_offer_id, "language": language, "get_descriptions": int(get_descriptions)}
+        params = {"tradeofferid": trade_offer_id, "get_descriptions": int(get_descriptions)}
+        if language is not None:
+            params["language"] = language
         return self._urlencoded("GetTradeOffer", params=params, auth=True)
 
     def get_trade_offers(
@@ -33,7 +34,7 @@ class EconServiceClient(SteamWebApiServiceBase):
         get_received_offers: bool = True,
         get_descriptions: bool = True,
         cursor: int = 0,
-        language: Language = Language.ENGLISH,
+        language: str | None = None,
     ) -> JsonResponse:
         params = {
             "active_only": int(active_only),
@@ -42,12 +43,13 @@ class EconServiceClient(SteamWebApiServiceBase):
             "historical_only": int(historical_only),
             "get_descriptions": int(get_descriptions),
             "cursor": cursor,
-            "language": language,
         }
         if active_only and time_historical_cutoff is not None:
             if isinstance(time_historical_cutoff, datetime):
                 time_historical_cutoff = int(time_historical_cutoff.timestamp())  # trunc ms
             params["time_historical_cutoff"] = time_historical_cutoff
+        if language is not None:
+            params["language"] = language
 
         return self._urlencoded("GetTradeOffers", params=params, auth=True)
 
@@ -60,8 +62,11 @@ class EconServiceClient(SteamWebApiServiceBase):
 
         return self._urlencoded("GetTradeOffersSummary", params=params, auth=True)
 
-    def get_trade_status(self, trade_id: int, language: Language = Language.ENGLISH) -> JsonResponse:
-        params = {"tradeid": trade_id, "get_descriptions": 1, "language": language}
+    def get_trade_status(self, trade_id: int, language: str | None = None) -> JsonResponse:
+        params = {"tradeid": trade_id, "get_descriptions": 1}
+        if language is not None:
+            params["language"] = language
+
         return self._urlencoded("GetTradeStatus", params=params, auth=True)
 
     def get_trade_history(
@@ -73,7 +78,7 @@ class EconServiceClient(SteamWebApiServiceBase):
         start_after_trade_id: int | None = None,
         get_descriptions: bool = True,
         include_total: bool = True,
-        language: Language = Language.ENGLISH,
+        language: str | None = None,
     ) -> JsonResponse:
         params = {
             "max_trades": max_trades,
@@ -81,7 +86,6 @@ class EconServiceClient(SteamWebApiServiceBase):
             "include_total": int(include_total),
             "include_failed": int(include_failed),
             "navigating_back": int(navigating_back),
-            "language": language,
         }
         if start_after_time is not None:
             if isinstance(start_after_time, datetime):
@@ -89,6 +93,8 @@ class EconServiceClient(SteamWebApiServiceBase):
             params["start_after_time"] = start_after_time
         if start_after_trade_id is not None:
             params["start_after_tradeid"] = start_after_trade_id
+        if language is not None:
+            params["language"] = language
 
         return self._urlencoded("GetTradeHistory", params=params, auth=True)
 

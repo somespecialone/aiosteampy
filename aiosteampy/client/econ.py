@@ -1,20 +1,31 @@
+"""`Steam Economy` related models and functionality."""
+
+from collections.abc import Iterable
 from dataclasses import dataclass, field
 from datetime import datetime
 from typing import TYPE_CHECKING, NamedTuple
 
 from yarl import URL
 
+from ..constants import SteamURL
+from ..id import SteamID
 from .app import App, AppContext
-from .constants import STEAM_URL
-from .id import SteamID
-from .utils import create_ident_code
 
-if TYPE_CHECKING:
+if TYPE_CHECKING:  # optional app item context
     from .cs2 import DescriptionContext as CS2DescriptionContext
     from .cs2 import ItemContext as CS2ItemContext
 
-
 TRADABLE_AFTER_DATE_FORMAT = "%b %d, %Y (%H:%M:%S) %Z"
+
+
+def create_ident_code(*ids, sep=":"):
+    """
+    Create unique ident code for ``EconItem`` or ``ItemDescription`` within whole `Steam Economy`.
+
+    .. seealso:: https://dev.doctormckay.com/topic/332-identifying-steam-items/
+    """
+
+    return sep.join(reversed(list(str(i) for i in filter(lambda i: i is not None, ids))))
 
 
 class ItemAction(NamedTuple):
@@ -180,12 +191,12 @@ class ItemDescription(BaseEntityWithIdentCode):
 
     @property
     def icon(self) -> URL:
-        return STEAM_URL.STATIC / f"economy/image/{self.icon_key}/96fx96f"
+        return SteamURL.STATIC / f"economy/image/{self.icon_key}/96fx96f"
 
     @property
     def icon_large(self) -> URL | None:
         return (
-            (STEAM_URL.STATIC / f"economy/image/{self.icon_large_key}/330x192")
+            (SteamURL.STATIC / f"economy/image/{self.icon_large_key}/330x192")
             if self.icon_large_key is not None
             else None
         )
@@ -193,7 +204,7 @@ class ItemDescription(BaseEntityWithIdentCode):
     @property
     def market_url(self) -> URL:
         """URL of item page on `Steam Market`."""
-        return STEAM_URL.COMMUNITY / f"market/listings/{self.app.id}/{self.market_hash_name}"
+        return SteamURL.COMMUNITY / f"market/listings/{self.app.id}/{self.market_hash_name}"
 
 
 @dataclass(slots=True, kw_only=True)
@@ -243,3 +254,102 @@ class EconItem(BaseEntityWithIdentCode):
                 self._cs2_ctx = cs2.ItemContext.from_item(self)
 
             return self._cs2_ctx
+
+
+ItemDescriptionsMap = dict[str, ItemDescription]  # ident code : descr
+
+
+class EconMixin:
+    """``ItemDescription``, ``EconItem`` creation related methods."""
+
+    __slots__ = ()
+
+    @staticmethod
+    def _parse_item_actions(actions: Iterable[dict]) -> tuple[ItemAction, ...]:
+        return tuple(ItemAction(a_data["link"], a_data["name"]) for a_data in actions)
+
+    @staticmethod
+    def _parse_item_tags(tags: Iterable[dict]) -> tuple[ItemTag, ...]:
+        return tuple(
+            ItemTag(
+                t_data["category"],
+                t_data["internal_name"],
+                t_data["localized_category_name"],
+                t_data["localized_tag_name"],
+                t_data.get("color"),
+            )
+            for t_data in tags
+        )
+
+    @staticmethod
+    def _parse_item_descr_entries(descriptions: Iterable[dict]) -> tuple[ItemDescriptionEntry, ...]:
+        return tuple(
+            ItemDescriptionEntry(
+                d_data["value"],
+                d_data.get("type"),
+                d_data.get("name"),
+                d_data.get("color"),
+            )
+            for d_data in descriptions
+            if (d_data["value"] != " " and d_data["value"])  # let's omit "blank" descriptions
+        )
+
+    @classmethod
+    def _create_item_descr(cls, data: dict) -> ItemDescription:
+        return ItemDescription(
+            class_id=int(data["classid"]),
+            instance_id=int(data["instanceid"]),
+            app=App(data["appid"]),
+            name=data["name"],
+            market_name=data["market_name"],
+            market_hash_name=data["market_hash_name"],
+            name_color=data.get("name_color") or None,  # ignore " "
+            background_color=data.get("name_color") or None,
+            type=data["type"] or None,
+            icon_key=data["icon_url"],
+            icon_large_key=data.get("icon_url_large"),
+            commodity=bool(data["commodity"]),
+            tradable=bool(data["tradable"]),
+            # market search page descriptions may miss this so True by default
+            marketable=bool(data.get("marketable", True)),
+            market_tradable_restriction=data.get("market_tradable_restriction", 0),
+            market_buy_country_restriction=data.get("market_buy_country_restriction"),
+            market_fee_app=App(data["market_fee_app"]) if "market_fee_app" in data else None,
+            market_marketable_restriction=data.get("market_marketable_restriction", 0),
+            actions=cls._parse_item_actions(data.get("actions", ())),
+            market_actions=cls._parse_item_actions(data.get("market_actions", ())),
+            owner_actions=cls._parse_item_actions(data.get("owner_actions", ())),
+            tags=cls._parse_item_tags(data.get("tags", ())),
+            descriptions=cls._parse_item_descr_entries(data.get("descriptions", ())),
+            owner_descriptions=(cls._parse_item_descr_entries(data.get("owner_descriptions", ()))),
+            fraud_warnings=tuple(data.get("fraudwarnings", ())),
+            sealed=bool(data["sealed"]),
+        )
+
+    @staticmethod
+    def _create_property(data: dict[str, str | int]) -> AssetProperty:
+        _, value = next(filter(lambda kv: kv[0].endswith("_value"), data.items()))
+
+        return AssetProperty(
+            data["propertyid"],
+            value,
+            # data.get("name"),
+        )
+
+    @classmethod
+    def _parse_asset_properties(cls, data: dict) -> tuple[AssetProperty, ...]:
+        """Extract ``AssetProperty`` from data."""
+
+        # avoid iterating over present None, that's Steam
+        return tuple(cls._create_property(p_data) for p_data in (data.get("asset_properties", ()) or ()))
+
+    @classmethod
+    def _create_accessory(cls, data: dict) -> AssetAccessory:
+        parent_props = tuple(cls._create_property(pd) for pd in data.get("parent_relationship_properties", ()))
+        standalone_props = tuple(cls._create_property(pd) for pd in data.get("standalone_properties", ()))
+
+        return AssetAccessory(int(data["classid"]), parent_props, standalone_props)
+
+    @classmethod
+    def _parse_asset_accessories(cls, data: dict) -> tuple[AssetAccessory, ...]:
+        return tuple(cls._create_accessory(a_data) for a_data in data.get("asset_accessories", ()) or ())

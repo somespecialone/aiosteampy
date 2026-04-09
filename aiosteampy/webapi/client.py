@@ -4,7 +4,7 @@ from typing import Any, Literal
 
 from betterproto2 import Message
 
-from ..constants import LIB_ID, STEAM_URL, Platform
+from ..constants import LIB_ID, Platform, SteamURL
 from ..exceptions import EResultError
 from ..transport import (
     BaseSteamTransport,
@@ -26,7 +26,7 @@ API_HEADERS = {
     "Sec-Fetch-Site": "cross-site",
 }
 
-COMMUNITY_ORIGIN = str(STEAM_URL.COMMUNITY)
+COMMUNITY_ORIGIN = str(SteamURL.COMMUNITY)
 BROWSER_HEADERS = {
     "Referer": COMMUNITY_ORIGIN + "/",
     "Origin": COMMUNITY_ORIGIN,
@@ -67,8 +67,8 @@ class SteamWebAPIClient:
 
         if self.is_mobile:  # add mobile app specific user agent and cookie
             # self._transport.user_agent = "okhttp/4.9.2"
-            self._transport.add_cookie(Cookie("mobileClientVersion", "777777 3.10.3", STEAM_URL.WEB_API.host))
-            self._transport.add_cookie(Cookie("mobileClient", "android", STEAM_URL.WEB_API.host))
+            self._transport.add_cookie(Cookie("mobileClientVersion", "777777 3.10.3", SteamURL.WEB_API.host))
+            self._transport.add_cookie(Cookie("mobileClient", "android", SteamURL.WEB_API.host))
 
     @property
     def transport(self) -> BaseSteamTransport:
@@ -172,7 +172,7 @@ class SteamWebAPIClient:
 
         r = await self._transport.request(
             http_method,
-            STEAM_URL.WEB_API / f"{interface}/{method}/v{version}",
+            SteamURL.WEB_API / f"{interface}/{method}/v{version}",
             params=params,
             data=urlencoded,
             multipart=data,

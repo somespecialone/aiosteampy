@@ -23,6 +23,7 @@ class TwoFactorSigner:
         """
         Crypto functionality of `Steam Guard`.
 
+        :param steam_id: `Steam ID` of the user account.
         :param shared_secret: `shared secret` of an account in `bytes` or `base64 encoded` string.
         :param identity_secret: `identity secret` of an account in `bytes` or `base64 encoded` string.
         :param webapi: client instance to make requests from.
@@ -71,11 +72,11 @@ class TwoFactorSigner:
         """Calculate server time."""
         return int(time.time()) + self.time_offset
 
-    def gen_auth_code(self) -> str:
+    def generate_auth_code(self) -> str:
         """Generate 5-character alphanumeric `Steam` two-factor (TOTP) auth code."""
         return self._shared_secret.generate_auth_code(self._calc_server_time())
 
-    def gen_confirmation_key(self, tag: str) -> tuple[str, int]:
+    def generate_confirmation_key(self, tag: str) -> tuple[str, int]:
         """
         Generate confirmation key.
 

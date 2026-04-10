@@ -264,5 +264,6 @@ Sources of inspiration and ideas, concepts, and general knowledge:
 - [Jessecar96/SteamDesktopAuthenticator](https://github.com/Jessecar96/SteamDesktopAuthenticator)
 - [achiez/NebulaAuth-Steam-Desktop-Authenticator](https://github.com/achiez/NebulaAuth-Steam-Desktop-Authenticator-by-Achies/)
 - [Identifying Steam items](https://dev.doctormckay.com/topic/332-identifying-steam-items/)
+- [CS2 Items Schema](https://github.com/somespecialone/cs2-items-schema)
 
 <!--footer-end-->

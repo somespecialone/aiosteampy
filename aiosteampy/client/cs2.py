@@ -5,6 +5,8 @@ from dataclasses import dataclass
 from enum import IntEnum, StrEnum
 from typing import TYPE_CHECKING, NamedTuple, Self
 
+import betterproto2
+
 from .app import App
 
 if TYPE_CHECKING:
@@ -16,11 +18,6 @@ if TYPE_CHECKING:
 INSPECT_LINK_BASE = "steam://run/730//+csgo_econ_action_preview%20%"
 # search sticker and charm data
 CS2_APPLICABLE_DATA_RE = re.compile(r'<img\s+[^>]*src="([^"]*)"[^>]*title="([^"]*)"[^>]*>')
-
-
-def make_inspect_link(inspect_key: str) -> str:
-    """Create `Inspect in game` link for `CS2` item."""
-    return INSPECT_LINK_BASE + inspect_key
 
 
 # https://steamapi.xpaw.me/IEconService#GetAssetPropertySchema
@@ -143,6 +140,69 @@ class Charm(ItemAccessory):
     pattern: int
 
 
+# https://github.com/SteamTracking/Protobufs/blob/e0029427a75d9247e8d15b11d812cf6c00519304/csgo/cstrike15_gcmessages.proto#L915
+@dataclass(eq=False, repr=False)
+class CEconItemPreviewDataBlock(betterproto2.Message):
+    accountid: "int" = betterproto2.field(1, betterproto2.TYPE_UINT32)
+    itemid: "int" = betterproto2.field(2, betterproto2.TYPE_UINT64)
+    defindex: "int" = betterproto2.field(3, betterproto2.TYPE_UINT32)
+    paintindex: "int" = betterproto2.field(4, betterproto2.TYPE_UINT32)
+    rarity: "int" = betterproto2.field(5, betterproto2.TYPE_UINT32)
+    quality: "int" = betterproto2.field(6, betterproto2.TYPE_UINT32)
+    paintwear: "int" = betterproto2.field(7, betterproto2.TYPE_UINT32)
+    paintseed: "int" = betterproto2.field(8, betterproto2.TYPE_UINT32)
+    killeaterscoretype: "int" = betterproto2.field(9, betterproto2.TYPE_UINT32)
+    killeatervalue: "int" = betterproto2.field(10, betterproto2.TYPE_UINT32)
+    customname: "str" = betterproto2.field(11, betterproto2.TYPE_STRING)
+    stickers: "list[CEconItemPreviewDataBlockSticker]" = betterproto2.field(
+        12, betterproto2.TYPE_MESSAGE, repeated=True
+    )
+    inventory: "int" = betterproto2.field(13, betterproto2.TYPE_UINT32)
+    origin: "int" = betterproto2.field(14, betterproto2.TYPE_UINT32)
+    questid: "int" = betterproto2.field(15, betterproto2.TYPE_UINT32)
+    dropreason: "int" = betterproto2.field(16, betterproto2.TYPE_UINT32)
+    musicindex: "int" = betterproto2.field(17, betterproto2.TYPE_UINT32)
+    entindex: "int" = betterproto2.field(18, betterproto2.TYPE_INT32)
+    petindex: "int" = betterproto2.field(19, betterproto2.TYPE_UINT32)
+    keychains: "list[CEconItemPreviewDataBlockSticker]" = betterproto2.field(
+        20, betterproto2.TYPE_MESSAGE, repeated=True
+    )
+    style: "int" = betterproto2.field(21, betterproto2.TYPE_UINT32)
+    variations: "list[CEconItemPreviewDataBlockSticker]" = betterproto2.field(
+        22, betterproto2.TYPE_MESSAGE, repeated=True
+    )
+    upgrade_level: "int" = betterproto2.field(23, betterproto2.TYPE_UINT32)
+
+    @classmethod
+    def from_certificate(cls, certificate: str) -> Self:
+        """Parse `item certificate` and create an instance."""
+
+        buffer = bytearray.fromhex(certificate)
+
+        if buffer[0] != 0:  # unmask
+            mask = buffer[0]
+            for i in range(1, len(buffer) - 3):
+                buffer[i] ^= mask
+
+        return cls.parse(buffer[1:-4])
+
+
+@dataclass(eq=False, repr=False)
+class CEconItemPreviewDataBlockSticker(betterproto2.Message):
+    slot: "int" = betterproto2.field(1, betterproto2.TYPE_UINT32)
+    sticker_id: "int" = betterproto2.field(2, betterproto2.TYPE_UINT32)
+    wear: "float" = betterproto2.field(3, betterproto2.TYPE_FLOAT)
+    scale: "float" = betterproto2.field(4, betterproto2.TYPE_FLOAT)
+    rotation: "float" = betterproto2.field(5, betterproto2.TYPE_FLOAT)
+    tint_id: "int" = betterproto2.field(6, betterproto2.TYPE_UINT32)
+    offset_x: "float" = betterproto2.field(7, betterproto2.TYPE_FLOAT)
+    offset_y: "float" = betterproto2.field(8, betterproto2.TYPE_FLOAT)
+    offset_z: "float" = betterproto2.field(9, betterproto2.TYPE_FLOAT)
+    pattern: "int" = betterproto2.field(10, betterproto2.TYPE_UINT32)
+    highlight_reel: "int" = betterproto2.field(11, betterproto2.TYPE_UINT32)
+    wrapped_sticker: "int" = betterproto2.field(12, betterproto2.TYPE_UINT32)
+
+
 @dataclass(eq=False, slots=True)
 class ItemContext:
     """Representation of `CS2` specific ``EconItem`` data."""
@@ -153,17 +213,29 @@ class ItemContext:
     stickers: tuple[Sticker, ...]
     charm: Charm | None
 
-    inspect_id: str | None
-    """Unique key of item (`item certificate`), used to inspect item in game."""
+    item_certificate: str | None
+    """Encoded `inspect` preview data."""
     wear_rating: float | None
-    """Wear rating of item skin, known as `float` or `floatvalue`."""
+    """Paint wear rating, known as `float` or `floatvalue`."""
     pattern_template: int | None
     name_tag: str | None
 
+    _inspect_data: CEconItemPreviewDataBlock | None = None
+
     @property
     def inspect_link(self) -> str | None:
-        """`Inspect in game` link."""
-        return make_inspect_link(self.inspect_id) if self.inspect_id else None
+        """`Inspect in Game...` link."""
+        return (INSPECT_LINK_BASE + self.item_certificate) if self.item_certificate else None
+
+    @property
+    def inspect_data(self) -> CEconItemPreviewDataBlock | None:
+        """Item preview data."""
+
+        if self.item_certificate:
+            if self._inspect_data is None:
+                self._inspect_data = CEconItemPreviewDataBlock.from_certificate(self.item_certificate)
+
+            return self._inspect_data
 
     @staticmethod
     def _create_sticker(sticker_meta: ItemAccessoryMeta, accessory: "AssetAccessory") -> Sticker:
@@ -176,7 +248,7 @@ class ItemContext:
     @classmethod
     def from_item(cls, item: "EconItem | MarketListingItem | TradeOfferItem") -> Self:
         if item.description.app is not App.CS2:
-            raise ValueError("Passed 'item' are not belong to 'CS2' app.")
+            raise ValueError("Passed item is not belongs to CS2 app.")
 
         descr_ctx = item.description.cs2
 

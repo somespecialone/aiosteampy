@@ -213,7 +213,7 @@ class ItemContext:
     stickers: tuple[Sticker, ...]
     charm: Charm | None
 
-    item_certificate: str | None
+    certificate: str | None
     """Encoded `inspect` preview data."""
     wear_rating: float | None
     """Paint wear rating, known as `float` or `floatvalue`."""
@@ -225,15 +225,15 @@ class ItemContext:
     @property
     def inspect_link(self) -> str | None:
         """`Inspect in Game...` link."""
-        return (INSPECT_LINK_BASE + self.item_certificate) if self.item_certificate else None
+        return (INSPECT_LINK_BASE + self.certificate) if self.certificate else None
 
     @property
     def inspect_data(self) -> CEconItemPreviewDataBlock | None:
         """Item preview data."""
 
-        if self.item_certificate:
+        if self.certificate:
             if self._inspect_data is None:
-                self._inspect_data = CEconItemPreviewDataBlock.from_certificate(self.item_certificate)
+                self._inspect_data = CEconItemPreviewDataBlock.from_certificate(self.certificate)
 
             return self._inspect_data
 

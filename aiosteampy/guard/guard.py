@@ -471,7 +471,7 @@ class SteamGuard:
     ) -> Self:
         """Create ``SteamGuard`` from ``mafile``. Will obtain auth cookies automatically."""
 
-        if not mafile["fully_enrolled"]:
+        if not mafile.get("fully_enrolled", True):
             raise ValueError("Account from maFile must be fully enrolled")
 
         session = SteamSession(

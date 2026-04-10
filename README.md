@@ -262,6 +262,7 @@ Sources of inspiration and ideas, concepts, and general knowledge:
 
 - [Steam Market id's storage repo](https://github.com/somespecialone/steam-item-name-ids)
 - [Jessecar96/SteamDesktopAuthenticator](https://github.com/Jessecar96/SteamDesktopAuthenticator)
+- [achiez/NebulaAuth-Steam-Desktop-Authenticator](https://github.com/achiez/NebulaAuth-Steam-Desktop-Authenticator-by-Achies/)
 - [Identifying Steam items](https://dev.doctormckay.com/topic/332-identifying-steam-items/)
 
 <!--footer-end-->

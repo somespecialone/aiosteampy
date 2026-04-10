@@ -81,7 +81,7 @@ class SteamGuardAccount:
 
     @classmethod
     def from_mafile(cls, mafile: MaFile) -> Self:
-        cls(
+        return cls(
             account_name=mafile["account_name"],
             steam_id=SteamID(mafile["Session"]["SteamID"]),
             device_id=mafile["device_id"],
@@ -92,7 +92,7 @@ class SteamGuardAccount:
             uri=mafile["uri"],
             serial_number=int(mafile["serial_number"]),
             token_gid=mafile["token_gid"],
-            finalized=mafile["fully_enrolled"],
+            finalized=mafile.get("fully_enrolled", True),  # for Nebula SDA
         )
 
 

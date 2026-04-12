@@ -15,7 +15,7 @@ if TYPE_CHECKING:
     from .econ import AssetAccessory, EconItem, ItemDescription
 
 
-INSPECT_LINK_BASE = "steam://run/730//+csgo_econ_action_preview%20%"
+INSPECT_LINK_BASE = "steam://run/730//+csgo_econ_action_preview%20"
 # search sticker and charm data
 CS2_APPLICABLE_DATA_RE = re.compile(r'<img\s+[^>]*src="([^"]*)"[^>]*title="([^"]*)"[^>]*>')
 

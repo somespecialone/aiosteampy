@@ -57,7 +57,7 @@ jobs:
         uses: pypa/gh-action-pypi-publish@release/v1
 
       - name: Create GitHub Release
-        uses: softprops/action-gh-release@v2
+        uses: softprops/action-gh-release@v3
         with:
           prerelease: ${{ contains(github.ref, 'a') || contains(github.ref, 'b') || contains(github.ref, 'rc') }}
           generate_release_notes: true

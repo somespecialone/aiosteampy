@@ -1,28 +1,23 @@
 """``python-wreq`` (ex. ``rnet``) implementation of HTTP transport."""
 
 try:
-    from wreq import (
-        Client,
-        ClientConfig,
-        Emulation,
-        HeaderMap,
-        Method,
-        Multipart,
-        Proxy,
-        SameSite,
-    )
-    from wreq import Cookie as WreqCookie
-    from wreq import Part as MultipartPart
-    from wreq import Policy as RedirectPolicy
-    from wreq.exceptions import ConnectionError, ConnectionResetError, ProxyConnectionError, TimeoutError, TlsError
-
+    import wreq
 except ImportError:
     raise ImportError(
         "`wreq` package is not found and can be installed with `aiosteampy[wreq]` dependency install target."
     )
 
 from collections.abc import Mapping
-from typing import Unpack
+from typing import TYPE_CHECKING, Unpack
+
+from wreq import Client, Emulation, HeaderMap, Method, Multipart, Proxy, SameSite
+from wreq import Cookie as WreqCookie
+from wreq import Part as MultipartPart
+from wreq import Policy as RedirectPolicy
+from wreq.exceptions import ConnectionError, ConnectionResetError, ProxyConnectionError, TimeoutError, TlsError
+
+if TYPE_CHECKING:
+    from wreq import ClientConfig
 
 from yarl import URL
 
@@ -67,7 +62,7 @@ class HeadersProxy(Mapping[str, str]):
 class WreqTransport(BaseSteamTransport):
     __slots__ = ("_client", "_proxy")
 
-    def __init__(self, client: Client | None = None, *, proxy=None, ctx=None, **client_kwargs: Unpack[ClientConfig]):
+    def __init__(self, client: Client | None = None, *, proxy=None, ctx=None, **client_kwargs: Unpack["ClientConfig"]):
         if client is not None:
             self._client = client
             return

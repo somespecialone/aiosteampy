@@ -59,6 +59,10 @@ class HeadersProxy(Mapping[str, str]):
         return str(self._hdrs)
 
 
+NO_REDIRECT_POLICY = RedirectPolicy.none()
+DEF_REDIRECT_POLICY = RedirectPolicy.limited(20)
+
+
 class WreqTransport(BaseSteamTransport):
     __slots__ = ("_client", "_proxy")
 
@@ -82,7 +86,13 @@ class WreqTransport(BaseSteamTransport):
             emulation = Emulation.Firefox147
 
         # ignore user agent from ctx
-        self._client = Client(emulation=emulation, proxies=proxies, cookie_store=True, **client_kwargs)
+        self._client = Client(
+            redirect=DEF_REDIRECT_POLICY,
+            emulation=emulation,
+            proxies=proxies,
+            cookie_store=True,
+            **client_kwargs,
+        )
 
         self._proxy = proxy
 
@@ -173,7 +183,7 @@ class WreqTransport(BaseSteamTransport):
                 form=data,
                 json=json,
                 multipart=multipart,
-                redirect=RedirectPolicy.limited(20) if redirects else RedirectPolicy.none(),
+                redirect=NO_REDIRECT_POLICY,
             )
 
         except (ConnectionError, ProxyConnectionError, ConnectionResetError, TlsError, TimeoutError) as e:
@@ -181,12 +191,19 @@ class WreqTransport(BaseSteamTransport):
 
         if response_mode == "meta":
             content = None
-        elif response_mode == "text":
-            content = await r.text()
-        elif response_mode == "json":
-            content = await r.json()
         else:
-            content = await r.bytes()
+            # wreq attempt to parse empty body into json and obviously got error
+            # so we manually handle that case
+            body = await r.bytes()
+
+            if not len(body):
+                content = None
+            elif response_mode == "text":
+                content = await r.text()
+            elif response_mode == "json":
+                content = await r.json()
+            else:
+                content = body
 
         history = ()
         if redirects:

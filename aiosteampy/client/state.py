@@ -125,7 +125,7 @@ class WalletInfo(NamedTuple):
         )
 
 
-DEF_STEAM_FEE = 0.5
+DEF_STEAM_FEE = 0.05
 DEF_PUBLISHER_FEE = 0.10
 DEF_FEE_MIN = 1
 DEF_FEE_BASE = 0

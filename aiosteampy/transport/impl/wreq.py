@@ -3,20 +3,18 @@
 try:
     from wreq import (
         Client,
-        ConnectionError,
-        ConnectionResetError,
+        ClientConfig,
         Emulation,
         HeaderMap,
         Method,
         Multipart,
         Proxy,
-        ProxyConnectionError,
         SameSite,
-        TlsError,
     )
     from wreq import Cookie as WreqCookie
     from wreq import Part as MultipartPart
     from wreq import Policy as RedirectPolicy
+    from wreq.exceptions import ConnectionError, ConnectionResetError, ProxyConnectionError, TimeoutError, TlsError
 
 except ImportError:
     raise ImportError(
@@ -24,6 +22,7 @@ except ImportError:
     )
 
 from collections.abc import Mapping
+from typing import Unpack
 
 from yarl import URL
 
@@ -52,7 +51,7 @@ class HeadersProxy(Mapping[str, str]):
         if item := self._hdrs.__getitem__(key):
             return item.decode()  # whole proxy only for this
 
-    def __contains__(self, key):
+    def __contains__(self, key: str):
         return self._hdrs.__contains__(key)
 
     def __len__(self):
@@ -68,27 +67,34 @@ class HeadersProxy(Mapping[str, str]):
 class WreqTransport(BaseSteamTransport):
     __slots__ = ("_client", "_proxy")
 
-    def __init__(self, proxy, ctx, **client_kwargs):
+    def __init__(self, client: Client | None = None, *, proxy=None, ctx=None, **client_kwargs: Unpack[ClientConfig]):
+        if client is not None:
+            self._client = client
+            return
+
+        if ctx is None:
+            ctx = {}
+
         proxies = None
         if proxy:
-            proxies = (Proxy.all(proxy),)
+            proxies = [Proxy.all(proxy)]
 
-        if ctx.get("platform", Platform.WEB) is Platform.MOBILE:
+        if emulation := client_kwargs.pop("emulation", None):
+            pass
+        elif ctx.get("platform", Platform.WEB) is Platform.MOBILE:
             emulation = Emulation.OkHttp4_9
         else:
             emulation = Emulation.Firefox147
 
-        emulation = client_kwargs.pop("emulation", emulation)
-
         # ignore user agent from ctx
-        self._client = Client(
-            emulation=emulation,
-            proxies=proxies,
-            cookie_store=True,
-            **client_kwargs,
-        )
+        self._client = Client(emulation=emulation, proxies=proxies, cookie_store=True, **client_kwargs)
 
         self._proxy = proxy
+
+    @property
+    def client(self) -> Client:
+        """Underlying ``wreq.Client`` object."""
+        return self._client
 
     @property
     def proxy(self):
@@ -175,7 +181,7 @@ class WreqTransport(BaseSteamTransport):
                 redirect=RedirectPolicy.limited(20) if redirects else RedirectPolicy.none(),
             )
 
-        except (ConnectionError, ProxyConnectionError, ConnectionResetError, TlsError) as e:
+        except (ConnectionError, ProxyConnectionError, ConnectionResetError, TlsError, TimeoutError) as e:
             raise NetworkError from e
 
         if response_mode == "meta":

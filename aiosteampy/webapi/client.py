@@ -60,7 +60,10 @@ class SteamWebAPIClient:
 
         self._platform = platform
 
-        self._transport = transport or DefaultSteamTransport(proxy, {"platform": platform, "user_agent": LIB_ID})
+        self._transport = transport or DefaultSteamTransport(
+            proxy=proxy,
+            ctx={"platform": platform, "user_agent": LIB_ID},
+        )
 
         self._access_token = access_token
         self._api_key = api_key

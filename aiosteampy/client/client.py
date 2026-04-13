@@ -74,7 +74,7 @@ class SteamPublicClient:
         if transport is not None and proxy is not None:
             raise ValueError("Proxy is not supported for custom transport")
 
-        transport = transport or DefaultSteamTransport(proxy, {"platform": platform, "user_agent": LIB_ID})
+        transport = transport or DefaultSteamTransport(proxy=proxy, ctx={"platform": platform, "user_agent": LIB_ID})
 
         self._state = PublicSteamState(transport, country=country, currency=currency, language=language)
         self._market = MarketPublicComponent(transport, self._state)

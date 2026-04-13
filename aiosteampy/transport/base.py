@@ -32,7 +32,7 @@ class BaseSteamTransport(metaclass=ABCMeta):
     __slots__ = ()
 
     @abstractmethod
-    def __init__(self, proxy: str | None, ctx: Context) -> None: ...
+    def __init__(self, *, proxy: str | None, ctx: Context) -> None: ...
 
     @property
     @abstractmethod

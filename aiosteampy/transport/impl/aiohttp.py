@@ -16,7 +16,14 @@ AIOHTTP_VERSION = version("aiohttp")
 class AiohttpTransport(BaseSteamTransport):
     __slots__ = ("_session",)
 
-    def __init__(self, proxy, ctx, **session_kwargs):
+    def __init__(self, session: ClientSession | None = None, *, proxy=None, ctx=None, **session_kwargs):
+        if session is not None:
+            self._session = session
+            return
+
+        if ctx is None:
+            ctx = {}
+
         connector = None
 
         if proxy is not None and proxy.startswith("socks"):
@@ -37,6 +44,11 @@ class AiohttpTransport(BaseSteamTransport):
             headers = None
 
         self._session = ClientSession(proxy=proxy, connector=connector, headers=headers, **session_kwargs)
+
+    @property
+    def session(self) -> ClientSession:
+        """Underlying ``aiohttp.ClientSession`` object."""
+        return self._session
 
     @property
     def proxy(self):
@@ -102,6 +114,7 @@ class AiohttpTransport(BaseSteamTransport):
                 json=json,
                 headers=headers,
                 allow_redirects=redirects,
+                max_redirects=20,
                 raise_for_status=False,
             )
 

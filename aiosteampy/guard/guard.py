@@ -5,6 +5,7 @@ from typing import Self
 from yarl import URL
 
 from ..constants import EResult
+from ..exceptions import EmailConfirmationRequired, EResultError
 from ..session import SteamSession, generate_session_id, parse_qr_challenge_url
 from ..session.session import QRChallengeUrl
 from ..transport import BaseSteamTransport, Unauthenticated
@@ -16,7 +17,13 @@ from ..webapi.services.twofactor import (
     TwoFactorServiceClient,
 )
 from .confirmations import SteamConfirmations
-from .exceptions import *
+from .exceptions import (
+    AuthenticatorAlreadyPresent,
+    AuthenticatorError,
+    SmsConfirmationRequired,
+    TooManyAttempts,
+    TwoFactorCodeMismatch,
+)
 from .models import MaFile, SteamGuardAccount
 from .secrets import IdentitySecret, SharedSecret, TwoFactorSecret
 from .signer import TwoFactorSigner

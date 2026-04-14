@@ -1,4 +1,4 @@
-from ..exceptions import ConfirmationRequired, EResultError, SteamError
+from ..exceptions import ConfirmationRequired, SteamError
 from ..webapi.services.protobufs import CAuthenticationAllowedConfirmation, EAuthSessionGuardType
 
 

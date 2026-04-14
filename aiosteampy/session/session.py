@@ -7,17 +7,20 @@ from typing import Any, Callable, Self
 from yarl import URL
 
 from ..constants import LIB_ID, EResult, Platform, SteamURL
+from ..exceptions import EResultError
 from ..id import SteamID
 from ..transport import BaseSteamTransport, Cookie, TransportError, TransportResponse, Unauthenticated
 from ..webapi import SteamWebAPIClient
 from ..webapi.client import API_HEADERS, BROWSER_HEADERS, COMMUNITY_ORIGIN
 from ..webapi.services.auth import (
     AuthenticationServiceClient,
+    CAuthenticationAllowedConfirmation,
     CAuthenticationGetAuthSessionInfoResponse,
     CAuthenticationPollAuthSessionStatusResponse,
+    EAuthSessionGuardType,
     GuardCodeTypes,
 )
-from .exceptions import *
+from .exceptions import AuthCodeExpired, BadCredentials, GuardConfirmationRequired, LoginError, TooManyAttempts
 from .jwt import SteamJWT
 from .utils import encrypt_password, generate_session_id, parse_qr_challenge_url
 

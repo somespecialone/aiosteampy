@@ -3,15 +3,14 @@
 Enables `two-factor` codes generation, confirmations and `Mobile Authenticator` general functionality.
 """
 
+# reexport
+from ..exceptions import ConfirmationRequired, EmailConfirmationRequired
+from ..transport import NetworkError, TransportError, TransportResponseError, Unauthenticated
 from .confirmations import SteamConfirmations
 from .exceptions import (
     AuthenticatorAlreadyPresent,
     AuthenticatorError,
-    ConfirmationRequired,
-    EmailConfirmationRequired,
-    EResultError,
     SmsConfirmationRequired,
-    SteamError,
     TooManyAttempts,
     TwoFactorCodeMismatch,
 )

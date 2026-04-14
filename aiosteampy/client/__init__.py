@@ -4,7 +4,21 @@ Compositing all implemented domains like `Market` , `Trade Offers`, etc.
 """
 
 # reexport
-from ..exceptions import ConfirmationRequired, EmailConfirmationRequired, EResultError, SteamError
+from ..exceptions import (
+    ConfirmationRequired,
+    EmailConfirmationRequired,
+    EResultError,
+    MobileConfirmationRequired,
+    SteamError,
+)
+from ..transport import (
+    NetworkError,
+    RateLimitExceeded,
+    ResourceNotModified,
+    TransportError,
+    TransportResponseError,
+    Unauthenticated,
+)
 from .app import ADD_NEW_MEMBERS, App, AppContext, change_members_mode
 from .client import SteamClient, SteamPublicClient
 
@@ -13,8 +27,10 @@ from .components.market import (
     ActivityType,
     BuyOrder,
     BuyOrderStatus,
+    InsufficientBalance,
     ItemOrdersActivity,
     ItemOrdersHistogram,
+    ListingRemoved,
     MarketHistoryEventType,
     MarketHistoryListing,
     MarketHistoryListingItem,

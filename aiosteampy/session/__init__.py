@@ -2,14 +2,14 @@
 `Steam` auth session implementation. Handles authentication process with tokens negotiation.
 """
 
+# reexport
+from ..exceptions import ConfirmationRequired, EResultError, SteamError
+from ..transport import NetworkError, TransportError, TransportResponseError, Unauthenticated
 from .exceptions import (
     AuthCodeExpired,
     BadCredentials,
-    ConfirmationRequired,
-    EResultError,
     GuardConfirmationRequired,
     LoginError,
-    SteamError,
     TooManyAttempts,
 )
 from .jwt import SteamJWT

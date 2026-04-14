@@ -1,14 +1,8 @@
-import json
-import re
 from dataclasses import asdict, dataclass
-from datetime import datetime
-from enum import IntEnum
 from typing import NotRequired, Self, TypedDict
 
 from ..id import SteamID
 from .secrets import IdentitySecret, SharedSecret, TwoFactorSecret
-
-ITEM_INFO_RE = re.compile(r"'confiteminfo', (.+), UserYou")  # lang safe
 
 
 class MaFileSession(TypedDict):
@@ -95,88 +89,3 @@ class SteamGuardAccount:
             finalized=mafile.get("fully_enrolled", True),  # for Nebula SDA
         )
 
-
-# https://github.com/SteamRE/SteamKit/blob/cd995a14075c17f749919ccf91f56edf883d35c0/Resources/SteamLanguage/enums.steamd#L1720
-class ConfirmationType(IntEnum):
-    UNKNOWN = -1
-    """Unknown type that used in special cases. Normally should not be present."""
-
-    INVALID = 0
-    TEST = 1
-    TRADE = 2
-    """Required to confirm trade offer."""
-    MARKET_LISTING = 3
-    """Required to sell item on market."""
-    FEATURE_OPT_OUT = 4
-    PHONE_NUMBER_CHANGE = 5
-    """Required to remove phone number."""
-    ACCOUNT_RECOVERY = 6
-    BUILD_CHANGE_REQUEST = 7
-    ADD_USER = 8
-    REGISTER_API_KEY = 9
-    """Required to create a new `Web API` key."""
-    INVITE_TO_FAMILY_GROUP = 10
-    JOIN_FAMILY_GROUP = 11
-    MARKET_PURCHASE = 12
-    REQUEST_REFUND = 13
-
-    @classmethod
-    def get(cls, v: int) -> Self:
-        try:
-            return cls(v)
-        except ValueError:
-            return cls.UNKNOWN
-
-
-# https://github.com/DoctorMcKay/node-steamcommunity/wiki/CConfirmation
-@dataclass(slots=True)
-class Confirmation:
-    """Representation of confirmation entity."""
-
-    id: int
-    """Unique id."""
-    nonce: str
-    """Unique key."""
-    creator_id: int
-    """Id of the creator. Can be ``TradeOffer`` or ``MarketListing`` id."""
-    creation_time: datetime
-    """Server time when was created."""
-    type: ConfirmationType
-
-    accept: str
-    cancel: str
-
-    icon: str | None
-    multi: bool  # ?
-    headline: str
-    summary: list[str]
-    warn: str | None  # ?
-
-    _details: str | None = None
-    _ident_code: str | None = None
-
-    @property
-    def details(self) -> str | None:
-        """String contains HTML details."""
-        return self._details
-
-    @details.setter
-    def details(self, value: str | None):
-        self._details = value
-
-        if self.type is ConfirmationType.MARKET_LISTING and value:
-            from ..client.econ import create_ident_code  # will import all client module :(
-
-            data: dict = json.loads(ITEM_INFO_RE.search(value).group(1))
-            self._ident_code = create_ident_code(data["id"], data["contextid"], data["appid"])
-
-    @property
-    def listing_item_ident_code(self) -> str | None:
-        """``MarketListingItem`` ident code."""
-        return self._ident_code
-
-    def __hash__(self):
-        return self.id
-
-    def __eq__(self, other):
-        return isinstance(other, Confirmation) and self.id == other.id

@@ -6,7 +6,8 @@ Enables `two-factor` codes generation, confirmations and `Mobile Authenticator` 
 # reexport
 from ..exceptions import ConfirmationRequired, EmailConfirmationRequired
 from ..transport import NetworkError, TransportError, TransportResponseError, Unauthenticated
-from .confirmations import SteamConfirmations
+from .account import MaFile, MaFileSession, SteamGuardAccount
+from .confirmations import Confirmation, ConfirmationType, SteamConfirmations
 from .exceptions import (
     AuthenticatorAlreadyPresent,
     AuthenticatorError,
@@ -15,7 +16,6 @@ from .exceptions import (
     TwoFactorCodeMismatch,
 )
 from .guard import SteamGuard
-from .models import Confirmation, ConfirmationType, MaFile, MaFileSession, SteamGuardAccount
 from .secrets import IdentitySecret, SharedSecret
 from .signer import TwoFactorSigner
 from .utils import generate_device_id, get_server_time_offset

@@ -16,6 +16,7 @@ from ..webapi.services.twofactor import (
     CTwoFactorStatusResponse,
     TwoFactorServiceClient,
 )
+from .account import MaFile, SteamGuardAccount
 from .confirmations import SteamConfirmations
 from .exceptions import (
     AuthenticatorAlreadyPresent,
@@ -24,7 +25,6 @@ from .exceptions import (
     TooManyAttempts,
     TwoFactorCodeMismatch,
 )
-from .models import MaFile, SteamGuardAccount
 from .secrets import IdentitySecret, SharedSecret, TwoFactorSecret
 from .signer import TwoFactorSigner
 from .utils import generate_device_id

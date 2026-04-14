@@ -6,8 +6,10 @@ from importlib.metadata import version
 from aiohttp import ClientConnectionError, ClientSession, MultipartWriter
 from yarl import URL
 
-from ..base import BaseSteamTransport, Cookie, TransportResponse
+from ..base import BaseSteamTransport
+from ..cookie import Cookie
 from ..exceptions import NetworkError
+from ..resp import TransportResponse
 from ..utils import format_http_date, parse_http_date
 
 AIOHTTP_VERSION = version("aiohttp")

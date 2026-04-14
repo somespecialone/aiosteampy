@@ -1,12 +1,21 @@
 from abc import ABCMeta, abstractmethod
 from collections.abc import Iterable, Sequence
-from typing import overload
+from typing import TypedDict, overload
 
 from yarl import URL
 
+from ..constants import Platform
+from .cookie import Cookie
 from .exceptions import RateLimitExceeded, ResourceNotModified, TransportError, TransportResponseError, Unauthenticated
-from .models import Context, Cookie, TransportResponse
+from .resp import TransportResponse
 from .types import Headers, HttpMethod, Params, Payload, ResponseMode
+
+
+class Context(TypedDict, total=False):
+    """Transport context that will be passed to a constructor."""
+
+    user_agent: str | None
+    platform: Platform
 
 
 class BaseSteamTransport(metaclass=ABCMeta):

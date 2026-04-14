@@ -1,11 +1,7 @@
 from dataclasses import asdict, dataclass, field
 from datetime import datetime
-from typing import Literal, Self, Sequence, TypedDict
+from typing import Literal, Self
 
-from yarl import URL
-
-from ..constants import Platform
-from .types import Content, Headers
 from .utils import format_http_date, parse_http_date
 
 
@@ -46,38 +42,3 @@ class Cookie:
             serialized["expires"] = parse_http_date(serialized["expires"])
 
         return cls(**serialized)
-
-
-@dataclass(slots=True, kw_only=True)
-class TransportResponse:
-    """Minimalistic HTTP response model."""
-
-    # it is good to have light request info container (method, url, etc)
-    url: URL
-    """Requested URL."""
-    status: int
-    """HTTP status code."""
-    reason: str | None = None
-    """HTTP status message, if any."""
-
-    headers: Headers
-    """Parsed HTTP headers of response in **case-insensitive** mapping."""
-
-    # decoded text, body bytes, parsed json, None in case of no read
-    content: Content = None
-    """Parsed response body."""
-
-    history: Sequence[Self] = ()
-    """History of redirect responses if occurred."""
-
-    @property
-    def ok(self) -> bool:
-        """If response status is successful (<400)."""
-        return self.status < 400
-
-
-class Context(TypedDict, total=False):
-    """Transport context that will be passed to a constructor."""
-
-    user_agent: str | None
-    platform: Platform

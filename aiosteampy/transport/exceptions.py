@@ -1,4 +1,4 @@
-from .models import TransportResponse
+from .resp import TransportResponse
 from .utils import parse_http_date
 
 

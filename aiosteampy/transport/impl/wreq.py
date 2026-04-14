@@ -22,8 +22,11 @@ if TYPE_CHECKING:
 from yarl import URL
 
 from ...constants import Platform
-from ..base import BaseSteamTransport, Cookie, HttpMethod, TransportResponse
+from ..base import BaseSteamTransport
+from ..cookie import Cookie
 from ..exceptions import NetworkError
+from ..resp import TransportResponse
+from ..types import HttpMethod
 
 HTTP_METHOD_MAP: dict[HttpMethod, Method] = {
     "GET": Method.GET,

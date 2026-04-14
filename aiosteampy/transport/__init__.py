@@ -4,6 +4,7 @@ from contextlib import suppress
 from typing import cast
 
 from .base import BaseSteamTransport
+from .cookie import Cookie
 from .exceptions import (
     NetworkError,
     RateLimitExceeded,
@@ -13,7 +14,7 @@ from .exceptions import (
     Unauthenticated,
 )
 from .impl.aiohttp import AiohttpTransport
-from .models import Cookie, TransportResponse
+from .resp import TransportResponse
 from .types import Content, Headers, HttpMethod, Params, Payload, ResponseMode
 from .utils import format_http_date, parse_http_date
 

@@ -55,6 +55,7 @@ class ItemOrdersHistogram(CachedResponse):
 
 class ActivityType(StrEnum):
     BUY_ORDER = "BuyOrder"
+    BUY_ORDER_MULTI = "BuyOrderMulti"
     SELL_ORDER = "SellOrder"
     SELL_ORDER_CANCEL = "SellOrderCancel"
     BUY_ORDER_CANCEL = "BuyOrderCancel"

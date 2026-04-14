@@ -1,9 +1,0 @@
-// https://github.com/SteamDatabase/Protobufs/blob/master/steam/enums.proto
-
-syntax = "proto2";
-
-enum ESessionPersistence {
-  k_ESessionPersistence_Invalid = -1;
-  k_ESessionPersistence_Ephemeral = 0;
-  k_ESessionPersistence_Persistent = 1;
-}

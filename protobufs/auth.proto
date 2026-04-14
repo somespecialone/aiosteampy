@@ -2,9 +2,13 @@
 
 syntax = "proto2";
 
-import "protobufs/enums.proto";
-import "protobufs/base.proto";
 
+// https://github.com/SteamDatabase/Protobufs/blob/master/steam/enums.proto
+enum ESessionPersistence {
+  k_ESessionPersistence_Invalid = -1;
+  k_ESessionPersistence_Ephemeral = 0;
+  k_ESessionPersistence_Persistent = 1;
+}
 
 enum EAuthTokenPlatformType {
   k_EAuthTokenPlatformType_Unknown = 0;
@@ -227,6 +231,14 @@ enum EAuthTokenState {
 
 message CAuthentication_RefreshToken_Enumerate_Request {
   optional bool include_revoked = 1 [default = false];
+}
+
+// https://github.com/SteamTracking/Protobufs/blob/master/steam/steammessages_base.proto
+message CMsgIPAddress {
+  oneof ip {
+    fixed32 v4 = 1;
+    bytes v6 = 2;
+  }
 }
 
 message CAuthentication_RefreshToken_Enumerate_Response {

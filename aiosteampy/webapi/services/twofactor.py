@@ -1,8 +1,8 @@
 """Client for interacting with `ITwoFactorService`."""
 
 from ...exceptions import EResultError
+from ..protobufs.twofactor import *
 from ._base import SteamWebApiServiceBase
-from .protobufs import *
 
 
 class TwoFactorServiceClient(SteamWebApiServiceBase):

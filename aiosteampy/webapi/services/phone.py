@@ -2,8 +2,8 @@
 
 from collections.abc import Awaitable
 
+from ..protobufs.phone import *
 from ._base import SteamWebApiServiceBase
-from .protobufs import *
 
 
 class PhoneServiceClient(SteamWebApiServiceBase):

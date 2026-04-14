@@ -4,8 +4,8 @@ from collections.abc import Awaitable
 from typing import Literal
 
 from ...constants import LIB_ID
+from ..protobufs.auth import *
 from ._base import SteamWebApiServiceBase
-from .protobufs import *
 
 GuardCodeTypes = Literal["email", "device"]
 

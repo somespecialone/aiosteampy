@@ -2,8 +2,8 @@
 
 from collections.abc import Awaitable
 
+from ..protobufs.notification import *
 from ._base import SteamWebApiServiceBase
-from .protobufs import *
 
 
 class NotificationServiceClient(SteamWebApiServiceBase):

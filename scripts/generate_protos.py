@@ -15,7 +15,10 @@ def main():
     protobufs_dir = project_root / "protobufs"
     generated_dir = protobufs_dir / "generated"
     generated_dir.mkdir(exist_ok=True)
-    target_file = project_root / "aiosteampy" / "webapi" / "services" / "protobufs.py"
+
+    target_dir = project_root / "aiosteampy" / "webapi" / "protobufs"
+    target_dir.mkdir(exist_ok=True)
+    (target_dir / "__init__.py").touch(exist_ok=True)
 
     # Find all .proto files
     proto_files = sorted(protobufs_dir.glob("*.proto"))
@@ -23,19 +26,24 @@ def main():
         raise FileNotFoundError(f"No .proto files found in {protobufs_dir}")
 
     # Prepare arguments with relative paths due to protoc dumbness
-    args = [
+    base_args = [
         f"-I {protobufs_dir.relative_to(workdir)}",
-        f"--python_betterproto2_out={generated_dir.relative_to(workdir)}",
         "--python_betterproto2_opt=client_generation=none",
     ]
-    args.extend(str(f.relative_to(workdir)) for f in proto_files)
 
-    # Run protoc
-    protoc.main(args)
+    for source_file in proto_files:
+        # Run protoc
+        file_generated_dir = generated_dir / source_file.stem
+        file_generated_dir.mkdir(exist_ok=True)
+        args = base_args + [
+            f"--python_betterproto2_out={file_generated_dir.relative_to(workdir)}",
+            str(source_file.relative_to(workdir)),
+        ]
+        protoc.main(args)
 
-    # Process generated __init__.py
-    init_file = generated_dir / "__init__.py"
-    if init_file.exists():
+        # Process generated __init__.py
+        init_file = file_generated_dir / "__init__.py"
+        assert init_file.exists()
         # Remove message pool statements as excessive
         content = init_file.read_text(encoding="utf-8")
         tree = ast.parse(content)
@@ -62,16 +70,16 @@ def main():
 
         # Unparse back to source and write to target file
         new_content = comment + "\n" + ast.unparse(new_tree)
+
+        target_file = (target_dir / source_file.stem).with_suffix(".py")
         target_file.write_text(new_content, encoding="utf-8")
 
-        # Format with ruff, optimize imports
-        subprocess.run(["ruff", "format", str(target_file)], check=True, cwd=project_root)
-        subprocess.run(["ruff", "check", "--select", "I", "--fix", str(target_file)], check=True, cwd=project_root)
+    # Format with ruff, optimize imports
+    subprocess.run(["ruff", "format", str(target_dir)], check=True, cwd=project_root)
+    subprocess.run(["ruff", "check", "--select", "I", "--fix", str(target_dir)], check=True, cwd=project_root)
 
-        # Remove generated directory
-        shutil.rmtree(generated_dir)
-    else:
-        raise FileNotFoundError(f"Generated __init__.py not found at {init_file}")
+    # Remove generated directory
+    shutil.rmtree(generated_dir)
 
 
 if __name__ == "__main__":

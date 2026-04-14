@@ -18,7 +18,7 @@ from ..webapi.services.auth import (
     GuardCodeTypes,
 )
 from .exceptions import *
-from .models import SteamJWT
+from .jwt import SteamJWT
 from .utils import encrypt_password, generate_session_id, parse_qr_challenge_url
 
 ACCESS_TOKEN_COOKIE = "steamLoginSecure"

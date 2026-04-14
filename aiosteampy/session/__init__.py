@@ -12,6 +12,6 @@ from .exceptions import (
     SteamError,
     TooManyAttempts,
 )
-from .models import SteamJWT
+from .jwt import SteamJWT
 from .session import Platform, SteamSession
 from .utils import generate_session_id, parse_qr_challenge_url

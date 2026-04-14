@@ -123,12 +123,16 @@ class AiohttpTransport(BaseSteamTransport):
 
         if response_mode == "meta":  # body is not needed
             content = None
-        elif response_mode == "text":
-            content = await r.text()
-        elif response_mode == "json":
-            content = await r.json(content_type=None)  # force to parse as json
-        else:  # bytes by default
-            content = await r.read()
+        else:  # parse/decode body if present regardless of status
+            body = await r.read()
+            if not body:
+                content = None
+            elif response_mode == "text":
+                content = await r.text()
+            elif response_mode == "json":
+                content = await r.json(content_type=None)  # force to parse as json
+            else:  # bytes by default
+                content = body
 
         history = ()
         if redirects:

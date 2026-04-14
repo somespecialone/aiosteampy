@@ -191,12 +191,9 @@ class WreqTransport(BaseSteamTransport):
 
         if response_mode == "meta":
             content = None
-        else:
-            # wreq attempt to parse empty body into json and obviously got error
-            # so we manually handle that case
+        else:  # parse/decode body if present regardless of status
             body = await r.bytes()
-
-            if not len(body):
+            if not body:
                 content = None
             elif response_mode == "text":
                 content = await r.text()

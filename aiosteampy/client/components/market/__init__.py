@@ -1,6 +1,6 @@
 """Components, models and utils to work with `Steam Market`."""
 
-from .exceptions import InsufficientBalance, ListingRemoved
+from .exceptions import InsufficientBalance, ListingRemoved, MarketError
 from .market import MarketComponent
 from .models import (
     ActivityType,

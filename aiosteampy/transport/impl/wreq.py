@@ -192,18 +192,20 @@ class WreqTransport(BaseSteamTransport):
         except (ConnectionError, ProxyConnectionError, ConnectionResetError, TlsError, TimeoutError) as e:
             raise NetworkError from e
 
+        status_code = r.status.as_int()
+
         if response_mode == "meta":
             content = None
         else:  # parse/decode body if present regardless of status
             body = await r.bytes()
             if not body:
                 content = None
+            elif status_code >= 300 or response_mode == "bytes":
+                content = body
             elif response_mode == "text":
                 content = await r.text()
-            elif response_mode == "json":
-                content = await r.json()
             else:
-                content = body
+                content = await r.json()
 
         history = ()
         if redirects:
@@ -218,7 +220,7 @@ class WreqTransport(BaseSteamTransport):
 
         return TransportResponse(
             url=URL(r.url),
-            status=r.status.as_int(),
+            status=status_code,
             headers=HeadersProxy(r.headers),
             content=content,
             history=history,

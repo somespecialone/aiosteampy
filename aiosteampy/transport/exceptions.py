@@ -1,4 +1,12 @@
+import json
+from datetime import datetime
+from typing import Self
+
+from yarl import URL
+
+from ..exceptions import RateLimitExceeded, Unauthenticated
 from .resp import TransportResponse
+from .types import Headers, JsonContent
 from .utils import parse_http_date
 
 
@@ -13,18 +21,38 @@ class NetworkError(TransportError):
 class TransportResponseError(TransportError):
     """Bad response status code."""
 
-    def __init__(self, response: TransportResponse):
-        self.response = response
+    def __init__(
+        self,
+        url: URL,
+        status: int,
+        headers: Headers,
+        reason: str | None = None,
+        content: bytes | None = None,
+    ):
+        self.url = url
+        self.status = status
+        self.headers = headers
+        self.reason = reason
+        self.content = content
 
     def __str__(self):
-        return f"Got {self.response.status} - {self.response.reason or 'No specific message'}"
+        return f" [{self.status}{f' | {self.reason}' if self.reason else ''}]"
+
+    def json(self) -> JsonContent:
+        """Parse content of response as `JSON`."""
+        return json.loads(self.text()) if self.content else None
+
+    def text(self) -> str | None:
+        """Decode content of response as `string`."""
+        return self.content.decode() if self.content else None
+
+    @classmethod
+    def from_response(cls, resp: TransportResponse) -> Self:
+        return cls(resp.url, resp.status, resp.headers, resp.reason, resp.content)
 
 
-class RateLimitExceeded(TransportResponseError):
+class TooManyRequests(RateLimitExceeded, TransportResponseError):
     """`Steam` decides you were in need of a bit of a rest."""
-
-    def __str__(self):
-        return "Rest a bit"
 
 
 class ResourceNotModified(TransportResponseError):
@@ -33,21 +61,19 @@ class ResourceNotModified(TransportResponseError):
     in request headers and `Steam` response with 304 status code.
     """
 
-    def __init__(self, response: TransportResponse):
-        super().__init__(response)
+    @property
+    def last_modified(self) -> datetime:
+        """Last modified time of the resource."""
+        return parse_http_date(self.headers["Last-Modified"])
 
-        self.last_modified = parse_http_date(response.headers["Last-Modified"])
-        self.expires = parse_http_date(response.headers["Expires"])
+    @property
+    def expires(self) -> datetime:
+        """Expiration time of the resource."""
+        return parse_http_date(self.headers["Expires"])
 
     def __str__(self):
         return f"Resource not modified. Last modified: {self.last_modified.isoformat()}, Expires: {self.expires.isoformat()}."
 
 
-class Unauthenticated(TransportResponseError):
-    """Auth cookies or token are missing, expired, or invalid."""
-
-    def __init__(self, response: TransportResponse | None = None):
-        self.response = response
-
-    def __str__(self):
-        return "Auth cookies or token are missing, expired or invalid"
+class Unauthorized(Unauthenticated, TransportResponseError):
+    """The user is not authorized to perform this action."""

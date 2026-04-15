@@ -5,10 +5,10 @@ from contextlib import contextmanager, suppress
 from typing import Callable, NamedTuple, overload
 
 from ...constants import SteamURL
-from ...exceptions import EResultError, SteamError
+from ...exceptions import EResultError, SteamError, Unauthenticated
 from ...id import SteamID
 from ...session import SteamSession
-from ...transport import BaseSteamTransport, TransportResponseError, Unauthenticated
+from ...transport import BaseSteamTransport, TransportResponseError
 from ..app import AppContext
 from ..econ import (
     AssetAccessory,
@@ -123,11 +123,11 @@ class InventoryPublicComponent(EconMixin):
             )
 
         except TransportResponseError as e:
-            if e.response.status == 403:
+            if e.status == 403:
                 # https://github.com/DoctorMcKay/node-steamcommunity/blob/d3e90f6fd3bea65b1ebc1bdaec754f99dcc8ddb3/components/users.js#L603
                 raise SteamError(f"User ({user_id}) inventory is private") from e
             else:
-                raise
+                raise e
 
         rj: dict = r.content
 
@@ -273,7 +273,7 @@ class InventoryComponent(InventoryPublicComponent):
         :raises SteamError: inventory is private.
         :raises EResultError: ordinary reasons.
         :raises TransportError: ordinary reasons.
-        :raises Unauthenticated: Auth cookies or token are missing, expired, or invalid.
+        :raises Unauthenticated: auth cookies or token are missing, expired, or invalid.
         """
 
         with private_inventory_ctx():
@@ -303,7 +303,7 @@ class InventoryComponent(InventoryPublicComponent):
         :raises SteamError: inventory is private.
         :raises EResultError: ordinary reasons.
         :raises TransportError: ordinary reasons.
-        :raises Unauthenticated: Auth cookies or token are missing, expired, or invalid.
+        :raises Unauthenticated: auth cookies or token are missing, expired, or invalid.
         """
 
         _item_descriptions_map = {}  # shared descriptions instances across calls
@@ -338,7 +338,7 @@ class InventoryComponent(InventoryPublicComponent):
         :raises SteamError: inventory is private.
         :raises EResultError: ordinary reasons.
         :raises TransportError: ordinary reasons.
-        :raises Unauthenticated: Auth cookies or token are missing, expired, or invalid.
+        :raises Unauthenticated: auth cookies or token are missing, expired, or invalid.
         """
 
         with private_inventory_ctx():

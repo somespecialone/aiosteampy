@@ -9,8 +9,8 @@ from itertools import batched
 from typing import TYPE_CHECKING, Literal, Self, overload
 
 from ..constants import SteamURL
+from ..exceptions import Unauthenticated
 from ..session import EResultError, SteamSession
-from ..transport import Unauthenticated
 from .signer import TwoFactorSigner
 from .utils import generate_device_id
 

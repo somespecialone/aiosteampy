@@ -529,12 +529,12 @@ class MarketComponent(MarketPublicComponent):
                 response_mode="json",
             )
         except TransportResponseError as e:
-            if e.response.status == 406:  # need confirmation
-                r = e.response
+            if e.status == 406:  # need confirmation
+                rj = e.json()
             else:
-                raise
-
-        rj: dict = r.content
+                raise e
+        else:
+            rj: dict = r.content
 
         if rj.get("need_confirmation"):
             confirmation_id = int(rj["confirmation"]["confirmation_id"])
@@ -583,12 +583,12 @@ class MarketComponent(MarketPublicComponent):
                 response_mode="json",
             )
         except TransportResponseError as e:
-            if e.response.status == 406:  # also need confirmation
-                r = e.response
+            if e.status == 406:  # also need confirmation
+                rj = e.json()
             else:
-                raise
-
-        rj: dict = r.content
+                raise e
+        else:
+            rj: dict = r.content
 
         if rj.get("need_confirmation"):
             return BuyOrderStatus(need_confirmation=True)
@@ -718,22 +718,22 @@ class MarketComponent(MarketPublicComponent):
                 headers={"Referer": str(MARKET_URL / f"listings/{app.id}/{market_hash_name}")},  # mandatory
                 response_mode="json",
             )
-        except TransportResponseError as e:  # ugly
-            if e.response.status == 406:  # need confirmation
-                r = e.response
-            elif e.response.status == 502:
-                if e.response.content:
-                    if "listing may have been removed" in e.response.content["message"]:
+        except TransportResponseError as e:
+            if e.status == 406:  # need confirmation
+                rj = e.json()
+            elif e.status == 502:
+                if e.content:
+                    error_data: dict = e.json()
+                    if "somebody else has already purchased it" in error_data["message"]:
                         raise ListingRemoved from e
                     else:
-                        # there content tells us that somebody bought listing before us, lol
                         raise InsufficientBalance from e
                 else:
-                    raise
+                    raise e
             else:
-                raise
-
-        rj: dict = r.content
+                raise e
+        else:
+            rj: dict = r.content
 
         if rj.get("need_confirmation"):
             confirmation_id = int(rj["confirmation"]["confirmation_id"])

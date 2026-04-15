@@ -116,7 +116,7 @@ class MarketPublicComponent(EconMixin):
         :return: ``ItemOrdersHistogram`` model, datetime object when resource was last modified.
         :raises EResultError: ordinary reasons.
         :raises TransportError: ordinary reasons.
-        :raises RateLimitExceeded: rate limit has been hit.
+        :raises TooManyRequests: rate limit has been hit.
         :raises ResourceNotModified: 304 status code.
         """
 
@@ -452,7 +452,7 @@ class MarketPublicComponent(EconMixin):
             datetime object when resource was last modified.
         :raises EResultError: ordinary reasons.
         :raises TransportError: ordinary reasons.
-        :raises RateLimitExceeded: rate limit has been hit.
+        :raises TooManyRequests: rate limit has been hit.
         :raises ResourceNotModified: 304 status code.
         """
 
@@ -555,7 +555,7 @@ class MarketPublicComponent(EconMixin):
         :return: ``AsyncGenerator`` that yields list of ``MarketListing``.
         :raises EResultError: ordinary reasons.
         :raises TransportError: ordinary reasons.
-        :raises RateLimitExceeded: rate limit has been hit.
+        :raises TooManyRequests: rate limit has been hit.
         :raises ResourceNotModified: 304 status code.
         """
 
@@ -595,7 +595,7 @@ class MarketPublicComponent(EconMixin):
         :param obj: `market hash name` of item or ``ItemDescription``.
         :param app: `Steam` app.
         :return: `item name id`.
-        :raises RateLimitExceeded: rate limit has been hit.
+        :raises TooManyRequests: rate limit has been hit.
         :raises ValueError: failed to find `item name id` on page.
         :raises TransportError: ordinary reasons.
         """
@@ -701,7 +701,7 @@ class MarketPublicComponent(EconMixin):
         :return: list of ``MarketSearchItem``, total results count.
         :raises EResultError: ordinary reasons.
         :raises TransportError: ordinary reasons.
-        :raises RateLimitExceeded: rate limit has been hit.
+        :raises TooManyRequests: rate limit has been hit.
         """
 
         req_params = {
@@ -809,7 +809,7 @@ class MarketPublicComponent(EconMixin):
         :return: ``AsyncGenerator`` that yields list of ``MarketSearchItem``, total results count.
         :raises EResultError: ordinary reasons.
         :raises TransportError: ordinary reasons.
-        :raises RateLimitExceeded: rate limit has been hit.
+        :raises TooManyRequests: rate limit has been hit.
         """
 
         _item_descriptions_map = {}

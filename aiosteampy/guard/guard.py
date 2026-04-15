@@ -5,10 +5,10 @@ from typing import Self
 from yarl import URL
 
 from ..constants import EResult
-from ..exceptions import EmailConfirmationRequired, EResultError
+from ..exceptions import EmailConfirmationRequired, EResultError, Unauthenticated
 from ..session import SteamSession, generate_session_id, parse_qr_challenge_url
 from ..session.session import QRChallengeUrl
-from ..transport import BaseSteamTransport, Unauthenticated
+from ..transport import BaseSteamTransport
 from ..webapi import SteamWebAPIClient
 from ..webapi.services.phone import PhoneServiceClient
 from ..webapi.services.twofactor import (

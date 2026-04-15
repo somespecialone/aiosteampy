@@ -2,9 +2,9 @@ import asyncio
 from typing import TYPE_CHECKING, Self
 
 from ..constants import LIB_ID, EResult, Platform, SteamURL
-from ..exceptions import EResultError, MobileConfirmationRequired
+from ..exceptions import EResultError, MobileConfirmationRequired, Unauthenticated
 from ..session import SteamSession
-from ..transport import BaseSteamTransport, Cookie, DefaultSteamTransport, Unauthenticated
+from ..transport import BaseSteamTransport, Cookie, DefaultSteamTransport
 from ..webapi import SteamWebAPIClient
 from .components.inventory import InventoryComponent, InventoryPublicComponent
 from .components.market import MarketComponent, MarketPublicComponent

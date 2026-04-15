@@ -123,18 +123,19 @@ class AiohttpTransport(BaseSteamTransport):
         except ClientConnectionError as e:
             raise NetworkError from e
 
-        if response_mode == "meta":  # body is not needed
+        if response_mode == "meta":
+            r.release()
             content = None
         else:  # parse/decode body if present regardless of status
             body = await r.read()
             if not body:
                 content = None
+            elif r.status >= 300 or response_mode == "bytes":
+                content = body
             elif response_mode == "text":
                 content = await r.text()
-            elif response_mode == "json":
-                content = await r.json(content_type=None)  # force to parse as json
-            else:  # bytes by default
-                content = body
+            else:
+                content = await r.json()
 
         history = ()
         if redirects:

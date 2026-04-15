@@ -9,7 +9,7 @@ from yarl import URL
 from ..constants import LIB_ID, EResult, Platform, SteamURL
 from ..exceptions import EResultError
 from ..id import SteamID
-from ..transport import BaseSteamTransport, Cookie, TransportError, TransportResponse, Unauthenticated
+from ..transport import BaseSteamTransport, Cookie, TransportError, TransportResponse, Unauthorized
 from ..webapi import SteamWebAPIClient
 from ..webapi.client import API_HEADERS, BROWSER_HEADERS, COMMUNITY_ORIGIN
 from ..webapi.services.auth import (
@@ -708,10 +708,12 @@ class SteamSession:
                 redirects=False,
                 response_mode="meta",
             )
-        except Unauthenticated as e:
-            r = e.response
+        except Unauthorized as e:
+            headers = e.headers
+        else:
+            headers = r.headers
 
-        location = URL(r.headers["Location"])
+        location = URL(headers["Location"])
 
         await self._service.webapi.transport.request("GET", location, redirects=False, response_mode="meta")
 

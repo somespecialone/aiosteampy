@@ -1,7 +1,11 @@
 """Package level exceptions shared across modules."""
 
+from typing import TYPE_CHECKING
+
 from .constants import EResult
-from .transport import Content, Headers
+
+if TYPE_CHECKING:  # dirty
+    from .transport import Content, Headers
 
 
 class SteamError(Exception):
@@ -11,7 +15,7 @@ class SteamError(Exception):
 class EResultError(SteamError):
     """`Steam` response with error result code."""
 
-    def __init__(self, result: EResult, msg: str | None, data: Content = None):
+    def __init__(self, result: EResult, msg: str | None, data: "Content" = None):
         self.result = result
         self.msg = msg
         self.data = data
@@ -27,7 +31,7 @@ class EResultError(SteamError):
             raise cls(res, data.get("message"), data)
 
     @classmethod
-    def check_headers(cls, headers: Headers, data: Content = None):
+    def check_headers(cls, headers: "Headers", data: "Content" = None):
         """Check if ``headers`` contains error response from `Steam` API and raise ``EResultError`` if needed."""
 
         # Valves will not be Valves if they not to forgot send header in some API endpoints
@@ -50,3 +54,14 @@ class MobileConfirmationRequired(ConfirmationRequired):
 
 class EmailConfirmationRequired(ConfirmationRequired):
     """Email confirmation is required."""
+
+
+class RateLimitExceeded(SteamError):
+    """`Steam` decides you were in need of a bit of a rest."""
+
+    def __str__(self):
+        return "Rest a bit"
+
+
+class Unauthenticated(SteamError):
+    """Auth cookies or token are missing, expired, or invalid."""

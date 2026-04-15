@@ -9,15 +9,17 @@ from ..exceptions import (
     EmailConfirmationRequired,
     EResultError,
     MobileConfirmationRequired,
+    RateLimitExceeded,
     SteamError,
+    Unauthenticated,
 )
 from ..transport import (
     NetworkError,
-    RateLimitExceeded,
     ResourceNotModified,
+    TooManyRequests,
     TransportError,
     TransportResponseError,
-    Unauthenticated,
+    Unauthorized,
 )
 from .app import ADD_NEW_MEMBERS, App, AppContext, change_members_mode
 from .client import SteamClient, SteamPublicClient

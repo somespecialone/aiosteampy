@@ -2,7 +2,7 @@ from base64 import b64encode
 from collections.abc import Awaitable
 from typing import Any, Literal
 
-from betterproto2 import Message
+import betterproto2
 
 from ..constants import LIB_ID, Platform, SteamURL
 from ..exceptions import EResultError
@@ -68,8 +68,8 @@ class SteamWebAPIClient:
         self._access_token = access_token
         self._api_key = api_key
 
-        if self.is_mobile:  # add mobile app specific user agent and cookie
-            # self._transport.user_agent = "okhttp/4.9.2"
+        if self.is_mobile:
+            # mobile user agent is "okhttp/4.9.2" just in case we need it
             self._transport.add_cookie(Cookie("mobileClientVersion", "777777 3.10.3", SteamURL.WEB_API.host))
             self._transport.add_cookie(Cookie("mobileClient", "android", SteamURL.WEB_API.host))
 
@@ -98,18 +98,18 @@ class SteamWebAPIClient:
         """Whether this client has credentials to make authenticated requests."""
         return self._access_token is not None or self._api_key is not None
 
-    async def request(
+    async def call(
         self,
-        http_method: HttpMethod,
         interface: str,
         method: str,
         version: int = 1,
+        http_method: HttpMethod = "GET",
         *,
         params: Params | None = None,
         data: Payload | None = None,  # multipart by default
         # there is no api methods that accept json data supposedly
         urlencoded: Payload | None = None,
-        protobuf: Message | bytes | None = None,
+        protobuf: betterproto2.Message | bytes | None = None,
         headers: Headers | None = None,
         response_mode: ResponseMode = "json",
         # There are some methods working only with api key and vice versa, and that better be handled
@@ -186,11 +186,8 @@ class SteamWebAPIClient:
         )
 
         if r.status < 200 or r.status >= 300:  # redirect means error
-            raise TransportResponseError(r)
+            raise TransportResponseError.from_response(r)
 
         EResultError.check_headers(r.headers, r.content)
 
         return r.content
-
-    def close(self) -> Awaitable[None]:
-        return self._transport.close()

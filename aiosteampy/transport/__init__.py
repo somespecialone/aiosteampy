@@ -7,15 +7,15 @@ from .base import BaseSteamTransport
 from .cookie import Cookie
 from .exceptions import (
     NetworkError,
-    RateLimitExceeded,
     ResourceNotModified,
+    TooManyRequests,
     TransportError,
     TransportResponseError,
-    Unauthenticated,
+    Unauthorized,
 )
 from .impl.aiohttp import AiohttpTransport
 from .resp import TransportResponse
-from .types import Content, Headers, HttpMethod, Params, Payload, ResponseMode
+from .types import Content, Headers, HttpMethod, JsonContent, Params, Payload, ResponseMode
 from .utils import format_http_date, parse_http_date
 
 DefaultSteamTransport = cast(type[BaseSteamTransport], AiohttpTransport)

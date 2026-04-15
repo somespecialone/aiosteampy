@@ -6,7 +6,7 @@ from yarl import URL
 
 from ..constants import Platform
 from .cookie import Cookie
-from .exceptions import RateLimitExceeded, ResourceNotModified, TransportError, TransportResponseError, Unauthenticated
+from .exceptions import ResourceNotModified, TooManyRequests, TransportError, TransportResponseError, Unauthorized
 from .resp import TransportResponse
 from .types import Headers, HttpMethod, Params, Payload, ResponseMode
 
@@ -27,15 +27,22 @@ class BaseSteamTransport(metaclass=ABCMeta):
     and how cookies is managed.
 
     **Responsibilities for Subclasses:**
-    1.  **Cookie Management**:
-      -   Transport is responsible for parsing `Set-Cookie` headers from responses
-          and storing them for subsequent requests.
-      -   Cookies must be persisted internally or synchronized with the underlying client's cookie jar.
-    2.  **Request Execution**:
-      -   The ``request`` method (public API) handles argument validation and error wrapping,
-          delegating actual network I/O work to ``_request`` method, that subclasses must implement.
-    3.  **Resource Management**:
-      -   Should override ``close`` method to release resources (connections, sessions) if necessary.
+
+    1. **Cookie Management**:
+
+    - Transport is responsible for parsing `Set-Cookie` headers from
+      responses and storing them for subsequent requests.
+    - Cookies must be persisted internally.
+
+    2. **Request Execution**:
+
+    - The ``request`` method (public API) handles argument validation and error wrapping,
+      delegating actual network I/O work to ``_request`` method, that subclasses must implement.
+    - Response body must be returned according to ``response_mode`` argument if `status` code
+      is less than 300, otherwise raw body ``bytes`` are expected.
+
+    3. **Resource Management**:
+    - Should override ``close`` method to release resources (connections, sessions) if necessary.
     """
 
     __slots__ = ()
@@ -199,7 +206,7 @@ class BaseSteamTransport(metaclass=ABCMeta):
         :raises TransportError: ordinary reasons.
         :raises NetworkError: for network-related issues.
         :raises ResourceNotModified: 304 status code.
-        :raises RateLimitExceeded: rate limit has been hit.
+        :raises TooManyRequests: rate limit has been hit.
         :raises TransportResponseError: bad error code.
         """
 
@@ -224,25 +231,22 @@ class BaseSteamTransport(metaclass=ABCMeta):
         except Exception as e:
             raise TransportError from e
 
-        # Steam logic
-        # resource not modified. We would get this when "If-Modified-Since" header is provided
-        if resp.status == 304:
-            raise ResourceNotModified(resp)
-
-        if (300 <= resp.status < 400) and "/login" in (resp.headers.get("Location") or ()):
-            raise Unauthenticated(resp)
-
-        if resp.status == 401:  # for web api
-            raise Unauthenticated(resp)
-
-        if resp.status == 429:
-            raise RateLimitExceeded(resp)
-
-        if raise_for_status and not resp.ok:  # handle other >=400 codes
-            raise TransportResponseError(resp)
+        if raise_for_status:
+            # Steam logic
+            # resource not modified. We would get this when "If-Modified-Since" header is provided
+            if resp.status == 304:
+                raise ResourceNotModified.from_response(resp)
+            elif (300 <= resp.status < 400) and "/login" in (resp.headers.get("Location") or ()):
+                raise Unauthorized.from_response(resp)
+            elif resp.status == 401:  # for web api
+                raise Unauthorized.from_response(resp)
+            elif resp.status == 429:
+                raise TooManyRequests.from_response(resp)
+            elif not resp.ok:  # handle other >=400 codes
+                raise TransportResponseError.from_response(resp)
 
         return resp
 
     async def close(self) -> None:
-        """Close transport session and free resources."""
+        """Close current transport and release resources."""
         pass

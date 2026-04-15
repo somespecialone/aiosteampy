@@ -1,4 +1,4 @@
-from ..exceptions import ConfirmationRequired, SteamError
+from ..exceptions import ConfirmationRequired, RateLimitExceeded, SteamError
 
 
 class AuthenticatorError(SteamError):
@@ -12,7 +12,7 @@ class AuthenticatorAlreadyPresent(AuthenticatorError):
     """Authenticator is already present."""
 
 
-class TooManyAttempts(AuthenticatorError):
+class TooManyAttempts(RateLimitExceeded, AuthenticatorError):
     """Too many failed attempts."""
 
 

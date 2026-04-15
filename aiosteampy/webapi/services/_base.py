@@ -3,10 +3,10 @@ from typing import ClassVar, Literal
 
 from betterproto2 import Message
 
-from ...transport import Params, Payload
+from ...transport import JsonContent, Params, Payload
 from ..client import HttpMethod, SteamWebAPIClient
 
-JsonResponse = Awaitable[dict]
+JsonResponse = Awaitable[JsonContent]
 
 
 class SteamWebApiServiceBase:
@@ -33,11 +33,11 @@ class SteamWebApiServiceBase:
         auth: bool = False,
     ) -> Awaitable[bytes | None]:
         """Call webapi method with protobuf message."""
-        return self._api.request(
-            http_method,
+        return self._api.call(
             self.SERVICE_NAME,
             method,
             version,
+            http_method,
             protobuf=msg,
             response_mode=response_mode,
             auth=auth,
@@ -53,12 +53,12 @@ class SteamWebApiServiceBase:
         response_mode: Literal["meta", "json"] = "json",
         auth=False,
     ) -> JsonResponse:  # presumably dict is always returned
-        """Call webapi method with json data."""
-        return self._api.request(
-            http_method,
+        """Call webapi method with urlencoded data."""
+        return self._api.call(
             self.SERVICE_NAME,
             method,
             version,
+            http_method,
             urlencoded=data,
             params=params,
             response_mode=response_mode,

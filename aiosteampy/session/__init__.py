@@ -3,8 +3,8 @@
 """
 
 # reexport
-from ..exceptions import ConfirmationRequired, EResultError, SteamError
-from ..transport import NetworkError, TransportError, TransportResponseError, Unauthenticated
+from ..exceptions import ConfirmationRequired, EResultError, RateLimitExceeded, SteamError
+from ..transport import NetworkError, TransportError, TransportResponseError
 from .exceptions import (
     AuthCodeExpired,
     BadCredentials,

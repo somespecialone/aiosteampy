@@ -13,7 +13,7 @@ authors:
 repository-code: 'https://github.com/somespecialone/aiosteampy'
 url: 'https://aiosteampy.somespecial.one/'
 repository-artifact: 'https://pypi.org/project/aiosteampy/'
-abstract: 'Trade and interact with steam market, webapi, guard.'
+abstract: 'Manage Steam sessions, Guard, Market, trade offers and more.'
 keywords:
   - python
   - asyncio

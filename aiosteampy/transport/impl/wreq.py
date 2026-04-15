@@ -186,7 +186,7 @@ class WreqTransport(BaseSteamTransport):
                 form=data,
                 json=json,
                 multipart=multipart,
-                redirect=NO_REDIRECT_POLICY,
+                redirect=None if redirects else NO_REDIRECT_POLICY,
             )
 
         except (ConnectionError, ProxyConnectionError, ConnectionResetError, TlsError, TimeoutError) as e:

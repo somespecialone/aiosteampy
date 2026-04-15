@@ -133,10 +133,10 @@ class InventoryPublicComponent(EconMixin):
 
         EResultError.check_data(rj)
 
-        total_count: int = rj["total_inventory_count"]
-        last_asset_id = int(rj["last_assetid"]) if "last_assetid" in rj else None
+        total_count: int = rj.get("total_inventory_count", 0)
+        last_asset_id = int(rj.get("last_assetid", 0)) or None
 
-        if "descriptions" not in rj:  # for old reasons, but let it be
+        if "descriptions" not in rj:
             return Inventory([], total_count, last_asset_id)
 
         _item_descriptions_map = {} if _item_descriptions_map is None else _item_descriptions_map

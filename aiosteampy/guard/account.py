@@ -88,4 +88,3 @@ class SteamGuardAccount:
             token_gid=mafile["token_gid"],
             finalized=mafile.get("fully_enrolled", True),  # for Nebula SDA
         )
-

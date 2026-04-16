@@ -1,6 +1,6 @@
 [project]
 name = "aiosteampy"
-version = "1.0.0a4"
+version = "1.0.0a5"
 description = "Manage Steam sessions, Guard, Market, trade offers and more."
 readme = "README.md"
 license = "MIT"

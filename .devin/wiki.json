@@ -1,0 +1,145 @@
+{
+  "repo_notes": [
+    {
+      "content": "This repository contain three main modules to work with Steam Community parts (client), manage Steam sessions (session) and Guard (guard) which should be prioritized in generated documentation. Do not generate architecture diagrams until explicitly asked."
+    }
+  ],
+  "pages": [
+    {
+      "title": "Overview",
+      "purpose": "Introduce aiosteampy, explaining what it is, its core purpose as Steam API library, high-level capabilities of the three main modules (session, guard, client). Link to child pages for details. You can skip analyzing resources like source (*.proto) and generated files in 'protobufs' dirs."
+    },
+    {
+      "title": "Getting Started",
+      "purpose": "Brief installation instructions covering prerelease state, basic setup, optional dependencies (socks, wreq)."
+    },
+    {
+      "title": "Quick Start Examples",
+      "purpose": "Practical code examples showing authentication, basic market queries, trade operations, and session persistence patterns.",
+      "parent": "Getting Started",
+      "page_notes": [
+        {
+          "content": "You can take code examples from documentation files in 'docs' dir and README.md for reference."
+        }
+      ]
+    },
+    {
+      "title": "Authentication & Steam Guard",
+      "purpose": "Overview of the authentication system and Steam Guard 2FA. Avoid overdetailization."
+    },
+    {
+      "title": "Session",
+      "purpose": "Detailed guide to SteamSession: credentials and QR login flows, token lifecycle (access/refresh tokens), cookie management, session serialization/deserialization, and platform-specific behavior.",
+      "parent": "Authentication & Steam Guard"
+    },
+    {
+      "title": "Steam Guard & Confirmations",
+      "purpose": "Complete documentation of SteamGuard: enabling/disabling 2FA (explain risks and safety measures), TOTP code generation (TwoFactorSigner), SteamConfirmations management, MaFile/SteamGuardAccount serialization, and the confirmation workflow.",
+      "parent": "Authentication & Steam Guard"
+    },
+    {
+      "title": "Clients & Components",
+      "purpose": "Overview of client classes (SteamPublicClient and SteamClient), components that embodies Steam domains (Market, Profile, Trade, etc.) and their responsibilities.",
+      "page_notes": [
+        {
+          "content": "Do not dig deep into functionality."
+        }
+      ]
+    },
+    {
+      "title": "Public client",
+      "purpose": "Detailed documentation of SteamPublicClient, initialization parameters, component properties (like market, inventory, etc.), state management, and de/serialization.",
+      "parent": "Clients & Components"
+    },
+    {
+      "title": "Authenticated client",
+      "purpose": "Detailed documentation of SteamClient, initialization parameters, component properties (like market, inventory, etc.), state management, and de/serialization.",
+      "parent": "Clients & Components"
+    },
+    {
+      "title": "Trade component",
+      "purpose": "Brief documentation of TradeComponent, properties and methods, general functionality and responsibility.",
+      "parent": "Clients & Components",
+      "page_notes": [
+        {
+          "content": "Explain TradeOffer and HistoryTradeOffer client agnostic mental model (to_partner, to_creator, to_partner_a, to_partner_b properties)."
+        }
+      ]
+    },
+    {
+      "title": "Market component",
+      "purpose": "Brief documentation of MarketPublicComponent and MarketComponent, properties and methods, general functionality and responsibility.",
+      "parent": "Clients & Components"
+    },
+    {
+      "title": "Profile component",
+      "purpose": "Brief documentation of ProfilePublicComponent and ProfileComponent, properties and methods, general functionality and responsibility.",
+      "parent": "Clients & Components"
+    },
+    {
+      "title": "Inventory component",
+      "purpose": "Brief documentation of InventoryPublicComponent and InventoryComponent, properties and methods, general functionality and responsibility.",
+      "parent": "Clients & Components"
+    },
+    {
+      "title": "Other components",
+      "purpose": "Brief documentation of NotificationsComponent, WalletComponent, properties and methods, general functionality and responsibility.",
+      "parent": "Clients & Components",
+      "page_notes": [
+        {
+          "content": "Gather all components that left without dedicated page even if they are not listed in 'purpose'. Be concise and brief."
+        }
+      ]
+    },
+    {
+      "title": "Exceptions",
+      "purpose": "Documentation of package exceptions, hierarchy and handling in various scenarios.",
+      "page_notes": [
+        {
+          "content": "Build architecture diagrams for error to illustrate 'except' statement possibilities, be concise, write examples."
+        }
+      ]
+    },
+    {
+      "title": "App & AppContext",
+      "purpose": "Documentation of App and AppContext with guide how to create apps and their context, 'ADD_NEW_MEMBERS' mode."
+    },
+    {
+      "title": "Utilities & Helpers",
+      "purpose": "Detailed reference for utility functions covering SteamID conversion (id.py), market fee calculations, HTTP date formatting, decorators, and other shared helpers."
+    },
+    {
+      "title": "Advanced Features",
+      "purpose": "Shallow overview of advanced usage patterns including proxy support, wreq browser emulation, currency conversion, and responsible scraping."
+    },
+    {
+      "title": "Transport Layer",
+      "purpose": "Documentation of the HTTP transport abstraction: BaseSteamTransport, TransportResponse, Cookie model, AiohttpTransport and WreqTransport implementations. Link for guide about writing own implementation to Advanced Features chapter.",
+      "parent": "Advanced Features"
+    },
+    {
+      "title": "Steam Web API Client",
+      "purpose": "Brief documentation of SteamWebAPIClient, the protobuf-based service clients (auth, twofactor, phone, econ, notification), and how the webapi layer wraps Steam's internal API endpoints.",
+      "parent": "Advanced Features",
+      "page_notes": [
+        {
+          "content": "Do not analyze protobuf sources and generated files."
+        }
+      ]
+    },
+    {
+      "title": "Proxy Support & Transport Extensions",
+      "purpose": "Guide to using HTTP/SOCKS proxies, the wreq transport for HTTP/2 and browser impersonation, custom transport implementations, and user agent management.",
+      "parent": "Advanced Features"
+    },
+    {
+      "title": "Responsible Scraping",
+      "purpose": "Best practices for responsible data collection: HTTP caching with If-Modified-Since, rate limiting awareness, ResourceNotModified handling, and avoiding bot detection.",
+      "parent": "Advanced Features"
+    },
+    {
+      "title": "Glossary",
+      "purpose": "Definitions of codebase-specific terms, jargon, abbreviations, and domain concepts that an onboarding engineer would need to know. Each term includes code pointers to relevant files and classes."
+    }
+  ]
+}

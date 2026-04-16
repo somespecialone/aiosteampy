@@ -78,8 +78,14 @@ Package separated into *main modules* which can be imported from ``aiosteampy`` 
 
 ### Session
 
-Simple demonstrative example of using `SteamSession` to log in into account
-with credentials and then print `access` and `refresh` tokens:
+`SteamSession` provides functionality to log into user account using either _credentials_
+or _QR_. When the login process has been _finalized_ web auth cookies can be obtained
+to enable interaction with `SteamCommunity` domains like `Confirmations` (see [guard](#guard)),
+`Market`, `TradeOffers`, `Profile` and `Inventory` (see [client](#client)).
+Methods `serialize` and `deserialize` allows to _dump/load_ `SteamSession` into/from _JSON-safe_ dict.
+
+Demonstrative example of using `SteamSession` to log into account
+with credentials, obtaining _web cookies_ and finally _dump_ session into file:
 
 ```python
 import asyncio
@@ -111,31 +117,51 @@ async def login_with_credentials():
 
     await session.finalize()
 
-    print("Access token: ", session.access_token.raw)
-    print("Refresh token: ", session.refresh_token.raw)
+    print("Access token: ", session.access_token)
+    print("Refresh token: ", session.refresh_token)
+
+    await session.obtain_cookies()
+
+    print("Web cookies obtained!")
 
     await session.transport.close()
+
+    session_dump = session.serialize()
+
+    with open(f"./{account_name}.session.json", "w") as f:
+        json.dump(session_dump, f, indent=2)
 
 
 asyncio.run(login_with_credentials())
 ```
 
+Session can then be _loaded_ from a dump.
+Although not verified for expiration, tokens and cookies will be restored:
+
+```python
+with open(f"./{account_name}.session.json", "r") as f:
+    session = SteamSession.deserialize(json.load(f))
+```
+
 ### Guard
 
-Using `SteamGuard` to enable `Steam Mobile Auhtenticator`
-(similar to using [SDA](https://github.com/Jessecar96/SteamDesktopAuthenticator) functionality)
-and dump `SteamGuardAccount` data into a file:
+`SteamGuard` embodies `Steam Mobile Authenticator` functionality from mobile app.
+Can activate account _2FA_ (similar to using [SDA](https://github.com/Jessecar96/SteamDesktopAuthenticator)),
+generate _auth codes_, sign _auth requests_ made with other `SteamSession` by QR, handle `Steam Confirmations`.
+Eventually, guard requires session with `mobile` app platform.
+
+Here we're using `SteamGuard` to activate `Authenticator` and dump `SteamGuardAccount` data into a file then:
 
 ```python
 import json
 import asyncio
 
-from aiosteampy.session import SteamSession
+from aiosteampy.session import SteamSession, Platform
 from aiosteampy.guard import SteamGuard, SmsConfirmationRequired, EmailConfirmationRequired
 
 
 async def enable_two_fa():
-    session = SteamSession(...)  # authenticated session
+    session = SteamSession(..., platform=Platform.MOBILE)
 
     guard = SteamGuard(session)
 
@@ -151,16 +177,25 @@ async def enable_two_fa():
     # Exported guard account contains secrets that cannot be retrieved once more
     # therefore, data must be saved ASAP to prevent loss of access to a user's Steam account
     guard_account = guard.export_account()
-    with open(f"./{session.account_name}.guard.json", "w") as f:
+    with open(f"./{session.account_name or session.steam_id}.guard.json", "w") as f:
         json.dump(guard_account.serialize(), f)
 
-    await session.transport.close()
+    await guard.transport.close()
 
 
 asyncio.run(enable_two_fa())
 ```
 
 ### Client
+
+`SteamClient` composes all `Steam` domains implementations:
+`Market`, `Trade Offers`, `Inventory`, `Profile`, `Wallet` and more. Each domain is 
+responsible for related functionality. For example, `Market` domain contain methods
+allow to retrieve and buy listings from `Steam Market`, place buy and sell orders.
+`Trade Offers` provides methods to send, accept or deny offers and so on.
+
+There is also a `SteamPublicClient` entity in `aiosteampy.client` namespace that allows interaction
+with `Steam` from unauthenticated (anonymous) user perspective.
 
 Using `SteamClient` with authenticated `SteamSession` to get _current user inventory items_:
 
@@ -172,27 +207,50 @@ from aiosteampy.client import SteamClient, AppContext, App
 
 
 async def get_inventory():
-    session = SteamSession(...)  # authenticated session
+    session = SteamSession(...)
 
     client = SteamClient(session)
 
-    cs2_default = await client.inventory.get(AppContext.CS2)
-    print("CS2 items: ", cs2_default.items)
+    # use predefined apps and their contexts
+    cs2_default_inv = await client.inventory.get(AppContext.CS2)
+    print("CS2 items: ", cs2_default_inv.items)
 
-    cs2_trade_protected = await client.inventory.get(AppContext.CS2_PROTECTED)
-    print("CS2 items in hold: ", cs2_trade_protected.items)
+    cs2_trade_protected_inv = await client.inventory.get(AppContext.CS2_PROTECTED)
+    print("CS2 trade protected items: ", cs2_trade_protected_inv.items)
 
     # create new App and AppContext
     BongoCatApp = App(3419430, "Bongo Cat")
-    BongoCatDefault = AppContext(BongoCatApp, 2)
+    BongoCatDefault = BongoCatApp.with_context(2)
 
-    bongo_cat = await client.inventory.get(BongoCatDefault)
-    print("Bongo Cat items: ", bongo_cat.items)
+    bongo_cat_inv = await client.inventory.get(BongoCatDefault)
+    print("Bongo Cat items: ", bongo_cat_inv.items)
 
-    await session.transport.close()
+    await client.transport.close()
 
 
 asyncio.run(get_inventory())
+```
+
+Retrieving _item orders histogram_ from `SteamMarket` with an unauthenticated client:
+
+```python
+import asyncio
+
+from aiosteampy.client import SteamPublicClient, App
+
+
+async def get_histogram():
+    client = SteamPublicClient()
+
+    # Glock-18 | Fully Tuned (Field-Tested)
+    histogram = await client.market.get_orders_histogram(176611887)
+
+    print("Get histogram: ", histogram)
+
+    await client.transport.close()
+
+
+asyncio.run(get_histogram())
 ```
 
 <!--usage-end-->
@@ -209,16 +267,17 @@ asyncio.run(get_inventory())
 
 ### What I can do with this
 
-- Login using credentials and QR, obtain auth web cookies.
+- Login using _credentials_ and _QR_, obtain auth web cookies.
 - Operate `Trade Offers`: send, accept, decline, and counter.
-- Place and cancel buy/sell orders, purchase listings directly on `Steam Market`.
-- Dump & Load tokens and cookies to enable `Session` persistence.
-- De/serialize `Client` state reducing boilerplate and unnecessary work.
-- Accept, deny, and retrieve `Steam Mobile Device` confirmations.
+- Place and cancel _buy/sell_ orders, purchase listings directly on `Steam Market`.
+- _Dump & Load_ tokens and cookies to enable `Session` persistence.
+- _De/serialize_ `Client` state reducing boilerplate.
+- Retrieve, accept, and deny `Steam Mobile Device` confirmations.
 - Enable `Steam Mobile Authenticator` for user account and save secrets.
 - Import secrets from famous `SDA` format (`maFile`).
 - Setup, edit information of user `Steam` profile.
 - Get user account wallet balance, redeem `Wallet` or `Gift` codes.
+- _Inspect_ CS2 items.
 - Lost access to a user account by denying guidelines and warnings
   while being unvigilant.
 - And more!
@@ -227,7 +286,7 @@ asyncio.run(get_inventory())
 
 - Buy app and their package on `Steam Store`.
 - `WebSocket` connection to `Steam` servers.
-- Interact with game servers (inspect `CS2` items, find game match, etc.).
+- Interact with game servers (like find game match).
 - Social interaction like groups, clans, and chat.
 - Get confused with the complexity of usage.
 
@@ -238,10 +297,13 @@ asyncio.run(get_inventory())
 
 > Feedback, suggestions, and bug reports are welcome!
 
-Please **keep project style and code quality** while contributing, thanks.
-Use formatter (currently [Ruff](https://github.com/astral-sh/ruff))
+If you have any question regarding a project, don't hesitate to ask one in 
+[Q&A](https://github.com/somespecialone/aiosteampy/discussions/categories/q-a).
+
+Before creating a pull request, please try to **keep project style and code quality**
+while contributing. Use formatter (currently [Ruff](https://github.com/astral-sh/ruff))
 whenever possible respecting configuration in `pyproject.toml`.
-Remove unrelated code changes from PR and generally be concise, thanks again.
+Remove unrelated code changes from PR and generally be concise, thanks!.
 
 ## Credits
 

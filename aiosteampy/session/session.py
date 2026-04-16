@@ -399,7 +399,7 @@ class SteamSession:
         device_steam_guard_code: str | Callable[[], str],
         *,
         persistence: bool = True,
-        device_friendly_name: str | None = None,
+        device_friendly_name: str = LIB_ID,
     ):
         """
         Perform full login process with credentials for account that requires `device code` confirmation.

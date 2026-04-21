@@ -5,7 +5,7 @@ Enables `two-factor` codes generation, confirmations and `Mobile Authenticator` 
 
 # reexport
 from ..exceptions import ConfirmationRequired, EmailConfirmationRequired, Unauthenticated
-from ..transport import NetworkError, TransportError, TransportResponseError
+from ..transport import NetworkError, ProxyError, TransportError, TransportResponseError
 from .account import MaFile, MaFileSession, SteamGuardAccount
 from .confirmations import Confirmation, ConfirmationType, SteamConfirmations
 from .exceptions import (

@@ -18,6 +18,10 @@ class NetworkError(TransportError):
     """Unspecific network error."""
 
 
+class ProxyError(NetworkError):
+    """Any error with proxy."""
+
+
 class TransportResponseError(TransportError):
     """Bad response status code."""
 

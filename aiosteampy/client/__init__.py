@@ -15,6 +15,7 @@ from ..exceptions import (
 )
 from ..transport import (
     NetworkError,
+    ProxyError,
     ResourceNotModified,
     TooManyRequests,
     TransportError,

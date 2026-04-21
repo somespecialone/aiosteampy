@@ -7,6 +7,7 @@ from .base import BaseSteamTransport
 from .cookie import Cookie
 from .exceptions import (
     NetworkError,
+    ProxyError,
     ResourceNotModified,
     TooManyRequests,
     TransportError,

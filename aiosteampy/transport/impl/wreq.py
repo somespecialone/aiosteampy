@@ -24,7 +24,7 @@ from yarl import URL
 from ...constants import Platform
 from ..base import BaseSteamTransport
 from ..cookie import Cookie
-from ..exceptions import NetworkError
+from ..exceptions import NetworkError, ProxyError
 from ..resp import TransportResponse
 from ..types import HttpMethod
 
@@ -189,7 +189,10 @@ class WreqTransport(BaseSteamTransport):
                 redirect=None if redirects else NO_REDIRECT_POLICY,
             )
 
-        except (ConnectionError, ProxyConnectionError, ConnectionResetError, TlsError, TimeoutError) as e:
+        except ProxyConnectionError as e:
+            raise ProxyError from e
+
+        except (ConnectionError, ConnectionResetError, TlsError, TimeoutError) as e:
             raise NetworkError from e
 
         status_code = r.status.as_int()

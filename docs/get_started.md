@@ -29,6 +29,38 @@ async def get_market_listings():
 asyncio.run(get_market_listings())
 ```
 
+Fetching price history of an item works similarly — no login needed:
+
+```python
+import asyncio
+
+from aiosteampy.client import SteamPublicClient, App
+
+
+async def get_price_history():
+    client = SteamPublicClient()
+
+    entries = await client.market.fetch_price_history(
+        "Collector's Bonk! Atomic Punch",
+        App.TF2,
+    )
+
+    for e in entries:
+        print(e.date, e.price_raw, e.daily_volume)
+
+
+asyncio.run(get_price_history())
+```
+
+Each `PriceHistoryEntry` contains:
+
+- `price` — price in cents (`int`)
+- `price_raw` — raw price as returned by Steam (`float`)
+- `date` — sale date (`datetime`)
+- `daily_volume` — number of sales on that day (`int`)
+
+An empty list is returned when Steam has no history for the item.
+
 ## More examples
 
 Below are more comprehensive examples to help understand how things work.

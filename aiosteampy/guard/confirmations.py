@@ -319,12 +319,15 @@ class SteamConfirmations:
         """
 
         tag = "allow" if accept else "cancel"
-        data = self._create_confirmation_params(tag)
-        data["op"] = tag
-        data["cid[]"] = [conf.id for conf in confs]
-        data["ck[]"] = [conf.nonce for conf in confs]
+        base = self._create_confirmation_params(tag)
+        base["op"] = tag
+        # wreq form requires Sequence[Tuple] for repeated keys; dict with list values is not accepted
+        form_data: list = list(base.items())
+        for conf in confs:
+            form_data.append(("cid[]", conf.id))
+            form_data.append(("ck[]", conf.nonce))
 
-        r = await self._session.transport.request("POST", SEND_MULTI_URL, data=data, response_mode="json")
+        r = await self._session.transport.request("POST", SEND_MULTI_URL, data=form_data, response_mode="json")
         rj: dict = r.content
 
         EResultError.check_data(rj)

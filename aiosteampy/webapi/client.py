@@ -1,6 +1,6 @@
 from base64 import b64encode
-from collections.abc import Awaitable
-from typing import Any, Literal
+from collections.abc import Mapping, Sequence
+from typing import Literal
 
 import betterproto2
 
@@ -10,9 +10,11 @@ from ..transport import (
     BaseSteamTransport,
     Cookie,
     DefaultSteamTransport,
+    FormPayload,
     Headers,
-    Params,
-    Payload,
+    JsonPayload,
+    MultipartPayload,
+    Query,
     ResponseMode,
     TransportResponseError,
 )
@@ -98,6 +100,17 @@ class SteamWebAPIClient:
         """Whether this client has credentials to make authenticated requests."""
         return self._access_token is not None or self._api_key is not None
 
+    @staticmethod
+    def _to_scalars[T](map_or_seq: Mapping[str, T] | Sequence[tuple[str, T]] | None) -> list[tuple[str, T]]:
+        """Convert mappings (or scalars) to scalars."""
+
+        if isinstance(map_or_seq, Mapping):
+            return list(map_or_seq.items())
+        elif isinstance(map_or_seq, Sequence):
+            return list(map_or_seq)
+        else:  # None
+            return []
+
     async def call(
         self,
         interface: str,
@@ -105,16 +118,16 @@ class SteamWebAPIClient:
         version: int = 1,
         http_method: HttpMethod = "GET",
         *,
-        params: Params | None = None,
-        data: Payload | None = None,  # multipart by default
+        params: Query | None = None,
+        data: MultipartPayload | None = None,  # multipart by default
         # there is no api methods that accept json data supposedly
-        urlencoded: Payload | None = None,
+        urlencoded: FormPayload | None = None,
         protobuf: betterproto2.Message | bytes | None = None,
         headers: Headers | None = None,
         response_mode: ResponseMode = "json",
         # There are some methods working only with api key and vice versa, and that better be handled
         auth: bool = False,
-    ) -> bytes | str | Any | None:
+    ) -> bytes | JsonPayload:
         """
         Perform request.
 
@@ -138,36 +151,38 @@ class SteamWebAPIClient:
         """
 
         if auth:
-            params = {**params} if params is not None else {}
+            params = self._to_scalars(params)
 
             if self._access_token:  # prefer access token over api key as wider scoped
-                params["access_token"] = self._access_token
+                params.append(("access_token", self._access_token))
             elif self._api_key:
-                params["key"] = self._api_key
+                params.append(("key", self._api_key))
             else:
                 raise ValueError("Auth was requested but no access token or api key is set")
 
         get_method = http_method == "GET"
 
         if get_method:
-            params = {**params} if params is not None else {}
+            params = self._to_scalars(params)
+
             # https://github.com/DoctorMcKay/node-steam-session/blob/3ac0f34fd964b3f886ba18ef4824ac43c942e030/src/transports/WebApiTransport.ts#L48
             if self.is_mobile:
-                params["origin"] = "SteamMobile"
+                params.append(("origin", "SteamMobile"))
             else:  # web
-                params["origin"] = COMMUNITY_ORIGIN
+                params.append(("origin", COMMUNITY_ORIGIN))
 
         if protobuf is not None:
             if response_mode != "meta":
                 response_mode = "bytes"
             protobuf = b64encode(bytes(protobuf)).decode()
             if get_method:
-                params["input_protobuf_encoded"] = protobuf
+                params.append(("input_protobuf_encoded", protobuf))
             else:  # POST
                 if data is not None:  # send with multipart
                     data = {**data, "input_protobuf_encoded": protobuf}
                 else:
-                    urlencoded = {**(urlencoded or {}), "input_protobuf_encoded": protobuf}
+                    urlencoded = self._to_scalars(urlencoded)
+                    urlencoded.append(("input_protobuf_encoded", protobuf))
 
         headers = {**(headers or {}), **API_HEADERS}
         if self.is_web:

@@ -8,7 +8,7 @@ from ..constants import Platform
 from .cookie import Cookie
 from .exceptions import ResourceNotModified, TooManyRequests, TransportError, TransportResponseError, Unauthorized
 from .resp import TransportResponse
-from .types import Headers, HttpMethod, Params, Payload, ResponseMode
+from .types import FormPayload, Headers, HttpMethod, JsonPayload, MultipartPayload, Query, ResponseMode
 
 
 class Context(TypedDict, total=False):
@@ -103,10 +103,10 @@ class BaseSteamTransport(metaclass=ABCMeta):
         method: HttpMethod,
         url: URL,
         *,
-        params: Params | None,
-        data: Payload | None,
-        json: Payload | None,
-        multipart: Payload | None,
+        params: Query | None,
+        data: FormPayload | None,
+        json: JsonPayload | None,
+        multipart: MultipartPayload | None,
         headers: Headers,
         redirects: bool,
         response_mode: ResponseMode,
@@ -137,8 +137,8 @@ class BaseSteamTransport(metaclass=ABCMeta):
         method: HttpMethod,
         url: URL,
         *,
-        params: Params | None = ...,
-        data: Payload | None = ...,
+        params: Query | None = ...,
+        data: FormPayload | None = ...,
         headers: Headers = ...,
         redirects: bool = ...,
         raise_for_status: bool = ...,
@@ -151,8 +151,8 @@ class BaseSteamTransport(metaclass=ABCMeta):
         method: HttpMethod,
         url: URL,
         *,
-        params: Params | None = ...,
-        json: Payload | None = ...,
+        params: Query | None = ...,
+        json: JsonPayload | None = ...,
         headers: Headers = ...,
         redirects: bool = ...,
         raise_for_status: bool = ...,
@@ -165,8 +165,8 @@ class BaseSteamTransport(metaclass=ABCMeta):
         method: HttpMethod,
         url: URL,
         *,
-        params: Params | None = ...,
-        multipart: Payload | None = ...,
+        params: Query | None = ...,
+        multipart: MultipartPayload | None = ...,
         headers: Headers = ...,
         redirects: bool = ...,
         raise_for_status: bool = ...,
@@ -178,10 +178,10 @@ class BaseSteamTransport(metaclass=ABCMeta):
         method: HttpMethod,
         url: URL,
         *,
-        params: Params | None = None,
-        data: Payload | None = None,
-        json: Payload | None = None,
-        multipart: Payload | None = None,
+        params: Query | None = None,
+        data: FormPayload | None = None,
+        json: JsonPayload | None = None,
+        multipart: MultipartPayload | None = None,
         headers: Headers = None,
         redirects: bool = False,
         raise_for_status: bool = True,

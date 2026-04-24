@@ -6,7 +6,7 @@ from yarl import URL
 
 from ..exceptions import RateLimitExceeded, Unauthenticated
 from .resp import TransportResponse
-from .types import Headers, JsonContent
+from .types import Headers, JsonPayload
 from .utils import parse_http_date
 
 
@@ -42,7 +42,7 @@ class TransportResponseError(TransportError):
     def __str__(self):
         return f" [{self.status}{f' | {self.reason}' if self.reason else ''}]"
 
-    def json(self) -> JsonContent:
+    def json(self) -> JsonPayload:
         """Parse content of response as `JSON`."""
         return json.loads(self.text()) if self.content else None
 

@@ -1,12 +1,12 @@
 from collections.abc import Awaitable
 from typing import ClassVar, Literal
 
-from betterproto2 import Message
+import betterproto2
 
-from ...transport import JsonContent, Params, Payload
+from ...transport import FormPayload, JsonPayload, Query
 from ..client import HttpMethod, SteamWebAPIClient
 
-JsonResponse = Awaitable[JsonContent]
+JsonResponse = Awaitable[JsonPayload]
 
 
 class SteamWebApiServiceBase:
@@ -26,7 +26,7 @@ class SteamWebApiServiceBase:
     def _proto(
         self,
         method: str,
-        msg: Message | bytes = b"",  # need to send empty msg to receive response
+        msg: betterproto2.Message | bytes = b"",  # need to send empty msg to receive response
         version: int = 1,
         http_method: HttpMethod = "POST",
         response_mode: Literal["meta", "bytes"] = "bytes",
@@ -47,8 +47,8 @@ class SteamWebApiServiceBase:
         self,
         method: str,
         version: int = 1,
-        params: Params | None = None,
-        data: Payload | None = None,
+        params: Query | None = None,
+        data: FormPayload | None = None,
         http_method: HttpMethod = "GET",
         response_mode: Literal["meta", "json"] = "json",
         auth=False,

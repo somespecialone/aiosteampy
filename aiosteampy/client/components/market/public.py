@@ -1,3 +1,4 @@
+import json
 import re
 from collections.abc import AsyncGenerator, Mapping, Sequence
 from datetime import datetime
@@ -26,6 +27,7 @@ from .models import (
     MarketSearchSuggestion,
     NewlyListedItems,
     OrderGraphEntry,
+    PriceHistoryEntry,
     PriceOverview,
     PurchaseInfo,
     PurchaseInfoValues,
@@ -35,6 +37,8 @@ from .utils import extract_icon_hash_from_app_icon_link
 
 ITEM_ORDER_HIST_PRICE_RE = re.compile(r"[^\d\s]*([\d,]+(?:\.\d+)?)[^\d\s]*")  # Author: ChatGPT
 ITEM_NAME_ID_RE = re.compile(r"Market_LoadOrderSpread\(\s?(\d+)\s?\)")
+PRICE_HISTORY_RE = re.compile(r"var line1=(.+?);")
+PRICE_ENTRY_TIME_FORMAT = "%b %d %Y %H: %z"
 
 # Steam current limit
 LISTING_COUNT = 10
@@ -618,6 +622,53 @@ class MarketPublicComponent(EconMixin):
             raise ValueError(f"Failed to find item name id")
 
         return res
+
+    @overload
+    async def fetch_price_history(self, obj: ItemDescription) -> list[PriceHistoryEntry]: ...
+
+    @overload
+    async def fetch_price_history(self, obj: str, app: App) -> list[PriceHistoryEntry]: ...
+
+    async def fetch_price_history(
+        self, obj: str | ItemDescription, app: App | None = None
+    ) -> list[PriceHistoryEntry]:
+        """
+        Fetch price history of particular item from `Steam Market` listings page.
+
+        .. note:: This request is rate limited by `Steam`.
+
+        :param obj: `market hash name` of item or ``ItemDescription``.
+        :param app: `Steam` app.
+        :return: list of ``PriceHistoryEntry``, empty list if no history available.
+        :raises TooManyRequests: rate limit has been hit.
+        :raises TransportError: ordinary reasons.
+        """
+
+        if isinstance(obj, ItemDescription):
+            url = obj.market_url
+        else:  # str and app
+            url = MARKET_URL / f"listings/{app.id}/{obj}"
+
+        r = await self._transport.request(
+            "GET",
+            url,
+            headers={"Referer": COMMUNITY_ORIGIN},
+            response_mode="text",
+        )
+
+        search = PRICE_HISTORY_RE.search(r.content)
+        if search is None:
+            return []
+
+        return [
+            PriceHistoryEntry(
+                price=round(e_data[1] * 100),
+                price_raw=e_data[1],
+                date=datetime.strptime(e_data[0].replace("+0", "+0000"), PRICE_ENTRY_TIME_FORMAT),
+                daily_volume=int(e_data[2]),
+            )
+            for e_data in json.loads(search.group(1))
+        ]
 
     # TODO models, FilterSequence constructor or something
     async def get_search_app_filters(self, app: App) -> dict[str, ...]:

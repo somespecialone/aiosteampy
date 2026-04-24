@@ -35,6 +35,7 @@ if TYPE_CHECKING:  # decouple components from guard
 
 TRADE_URL = SteamURL.COMMUNITY / "tradeoffer"
 TRADE_NEW_URL = TRADE_URL / "new/"
+TRADE_ACKNOWLEDGE_URL = SteamURL.COMMUNITY / "trade" / "new" / "acknowledge"
 
 
 class TradeComponent(EconMixin):
@@ -96,7 +97,7 @@ class TradeComponent(EconMixin):
 
         return self._session.transport.request(
             "POST",
-            TRADE_NEW_URL / "acknowledge",
+            TRADE_ACKNOWLEDGE_URL,
             data={"sessionid": self._session.session_id, "message": 1},
             headers={"Referer": str(self._state.profile_url / "tradeoffers/"), "Origin": COMMUNITY_ORIGIN},
             redirects=True,  # handle eligibility check

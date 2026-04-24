@@ -586,10 +586,8 @@ class MarketPublicComponent(EconMixin):
 
     @overload
     async def get_item_name_id(self, obj: ItemDescription) -> int: ...
-
     @overload
     async def get_item_name_id(self, obj: str, app: App) -> int: ...
-
     async def get_item_name_id(self, obj: str | ItemDescription, app: App | None = None) -> int:
         """
         Get `item name id`, a special market of *item class*.
@@ -624,24 +622,21 @@ class MarketPublicComponent(EconMixin):
         return res
 
     @overload
-    async def fetch_price_history(self, obj: ItemDescription) -> list[PriceHistoryEntry]: ...
-
+    async def get_price_history(self, obj: ItemDescription) -> list[PriceHistoryEntry]: ...
     @overload
-    async def fetch_price_history(self, obj: str, app: App) -> list[PriceHistoryEntry]: ...
-
-    async def fetch_price_history(
-        self, obj: str | ItemDescription, app: App | None = None
-    ) -> list[PriceHistoryEntry]:
+    async def get_price_history(self, obj: str, app: App) -> list[PriceHistoryEntry]: ...
+    async def get_price_history(self, obj: str | ItemDescription, app: App | None = None) -> list[PriceHistoryEntry]:
         """
-        Fetch price history of particular item from `Steam Market` listings page.
+        Get price history of `item`.
+        Prices will *always be in the USD*.
 
         .. note:: This request is rate limited by `Steam`.
 
-        :param obj: `market hash name` of item or ``ItemDescription``.
+        :param obj: ``ItemDescription`` or `market hash name`.
         :param app: `Steam` app.
-        :return: list of ``PriceHistoryEntry``, empty list if no history available.
-        :raises TooManyRequests: rate limit has been hit.
+        :return: list of ``PriceHistoryEntry``.
         :raises TransportError: ordinary reasons.
+        :raises TooManyRequests: rate limit has been hit.
         """
 
         if isinstance(obj, ItemDescription):

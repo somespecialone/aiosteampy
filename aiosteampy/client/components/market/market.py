@@ -970,11 +970,9 @@ class MarketComponent(MarketPublicComponent):
 
     @overload
     async def get_price_history(self, obj: ItemDescription) -> list[PriceHistoryEntry]: ...
-
     @overload
     async def get_price_history(self, obj: str, app: App) -> list[PriceHistoryEntry]: ...
-
-    async def get_price_history(self, obj: str | ItemDescription, app: App = None) -> list[PriceHistoryEntry]:
+    async def get_price_history(self, obj: str | ItemDescription, app: App | None = None) -> list[PriceHistoryEntry]:
         """
         Get price history of item.
         Prices will be the *same currency as a wallet*.
@@ -988,6 +986,7 @@ class MarketComponent(MarketPublicComponent):
         :return: list of ``PriceHistoryEntry``.
         :raises EResultError: ordinary reasons.
         :raises TransportError: ordinary reasons.
+        :raises TooManyRequests: rate limit has been hit.
         """
 
         if isinstance(obj, ItemDescription):

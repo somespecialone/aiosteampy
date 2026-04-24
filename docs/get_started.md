@@ -40,7 +40,7 @@ from aiosteampy.client import SteamPublicClient, App
 async def get_price_history():
     client = SteamPublicClient()
 
-    entries = await client.market.fetch_price_history(
+    entries = await client.market.get_price_history(
         "Collector's Bonk! Atomic Punch",
         App.TF2,
     )

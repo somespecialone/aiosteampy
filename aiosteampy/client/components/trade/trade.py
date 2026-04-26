@@ -96,7 +96,7 @@ class TradeComponent(EconMixin):
 
         return self._session.transport.request(
             "POST",
-            TRADE_NEW_URL / "acknowledge",
+            SteamURL.COMMUNITY / "trade/new/acknowledge",
             data={"sessionid": self._session.session_id, "message": 1},
             headers={"Referer": str(self._state.profile_url / "tradeoffers/"), "Origin": COMMUNITY_ORIGIN},
             redirects=True,  # handle eligibility check

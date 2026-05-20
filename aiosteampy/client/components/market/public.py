@@ -1,12 +1,16 @@
 import json
 import re
-from collections.abc import AsyncGenerator, Mapping, Sequence
+from collections.abc import AsyncGenerator, Callable, Mapping, Sequence
 from datetime import datetime
-from typing import Literal, overload
+from functools import wraps
+from math import ceil
+from typing import Any, overload
+
+from yarl import URL
 
 from ....constants import SteamURL
 from ....exceptions import EResultError
-from ....transport import BaseSteamTransport, format_http_date, parse_http_date
+from ....transport import BaseSteamTransport, Cookie, format_http_date, parse_http_date
 from ....webapi.client import COMMUNITY_ORIGIN
 from ...app import ADD_NEW_MEMBERS, App
 from ...constants import Currency
@@ -25,6 +29,8 @@ from .models import (
     MarketSearchItem,
     MarketSearchResult,
     MarketSearchSuggestion,
+    ModernSearchItem,
+    ModernSearchResults,
     NewlyListedItems,
     OrderGraphEntry,
     PriceHistoryEntry,
@@ -33,6 +39,7 @@ from .models import (
     PurchaseInfoValues,
     SellOrderTableEntry,
 )
+from .query import SearchQuery, SortDir, SortingCriteria
 from .utils import extract_icon_hash_from_app_icon_link
 
 ITEM_ORDER_HIST_PRICE_RE = re.compile(r"[^\d\s]*([\d,]+(?:\.\d+)?)[^\d\s]*")  # Author: ChatGPT
@@ -43,16 +50,15 @@ PRICE_ENTRY_TIME_FORMAT = "%b %d %Y %H: %z"
 # Steam current limit
 LISTING_COUNT = 10
 SEARCH_COUNT = 10
-
-SortColumn = Literal["price", "name", "quantity", "popular", "default"]
-SortDir = Literal["asc", "desc"]
+MODERN_SEARCH_LIMIT = 30
 
 MARKET_URL = SteamURL.COMMUNITY / "market/"
 SEARCH_URL = MARKET_URL / "search"
 SEARCH_RENDER_URL = SEARCH_URL / "render/"
 
-
 CUSTOM_API_HEADERS = {"X-Prototype-Version": "1.7", "X-Requested-With": "XMLHttpRequest"}
+
+MODERN_MARKET_OPT_OUT_COOKIE = "bMarketOptOut"
 
 
 class MarketPublicComponent(EconMixin):
@@ -64,6 +70,9 @@ class MarketPublicComponent(EconMixin):
         self._transport = transport
 
         self._state = state
+
+        # until legacy market api will be shutdown
+        self.disable_modern_market()
 
     @staticmethod
     def _parse_quantity(text: str | int) -> int:
@@ -80,7 +89,7 @@ class MarketPublicComponent(EconMixin):
 
     @staticmethod
     def _parse_price_with_currency(text: str | None) -> int | None:
-        if text is None:  # to make caller code cleaner
+        if not text:  # to make caller code cleaner
             return None
 
         raw_price = ITEM_ORDER_HIST_PRICE_RE.search(text.replace(" ", "")).group(1)
@@ -246,7 +255,6 @@ class MarketPublicComponent(EconMixin):
         *,
         if_modified_since: datetime | str | None = ...,
     ) -> PriceOverview: ...
-
     @overload
     async def get_price_overview(
         self,
@@ -255,7 +263,6 @@ class MarketPublicComponent(EconMixin):
         *,
         if_modified_since: datetime | str | None = ...,
     ) -> PriceOverview: ...
-
     async def get_price_overview(
         self,
         obj: str | ItemDescription,
@@ -413,7 +420,6 @@ class MarketPublicComponent(EconMixin):
         count: int = ...,
         if_modified_since: datetime | str | None = ...,
     ) -> MarketListings: ...
-
     @overload
     async def get_listings(
         self,
@@ -425,7 +431,6 @@ class MarketPublicComponent(EconMixin):
         count: int = ...,
         if_modified_since: datetime | str | None = ...,
     ) -> MarketListings: ...
-
     async def get_listings(
         self,
         obj: str | ItemDescription,
@@ -522,7 +527,6 @@ class MarketPublicComponent(EconMixin):
         count: int = ...,
         if_modified_since: datetime | str | None = ...,
     ) -> AsyncGenerator[MarketListings, None]: ...
-
     @overload
     def listings(
         self,
@@ -534,7 +538,6 @@ class MarketPublicComponent(EconMixin):
         count: int = ...,
         if_modified_since: datetime | str | None = ...,
     ) -> AsyncGenerator[MarketListings, None]: ...
-
     async def listings(
         self,
         obj: str | ItemDescription,
@@ -665,7 +668,6 @@ class MarketPublicComponent(EconMixin):
             for e_data in json.loads(search.group(1))
         ]
 
-    # TODO models, FilterSequence constructor or something
     async def get_search_app_filters(self, app: App) -> dict[str, ...]:
         """
         Get `Steam App` filter facets for `Steam Market` search.
@@ -708,7 +710,6 @@ class MarketPublicComponent(EconMixin):
 
         return rj["facets"]
 
-    # TODO check new search
     async def search(
         self,
         query="",
@@ -717,7 +718,7 @@ class MarketPublicComponent(EconMixin):
         start: int = 0,
         count: int = SEARCH_COUNT,
         descriptions: bool = False,
-        sort_column: SortColumn = "default",
+        sort_column: SortingCriteria = None,
         sort_dir: SortDir = "desc",
         filters: str | Mapping[str, str | Sequence[str]] = "",
         # share mapping with iterator method
@@ -755,14 +756,14 @@ class MarketPublicComponent(EconMixin):
             "query": query,  # empty, like in browser's request
             "start": start,
             "count": count,
-            "sort_column": sort_column,
+            "sort_column": sort_column or "default",
             "sort_dir": sort_dir,
             "search_descriptions": int(descriptions),
         }
 
         referer_params = {
             "q": query,
-            "sort_column": sort_column,
+            "sort_column": sort_column or "default",
             "sort_dir": sort_dir,
         }
 
@@ -826,7 +827,7 @@ class MarketPublicComponent(EconMixin):
         start: int = 0,
         count: int = SEARCH_COUNT,
         descriptions: bool = False,
-        sort_column: SortColumn = "default",
+        sort_column: SortingCriteria = "default",
         sort_dir: SortDir = "desc",
         filters: str | Mapping[str, str | Sequence[str]] = "",
     ) -> AsyncGenerator[list[MarketSearchItem], None]:
@@ -942,13 +943,6 @@ class MarketPublicComponent(EconMixin):
                     steam_fee=int(p_data["steam_fee"]),
                     publisher_fee=int(p_data["publisher_fee"]),
                 ),
-                converted=PurchaseInfoValues(
-                    currency=Currency(int(p_data["converted_currencyid"]) - 2000),
-                    paid_amount=int(p_data["paid_amount"]),
-                    paid_fee=int(p_data["paid_fee"]),
-                    steam_fee=int(p_data["converted_steam_fee"]),
-                    publisher_fee=int(p_data["converted_publisher_fee"]),
-                ),
             )
             for p_data in data["purchaseinfo"].values()
         ]
@@ -1025,8 +1019,124 @@ class MarketPublicComponent(EconMixin):
                 market_name=data["market_name"],
                 market_hash_name=data["market_hash_name"],
                 market_type=data["market_type"],
-                min_price=data["min_price"],
                 search_score=data["search_score"],
             )
             for data in rj["results"]
         ]
+
+    @staticmethod
+    def _beta_market_enabled[F: Callable[[...], Any]](func: F) -> F:
+        """Verify whether modern(beta) market is enabled."""
+
+        @wraps(func)
+        def wrapper(self: "MarketPublicComponent", *args, **kwargs):
+            if self._transport.has_cookie(MARKET_URL, MODERN_MARKET_OPT_OUT_COOKIE):
+                raise RuntimeError("Modern market is opt out")
+
+            return func(self, *args, **kwargs)
+
+        return wrapper
+
+    def enable_modern_market(self):
+        """Enable modern(beta) market."""
+        self._transport.remove_cookie(URL(str(MARKET_URL)[:-1]), MODERN_MARKET_OPT_OUT_COOKIE)  # ugly
+
+    def disable_modern_market(self):
+        """Disable modern(beta) market."""
+
+        self._transport.add_cookie(
+            Cookie(
+                name=MODERN_MARKET_OPT_OUT_COOKIE,
+                value="1",
+                domain=MARKET_URL.host,
+                path=MARKET_URL.path[:-1],
+            )
+        )
+
+    @_beta_market_enabled
+    async def get_search_app_facets(self, app: App):
+        raise NotImplementedError()
+
+    @_beta_market_enabled
+    async def get_asset_property_schema(self, app: App):
+        # GET https://api.steampowered.com/IEconService/GetAssetPropertySchema/v1?origin=https%3A%2F%2Fsteamcommunity.com&input_protobuf_encoded=...
+        raise NotImplementedError()
+
+    @_beta_market_enabled
+    async def get_orderbook(self, app: App, market_hash_name: str):
+        raise NotImplementedError()
+
+    @overload
+    async def modern_search(self, query: SearchQuery, *, page: int = ...) -> ModernSearchResults: ...
+    @overload
+    async def modern_search(self, query: SearchQuery, *, start: int = ...) -> ModernSearchResults: ...
+    @_beta_market_enabled
+    async def modern_search(
+        self,
+        query: SearchQuery,
+        *,
+        page: int = 0,
+        start: int = 0,
+        etag: str | None = None,
+    ) -> ModernSearchResults:
+        """
+        Get search results from `Steam Market`.
+
+        .. note:: This request is rate limited by `Steam`.
+
+        :param query: prepared builder with desired ``query``.
+        :param page: number of ``page`` to be requested. **Starts from 0**.
+        :param start: results window offset index. Mutually exclusive with ``page``.
+        :param etag: previous `ETag` header value (server HTTP caching).
+        :raises TransportError: ordinary reasons.
+        :raises TooManyRequests: rate limit has been hit.
+        :raises ResourceNotModified: 304 status code if ``etag`` provided.
+        """
+
+        if page and start:
+            raise ValueError("Page and start args are mutually exclusive")
+
+        if page:
+            start = MODERN_SEARCH_LIMIT * page
+
+        payload, params = query.build(start, self._state.currency)
+
+        headers = {
+            "Referer": str(SEARCH_URL % params),
+            "x-valve-request-type": "routeAction",
+            "x-valve-action-type": "ZFJAHYDA:SearchMarketListings",  # route id:route action type
+        }
+        if etag:
+            headers["If-None-Match"] = etag
+
+        r = await self._transport.request(
+            "POST",
+            SEARCH_URL,
+            params=params,
+            json=payload,
+            headers=headers,
+            response_mode="json",
+        )
+
+        rj: dict = r.content
+
+        total = rj["total_count"]
+        results: list[dict] = rj["results"]
+
+        return ModernSearchResults(
+            items=[
+                ModernSearchItem(
+                    self._create_item_descr(i["asset_description"]),
+                    buy_orders=i["cBuyOrders"],
+                    sell_orders=i["cSellOrders"],
+                    min_price=self._parse_price_with_currency(i["strMinSellSubtotal"]),
+                    publisher_fee=i["unPublisherFee"],
+                    steam_fee=i["unSteamFee"],
+                )
+                for i in results
+            ],
+            total_count=total,
+            total_pages=ceil(total / MODERN_SEARCH_LIMIT),
+            more_pages=(total - (start + MODERN_SEARCH_LIMIT)) > 0,
+            etag=r.headers["ETag"],
+        )

@@ -391,7 +391,6 @@ class PurchaseInfo(BaseOrder):
     item: MarketListingItem  # MarketListingItem has "sold" property which must be always True here, but who cares
 
     original: PurchaseInfoValues
-    converted: PurchaseInfoValues
 
 
 class MarketSearchSuggestion(NamedTuple):
@@ -400,7 +399,6 @@ class MarketSearchSuggestion(NamedTuple):
     market_name: str
     market_hash_name: str
     market_type: str
-    min_price: float
     search_score: int
 
 
@@ -420,3 +418,40 @@ class MarketAvailability(NamedTuple):
     """List of tips for current user."""
     when: datetime | None
     """When market will be available if applicable."""
+
+
+@dataclass(slots=True)
+class ModernSearchItem:
+    """Modern(beta) `Steam Market` search result entry."""
+
+    description: ItemDescription
+    """Asset description."""
+
+    buy_orders: int
+    """Total number of `buy orders`."""
+    sell_orders: int
+    """Total number of `sell orders/listings`."""
+    # market_hash_name: str  # strHash, useless here
+    min_price: int  # strMinSellSubtotal
+    """Starting `price from`."""
+
+    publisher_fee: int  # ?
+    steam_fee: int  # ?
+
+
+class ModernSearchResults(NamedTuple):
+    """Modern(beta) `Steam Market` search results container."""
+
+    # facets: list
+    items: list[ModernSearchItem]
+    """Search result entries."""
+    # grouping: int
+    # start: int
+    total_count: int
+    """Total count of `search results` across all `pages`."""
+    total_pages: int
+    """Total number of `pages`."""
+    more_pages: bool
+    """Whether there is still more `pages` that can be fetched."""
+    etag: str
+    """`ETag` header value of the current page."""

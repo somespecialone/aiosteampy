@@ -30,7 +30,7 @@ class SteamURL:
 
     LOGIN_URL = URL("https://login.steampowered.com")
 
-    STATIC = URL("https://community.akamai.steamstatic.com")
+    STATIC = URL("https://community.fastly.steamstatic.com")
     WEB_API = URL("https://api.steampowered.com")
 
 

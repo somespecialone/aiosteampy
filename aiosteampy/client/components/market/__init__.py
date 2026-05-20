@@ -21,4 +21,5 @@ from .models import (
     UserMarketListing,
 )
 from .public import MarketPublicComponent
+from .query import SearchQuery
 from .utils import buyer_pays_to_receive, calc_market_listing_fee, receive_to_buyer_pays

@@ -77,7 +77,7 @@ class App:
     def icon(self) -> str | None:
         if self._icon_hash is not None:
             return (
-                f"https://cdn.akamai.steamstatic.com/steamcommunity/public/images/apps/{self._id}/{self._icon_hash}.jpg"
+                f"https://cdn.fastly.steamstatic.com/steamcommunity/public/images/apps/{self._id}/{self._icon_hash}.jpg"
             )
 
     @property

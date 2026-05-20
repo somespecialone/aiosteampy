@@ -40,6 +40,7 @@ from .components.market import (
     MarketListing,
     MarketListingItem,
     MarketListingStatus,
+    SearchQuery,
     UserMarketListing,
 )
 from .components.trade import TradeOffer, TradeOfferStatus

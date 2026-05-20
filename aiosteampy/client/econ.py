@@ -85,6 +85,15 @@ class BaseEntityWithIdentCode:
         return hash(self.id)
 
 
+class MarketBucketGroup(NamedTuple):
+    """Item grouped into `bucket` at `Steam Market`."""
+
+    id: str
+    """Group unique `identifier`."""
+    name: str
+    """Group `name`."""
+
+
 @dataclass(slots=True, kw_only=True)
 class ItemDescription(BaseEntityWithIdentCode):
     """
@@ -106,6 +115,7 @@ class ItemDescription(BaseEntityWithIdentCode):
     name: str
     market_name: str
     market_hash_name: str
+    market_bucket_group: MarketBucketGroup
 
     type: str | None = None
 
@@ -114,8 +124,6 @@ class ItemDescription(BaseEntityWithIdentCode):
 
     icon_key: str
     """Icon CDN asset key."""
-    icon_large_key: str | None = None
-    """Large icon CDN asset key."""
 
     tags: tuple[ItemTag, ...] = ()  # listing item does not show tags
     descriptions: tuple[ItemDescriptionEntry, ...] = ()
@@ -190,16 +198,17 @@ class ItemDescription(BaseEntityWithIdentCode):
             return self._cs2_ctx
 
     @property
-    def icon(self) -> URL:
-        return SteamURL.STATIC / f"economy/image/{self.icon_key}/96fx96f"
+    def icon_small(self) -> str:
+        return str(SteamURL.STATIC / f"economy/image/{self.icon_key}/96fx96f??allow_animated=1")
 
     @property
-    def icon_large(self) -> URL | None:
-        return (
-            (SteamURL.STATIC / f"economy/image/{self.icon_large_key}/330x192")
-            if self.icon_large_key is not None
-            else None
-        )
+    def icon_large(self) -> str:
+        return str(SteamURL.STATIC / f"economy/image/{self.icon_key}/330x192??allow_animated=1")
+
+    @property
+    def icon(self) -> str:
+        """Icon url in`original` resolution."""
+        return str(SteamURL.STATIC / f"economy/image/{self.icon_key}")
 
     @property
     def market_url(self) -> URL:
@@ -298,16 +307,19 @@ class EconMixin:
     def _create_item_descr(cls, data: dict) -> ItemDescription:
         return ItemDescription(
             class_id=int(data["classid"]),
-            instance_id=int(data["instanceid"]),
+            instance_id=int(data.get("instanceid", 0)),  # 0 for search descrs
             app=App(data["appid"]),
             name=data["name"],
             market_name=data["market_name"],
             market_hash_name=data["market_hash_name"],
+            market_bucket_group=MarketBucketGroup(
+                data["market_bucket_group_id"],
+                data["market_bucket_group_name"],
+            ),
             name_color=data.get("name_color") or None,  # ignore " "
             background_color=data.get("name_color") or None,
             type=data["type"] or None,
             icon_key=data["icon_url"],
-            icon_large_key=data.get("icon_url_large"),
             commodity=bool(data["commodity"]),
             tradable=bool(data["tradable"]),
             # market search page descriptions may miss this so True by default
@@ -323,7 +335,7 @@ class EconMixin:
             descriptions=cls._parse_item_descr_entries(data.get("descriptions", ())),
             owner_descriptions=(cls._parse_item_descr_entries(data.get("owner_descriptions", ()))),
             fraud_warnings=tuple(data.get("fraudwarnings", ())),
-            sealed=bool(data["sealed"]),
+            sealed=bool(data.get("sealed", False)),
         )
 
     @staticmethod

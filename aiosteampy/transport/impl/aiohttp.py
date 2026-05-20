@@ -84,6 +84,7 @@ class AiohttpTransport(BaseSteamTransport):
         c = BaseCookie({cookie.name: cookie.value})
         m = c[cookie.name]
 
+        m["path"] = cookie.path
         m["expires"] = format_http_date(cookie.expires) if cookie.expires is not None else None
         m["secure"] = cookie.secure
         m["httponly"] = cookie.http_only
@@ -99,7 +100,7 @@ class AiohttpTransport(BaseSteamTransport):
         return tuple(self._c_from_morsel(m) for m in self._session.cookie_jar)
 
     def has_cookie(self, url, name):
-        key = (url.host, url.path[1:])
+        key = (url.host, url.path[1:] if url.path == "/" else url.path)
         if key in self._session.cookie_jar._cookies:  # avoid creating def morsel
             return name in self._session.cookie_jar._cookies[key]
 

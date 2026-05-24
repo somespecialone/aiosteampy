@@ -9,8 +9,9 @@ import betterproto2
 
 from .app import App
 
-if TYPE_CHECKING:
-    from .components.market import MarketListingItem
+if TYPE_CHECKING:  # break circle import
+    from .components.market import ListingItem, MarketListingItem
+    from .components.market.models import ListingItemAccessory
     from .components.trade import TradeOfferItem
     from .econ import AssetAccessory, EconItem, ItemDescription
 
@@ -74,7 +75,7 @@ class DescriptionDescriptionName(StrEnum):  # lol
             return None
 
 
-@dataclass(eq=False, slots=True)
+@dataclass(slots=True)
 class DescriptionContext:
     """Representation of `CS2` specific ``ItemDescription`` data."""
 
@@ -100,7 +101,7 @@ class DescriptionContext:
     @classmethod
     def from_description(cls, descr: "ItemDescription") -> Self:
         if descr.app is not App.CS2:
-            raise ValueError("Passed 'description' are not belong to 'CS2' app.")
+            raise ValueError("Passed description belongs to other app than CS2")
 
         stickers = ()
         charm = None
@@ -124,24 +125,25 @@ class DescriptionContext:
         return cls(stickers, charm, collection, exterior, stattrak_score)
 
 
-@dataclass(eq=False, slots=True)
+@dataclass(slots=True)
 class ItemAccessory:
     class_id: int
     meta: ItemAccessoryMeta
+    description: "ItemDescription | None"
 
 
-@dataclass(eq=False, slots=True)
+@dataclass(slots=True)
 class Sticker(ItemAccessory):
     wear: float
 
 
-@dataclass(eq=False, slots=True)
+@dataclass(slots=True)
 class Charm(ItemAccessory):
-    pattern: int
+    pattern: int | None
 
 
 # https://github.com/SteamTracking/Protobufs/blob/e0029427a75d9247e8d15b11d812cf6c00519304/csgo/cstrike15_gcmessages.proto#L915
-@dataclass(eq=False, repr=False)
+@dataclass(repr=False)
 class CEconItemPreviewDataBlock(betterproto2.Message):
     accountid: "int" = betterproto2.field(1, betterproto2.TYPE_UINT32)
     itemid: "int" = betterproto2.field(2, betterproto2.TYPE_UINT64)
@@ -187,7 +189,7 @@ class CEconItemPreviewDataBlock(betterproto2.Message):
         return cls.parse(buffer[1:-4])
 
 
-@dataclass(eq=False, repr=False)
+@dataclass(repr=False)
 class CEconItemPreviewDataBlockSticker(betterproto2.Message):
     slot: "int" = betterproto2.field(1, betterproto2.TYPE_UINT32)
     sticker_id: "int" = betterproto2.field(2, betterproto2.TYPE_UINT32)
@@ -203,7 +205,7 @@ class CEconItemPreviewDataBlockSticker(betterproto2.Message):
     wrapped_sticker: "int" = betterproto2.field(12, betterproto2.TYPE_UINT32)
 
 
-@dataclass(eq=False, slots=True)
+@dataclass(slots=True)
 class ItemContext:
     """Representation of `CS2` specific ``EconItem`` data."""
 
@@ -238,17 +240,22 @@ class ItemContext:
             return self._inspect_data
 
     @staticmethod
-    def _create_sticker(sticker_meta: ItemAccessoryMeta, accessory: "AssetAccessory") -> Sticker:
+    def _create_sticker(sticker_meta: ItemAccessoryMeta, accessory: "AssetAccessory | ListingItemAccessory") -> Sticker:
         w_prop = accessory.parent_relationship_properties[0]
         assert AssetPropertyId(w_prop.id) is AssetPropertyId.STICKER_SCRAPE_LEVEL
 
         # float will round to 16 digits from original 18
-        return Sticker(class_id=accessory.class_id, meta=sticker_meta, wear=float(w_prop.value))
+        return Sticker(
+            class_id=accessory.class_id,
+            meta=sticker_meta,
+            wear=float(w_prop.value),
+            description=getattr(accessory, "description", None),
+        )
 
     @classmethod
-    def from_item(cls, item: "EconItem | MarketListingItem | TradeOfferItem") -> Self:
+    def from_item(cls, item: "EconItem | MarketListingItem | TradeOfferItem| ListingItem") -> Self:
         if item.description.app is not App.CS2:
-            raise ValueError("Passed item is not belongs to CS2 app.")
+            raise ValueError("Passed item belongs to other app than CS2.")
 
         descr_ctx = item.description.cs2
 
@@ -258,13 +265,21 @@ class ItemContext:
 
         charm = None
         if item.accessories and descr_ctx.charm is not None:
+            pattern = None
             accs = item.accessories[-1]
-            assert accs.standalone_properties
+            if accs.standalone_properties:
+                assert accs.standalone_properties
+                p_prop = accs.standalone_properties[0]
+                assert AssetPropertyId(p_prop.id) is AssetPropertyId.CHARM_TEMPLATE
 
-            p_prop = accs.standalone_properties[0]
-            assert AssetPropertyId(p_prop.id) is AssetPropertyId.CHARM_TEMPLATE
+                pattern = int(p_prop.value)
 
-            charm = Charm(class_id=accs.class_id, meta=descr_ctx.charm, pattern=int(p_prop.value))
+            charm = Charm(
+                class_id=accs.class_id,
+                meta=descr_ctx.charm,
+                pattern=pattern,
+                description=getattr(accs, "description", None),
+            )
 
         inspect_id = None
         wear_rating = None

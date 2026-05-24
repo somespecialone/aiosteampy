@@ -8,7 +8,6 @@ from typing import Any, overload
 
 from yarl import URL
 
-from ....constants import SteamURL
 from ....exceptions import EResultError
 from ....transport import BaseSteamTransport, Cookie, format_http_date, parse_http_date
 from ....webapi.client import COMMUNITY_ORIGIN
@@ -22,6 +21,11 @@ from .models import (
     BuyOrderTableEntry,
     ItemOrdersActivity,
     ItemOrdersHistogram,
+    Listing,
+    ListingItem,
+    ListingItemAccessory,
+    ListingPricing,
+    Listings,
     ListingValues,
     MarketListing,
     MarketListingItem,
@@ -32,6 +36,7 @@ from .models import (
     ModernSearchItem,
     ModernSearchResults,
     NewlyListedItems,
+    OrderBook,
     OrderGraphEntry,
     PriceHistoryEntry,
     PriceOverview,
@@ -39,7 +44,8 @@ from .models import (
     PurchaseInfoValues,
     SellOrderTableEntry,
 )
-from .query import SearchQuery, SortDir, SortingCriteria
+from .query import ListingsQuery, SearchQuery, SearchSorting, SortDir
+from .urls import LISTINGS_URL, MARKET_URL, SEARCH_RENDER_URL, SEARCH_URL
 from .utils import extract_icon_hash_from_app_icon_link
 
 ITEM_ORDER_HIST_PRICE_RE = re.compile(r"[^\d\s]*([\d,]+(?:\.\d+)?)[^\d\s]*")  # Author: ChatGPT
@@ -51,10 +57,7 @@ PRICE_ENTRY_TIME_FORMAT = "%b %d %Y %H: %z"
 LISTING_COUNT = 10
 SEARCH_COUNT = 10
 MODERN_SEARCH_LIMIT = 30
-
-MARKET_URL = SteamURL.COMMUNITY / "market/"
-SEARCH_URL = MARKET_URL / "search"
-SEARCH_RENDER_URL = SEARCH_URL / "render/"
+MODERN_LISTINGS_LIMIT = 20
 
 CUSTOM_API_HEADERS = {"X-Prototype-Version": "1.7", "X-Requested-With": "XMLHttpRequest"}
 
@@ -120,7 +123,7 @@ class MarketPublicComponent(EconMixin):
 
         .. seealso::
             * https://github.com/Revadike/InternalSteamWebAPI/wiki/Get-Market-Item-Orders-Histogram.
-            * https://github.com/somespecialone/steam-item-name-ids - open source list of known item name ids.
+            * https://github.com/somespecialone/steam-market-ids - open source list of known item name ids.
 
         .. note:: This request is rate limited by `Steam`. It is **strongly advised** to use ``if_modified_since``.
 
@@ -194,7 +197,7 @@ class MarketPublicComponent(EconMixin):
 
         .. seealso::
             * https://github.com/Revadike/InternalSteamWebAPI/wiki/Get-Market-Item-Orders-Activity.
-            * https://github.com/somespecialone/steam-item-name-ids - open source list of known item name ids.
+            * https://github.com/somespecialone/steam-market-ids - open source list of known item name ids.
 
         .. note:: This request is rate limited by `Steam`. It is **strongly advised** to use ``if_modified_since``.
 
@@ -595,7 +598,7 @@ class MarketPublicComponent(EconMixin):
         """
         Get `item name id`, a special market of *item class*.
 
-        .. seealso:: https://github.com/somespecialone/steam-item-name-ids.
+        .. seealso:: https://github.com/somespecialone/steam-market-ids.
 
         :param obj: `market hash name` of item or ``ItemDescription``.
         :param app: `Steam` app.
@@ -718,7 +721,7 @@ class MarketPublicComponent(EconMixin):
         start: int = 0,
         count: int = SEARCH_COUNT,
         descriptions: bool = False,
-        sort_column: SortingCriteria = None,
+        sort_column: SearchSorting = None,
         sort_dir: SortDir = "desc",
         filters: str | Mapping[str, str | Sequence[str]] = "",
         # share mapping with iterator method
@@ -827,7 +830,7 @@ class MarketPublicComponent(EconMixin):
         start: int = 0,
         count: int = SEARCH_COUNT,
         descriptions: bool = False,
-        sort_column: SortingCriteria = "default",
+        sort_column: SearchSorting = "default",
         sort_dir: SortDir = "desc",
         filters: str | Mapping[str, str | Sequence[str]] = "",
     ) -> AsyncGenerator[list[MarketSearchItem], None]:
@@ -1054,8 +1057,23 @@ class MarketPublicComponent(EconMixin):
         )
 
     @_beta_market_enabled
-    async def get_search_app_facets(self, app: App):
-        raise NotImplementedError()
+    async def get_search_app_facets(self, app: App) -> dict[str, dict[str, str | int | dict[str, dict[str, str]]]]:
+        """Get `Steam Market` search filter facets for ``app``."""
+
+        params = {"q": "Load", "qp": f"[{app.id}]"}
+        headers = {"Referer": str(SEARCH_URL % params), "x-valve-request-type": "queryAction"}
+        r = await self._transport.request(
+            "GET",
+            MARKET_URL / "appfacets",
+            params=params,
+            headers=headers,
+            response_mode="json",
+        )
+        rj: dict = r.content
+
+        EResultError.check_data(rj)
+
+        return rj["data"]
 
     @_beta_market_enabled
     async def get_asset_property_schema(self, app: App):
@@ -1063,34 +1081,60 @@ class MarketPublicComponent(EconMixin):
         raise NotImplementedError()
 
     @_beta_market_enabled
-    async def get_orderbook(self, app: App, market_hash_name: str):
-        raise NotImplementedError()
+    async def get_orderbook(self, app: App, bucket_id: str) -> OrderBook:
+        """
+        Get orders information for ``bucket_id``.
+        ``bucket_id`` is previously known as ``market_hash_name``.
+        Examples: CS2 `M249 | Humidor (Factory New)`, Rust `Heat Seeker Mp5`.
+
+        .. note:: Price values will be returned in **available regional currencies (dependent on IP)**.
+        """
+
+        params = {"q": "Load", "qp": f'[{app.id}, "{bucket_id}"]'}  # faster than json.dumps
+        headers = {"Referer": str(SEARCH_URL % params), "x-valve-request-type": "queryAction"}
+        r = await self._transport.request(
+            "GET",
+            MARKET_URL / "orderbook",
+            params=params,
+            headers=headers,
+            response_mode="json",
+        )
+        rj: dict = r.content
+
+        EResultError.check_data(rj)
+
+        data = rj["data"]
+
+        buys: list[int] = data["rgCompactBuyOrders"]
+        sells: list[int] = data["rgCompactSellOrders"]
+        return OrderBook(
+            max_buy_order=data["amtMaxBuyOrder"],
+            min_sell_order=data["amtMinSellOrder"],
+            tota_buy_orders=data["cBuyOrders"],
+            total_sell_orders=data["cSellOrders"],
+            # lazy generators as there are many entries, so no need to iterate over them again
+            buy_orders=((buys[i], buys[i + 1]) for i in range(0, len(buys), 2)),
+            sell_orders=((sells[i], sells[i + 1]) for i in range(0, len(sells), 2)),
+        )
 
     @overload
     async def modern_search(self, query: SearchQuery, *, page: int = ...) -> ModernSearchResults: ...
     @overload
     async def modern_search(self, query: SearchQuery, *, start: int = ...) -> ModernSearchResults: ...
     @_beta_market_enabled
-    async def modern_search(
-        self,
-        query: SearchQuery,
-        *,
-        page: int = 0,
-        start: int = 0,
-        etag: str | None = None,
-    ) -> ModernSearchResults:
+    async def modern_search(self, query: SearchQuery, *, page: int = 0, start: int = 0) -> ModernSearchResults:
         """
         Get search results from `Steam Market`.
 
-        .. note:: This request is rate limited by `Steam`.
+        .. note::
+            * This request is rate limited by `Steam`.
+            * Price values will be returned in **available regional currencies (dependent on IP)**.
 
         :param query: prepared builder with desired ``query``.
         :param page: number of ``page`` to be requested. **Starts from 0**.
         :param start: results window offset index. Mutually exclusive with ``page``.
-        :param etag: previous `ETag` header value (server HTTP caching).
         :raises TransportError: ordinary reasons.
         :raises TooManyRequests: rate limit has been hit.
-        :raises ResourceNotModified: 304 status code if ``etag`` provided.
         """
 
         if page and start:
@@ -1106,8 +1150,6 @@ class MarketPublicComponent(EconMixin):
             "x-valve-request-type": "routeAction",
             "x-valve-action-type": "ZFJAHYDA:SearchMarketListings",  # route id:route action type
         }
-        if etag:
-            headers["If-None-Match"] = etag
 
         r = await self._transport.request(
             "POST",
@@ -1138,5 +1180,127 @@ class MarketPublicComponent(EconMixin):
             total_count=total,
             total_pages=ceil(total / MODERN_SEARCH_LIMIT),
             more_pages=(total - (start + MODERN_SEARCH_LIMIT)) > 0,
-            etag=r.headers["ETag"],
+        )
+
+    # awaits same fate as ListingItemAccessory (replace econ method)
+    @classmethod
+    def _create_accessory_property(cls, data: dict) -> ListingItemAccessory:
+        """Create accessory property for modern(beta) market response (with description)."""
+
+        parent_props = tuple(cls._create_property(pd) for pd in data.get("parent_relationship_properties", ()))
+        standalone_props = tuple(cls._create_property(pd) for pd in data.get("standalone_properties", ()))
+
+        return ListingItemAccessory(
+            description=cls._create_item_descr(data["description"]),
+            parent_relationship_properties=parent_props,
+            standalone_properties=standalone_props,
+        )
+
+    @overload
+    async def get_modern_listings(
+        self,
+        bucket_group_id: str,
+        app: App,
+        query: ListingsQuery | None = ...,
+        *,
+        page: int = ...,
+    ) -> Listings: ...
+    @overload
+    async def get_modern_listings(
+        self,
+        bucket_group_id: str,
+        app: App,
+        query: ListingsQuery | None = ...,
+        *,
+        start: int = ...,
+    ) -> Listings: ...
+    @_beta_market_enabled
+    async def get_modern_listings(
+        self,
+        bucket_group_id: str,
+        app: App,
+        query: ListingsQuery | None = None,
+        *,
+        page: int = 0,
+        start: int = 0,
+    ) -> Listings:
+        """
+        Get item listings from `Steam Market`.
+
+        .. note::
+            * This request is rate limited by `Steam`.
+            * Price values will be returned in **available regional currencies (dependent on IP)**.
+
+        .. seealso:: https://github.com/somespecialone/steam-market-ids - repo storage with `bucket group ids`.
+
+        :param bucket_group_id: id of `bucket group` (like G123E456...).
+        :param app: `Steam` app of requested listings.
+        :param query: prepared builder with desired ``query``.
+        :param page: number of ``page`` to be requested. **Starts from 0**.
+        :param start: results window offset index. Mutually exclusive with ``page``.
+        :raises TransportError: ordinary reasons.
+        :raises TooManyRequests: rate limit has been hit.
+        """
+
+        if page and start:
+            raise ValueError("Page and start args are mutually exclusive")
+
+        if page:
+            start = MODERN_LISTINGS_LIMIT * page
+
+        query = query or ListingsQuery()
+        query.app = app
+        payload, params = query.build(bucket_group_id, start, self._state.currency)
+
+        url = LISTINGS_URL / f"{app.id}/{bucket_group_id}"
+
+        headers = {
+            "Referer": str(url % params),
+            "x-valve-request-type": "routeAction",
+            "x-valve-action-type": "4OPT6VBA:Search",  # route id:route action type
+        }
+
+        r = await self._transport.request(
+            "POST",
+            url / f"{bucket_group_id}",
+            params=params,
+            json=payload,
+            headers=headers,
+            response_mode="json",
+        )
+
+        rj: dict = r.content
+
+        return Listings(
+            [
+                Listing(
+                    id=int(l["listingid"]),
+                    item=ListingItem(
+                        context_id=int(l["asset"]["contextid"]),
+                        asset_id=int(l["asset"]["assetid"]),
+                        amount=l["asset"]["amount"],
+                        description=self._create_item_descr(l["description"]),
+                        properties=tuple(self._create_property(p) for p in l["asset"]["asset_properties"]),
+                        accessories=tuple(
+                            self._create_accessory_property(a) for a in l["asset"]["accessory_properties"]
+                        ),
+                    ),
+                    pricing=ListingPricing(
+                        price=l["unPrice"],
+                        fee=l["unFee"],
+                        fee_steam=l["unSteamFee"],
+                        fee_publisher=l["unPublisherFee"],
+                    ),
+                    per_unit_pricing=ListingPricing(
+                        price=l["unPricePerUnit"],
+                        fee=l["unFeePerUnit"],
+                        fee_steam=l["unSteamFeePerUnit"],
+                        fee_publisher=l["unPublisherFeePerUnit"],
+                    ),
+                    appearances=tuple(a["url"] for a in l["enhanced_appearances"]),
+                )
+                for l in rj["listings"]
+            ],
+            more=rj["more"],
+            total_count=rj["total_count"],
         )

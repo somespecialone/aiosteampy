@@ -1,3 +1,4 @@
+from collections.abc import Iterable
 from dataclasses import dataclass
 from datetime import datetime
 from enum import IntEnum, StrEnum
@@ -6,7 +7,8 @@ from typing import NamedTuple
 from ....id import SteamID
 from ...app import App, AppContext
 from ...constants import Currency
-from ...econ import EconItem, ItemDescription
+from ...econ import AssetProperty, EconItem, ItemDescription
+from .urls import LISTINGS_URL
 
 
 class SellOrderTableEntry(NamedTuple):
@@ -453,5 +455,103 @@ class ModernSearchResults(NamedTuple):
     """Total number of `pages`."""
     more_pages: bool
     """Whether there is still more `pages` that can be fetched."""
-    etag: str
-    """`ETag` header value of the current page."""
+
+
+class OrderBook(NamedTuple):
+    """Dedicated `bucket id` orders information container."""
+
+    max_buy_order: int
+    """Maximal price across all `buy orders`."""
+    min_sell_order: int
+    """Minimal price across all `sell orders/listings`."""
+    tota_buy_orders: int
+    """Total number of `buy orders`."""
+    total_sell_orders: int
+    """Total number of `sell orders/listings`."""
+
+    buy_orders: Iterable[tuple[int, int]]
+    """Buy orders in `price/amount` pairs."""
+    sell_orders: Iterable[tuple[int, int]]
+    """Sell orders in `price/amount` pairs."""
+
+
+class ListingPricing(NamedTuple):
+    """Listing pricing container."""
+
+    price: int
+    """Price excluding `fees`."""
+    fee: int
+    """Final `fee`."""
+
+    fee_steam: int
+    """`Steam` part of final `fee`."""
+    fee_publisher: int
+    """`Publisher` part of final `fee`."""
+
+    @property
+    def total(self) -> int:  # subtotal :)
+        """Final price (total cost for buyer)."""
+        return self.price + self.fee
+
+
+# When/if inventory/tradeoffer responses will return description for accessory,
+# this needs to replace econ.AssetAccessory
+class ListingItemAccessory(NamedTuple):
+    """
+    ``EconItem`` accessory with attached ``ItemDescription``.
+    Available only for modern beta market.
+    """
+
+    description: ItemDescription
+    parent_relationship_properties: tuple[AssetProperty, ...]
+    standalone_properties: tuple[AssetProperty, ...]
+    # nested: ...  # nested accessories, I don't think that this works now so will wait
+
+    @property
+    def class_id(self) -> int:
+        """Class ID shorthand: backward compatibility."""
+        return self.description.class_id
+
+
+@dataclass(slots=True, kw_only=True)
+class ListingItem(EconItem):
+    """Represents `Steam Market` listing item."""
+
+    owner: None = None
+    accessories: tuple[ListingItemAccessory, ...] = ()
+
+
+@dataclass(slots=True)
+class Listing:
+    """Modern(beta) `Steam Market` listing representation."""
+
+    id: int
+    """Unique market `listing ID`."""
+
+    item: ListingItem
+
+    pricing: ListingPricing
+    """Listing prices & fees."""
+    per_unit_pricing: ListingPricing
+    """Listing per unit prices & fees."""
+    appearances: tuple[str, ...]
+    """Enhanced appearance(detailed screenshot of particular `item`) URLs."""
+
+    @property
+    def url(self) -> str:
+        """Detail view market URL."""
+        return str(
+            LISTINGS_URL
+            / f"{self.item.description.app.id}/{self.item.description.market_bucket_group.id}?detail={self.id}"
+        )
+
+
+class Listings(NamedTuple):
+    """Modern(beta) `Steam Market` listings container."""
+
+    # facets: ...
+    listings: list[Listing]
+    more: bool
+    """Whether there are more `listings` that can be fetched."""
+    total_count: int
+    """Total count of `listings` across all `pages`."""

@@ -27,6 +27,7 @@ from .exceptions import InsufficientBalance, ListingRemoved
 from .models import (
     BuyOrder,
     BuyOrderStatus,
+    Listing,
     ListingValues,
     MarketAvailability,
     MarketEligibility,
@@ -617,7 +618,7 @@ class MarketComponent(MarketPublicComponent):
         )
 
     @overload
-    async def buy_listing(self, obj: MarketListing, *, confirmation_id: int = ...) -> WalletInfo: ...
+    async def buy_listing(self, obj: MarketListing | Listing, *, confirmation_id: int = ...) -> WalletInfo: ...
     @overload
     async def buy_listing(
         self,
@@ -631,7 +632,7 @@ class MarketComponent(MarketPublicComponent):
     ) -> WalletInfo: ...
     async def buy_listing(
         self,
-        obj: int | MarketListing,
+        obj: int | MarketListing | Listing,
         price: int | None = None,
         market_hash_name: str | None = None,
         app: App | None = None,
@@ -677,6 +678,19 @@ class MarketComponent(MarketPublicComponent):
             fee = obj.converted.fee
             market_hash_name = obj.item.description.market_hash_name
             app = obj.item.description.app
+
+        elif isinstance(obj, Listing):  # modern listing
+            if obj.currency is not self._state.currency:
+                raise ValueError(
+                    f"Currency of listing ({obj.currency!r}) is different from wallet ({self._state.currency!r}) one"
+                )
+
+            listing_id = obj.id
+            price = obj.pricing.price
+            fee = obj.pricing.fee
+            market_hash_name = obj.item.description.market_hash_name
+            app = obj.item.description.app
+
         else:
             listing_id = obj
 
@@ -705,7 +719,7 @@ class MarketComponent(MarketPublicComponent):
             r = await self._transport.request(
                 "POST",
                 MARKET_URL / f"buylisting/{listing_id}",
-                data=data,
+                multipart=data,
                 headers={"Referer": str(MARKET_URL / f"listings/{app.id}/{market_hash_name}")},  # mandatory
                 response_mode="json",
             )

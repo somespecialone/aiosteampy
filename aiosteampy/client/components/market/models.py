@@ -434,6 +434,8 @@ class ModernSearchItem:
     sell_orders: int
     """Total number of `sell orders/listings`."""
     # market_hash_name: str  # strHash, useless here
+    currency: Currency
+    """``Currency`` of ``min_price`` value."""
     min_price: int  # strMinSellSubtotal
     """Starting `price from`."""
 
@@ -460,6 +462,8 @@ class ModernSearchResults(NamedTuple):
 class OrderBook(NamedTuple):
     """Dedicated `bucket id` orders information container."""
 
+    currency: Currency
+    """``Currency`` of `order` values."""
     max_buy_order: int
     """Maximal price across all `buy orders`."""
     min_sell_order: int
@@ -530,10 +534,12 @@ class Listing:
 
     item: ListingItem
 
+    currency: Currency
+    """``Currency`` of `prices & fees` values."""
     pricing: ListingPricing
-    """Listing prices & fees."""
+    """Listing `prices & fees`."""
     per_unit_pricing: ListingPricing
-    """Listing per unit prices & fees."""
+    """Listing per unit `prices & fees`."""
     appearances: tuple[str, ...]
     """Enhanced appearance(detailed screenshot of particular `item`) URLs."""
 

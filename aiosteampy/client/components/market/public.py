@@ -1110,6 +1110,7 @@ class MarketPublicComponent(EconMixin):
         buys: list[int] = data["rgCompactBuyOrders"]
         sells: list[int] = data["rgCompactSellOrders"]
         return OrderBook(
+            currency=Currency(data["eCurrency"]),
             max_buy_order=data["amtMaxBuyOrder"],
             min_sell_order=data["amtMinSellOrder"],
             tota_buy_orders=data["cBuyOrders"],
@@ -1173,6 +1174,7 @@ class MarketPublicComponent(EconMixin):
                     self._create_item_descr(i["asset_description"]),
                     buy_orders=i["cBuyOrders"],
                     sell_orders=i["cSellOrders"],
+                    currency=Currency(i["eCurrency"]),
                     min_price=self._parse_price_with_currency(i["strMinSellSubtotal"]),
                     publisher_fee=i["unPublisherFee"],
                     steam_fee=i["unSteamFee"],
@@ -1301,6 +1303,7 @@ class MarketPublicComponent(EconMixin):
                             self._create_accessory_property(a) for a in l["asset"]["accessory_properties"]
                         ),
                     ),
+                    currency=Currency(l["eCurrency"]),
                     pricing=ListingPricing(
                         price=l["unPrice"],
                         fee=l["unFee"],

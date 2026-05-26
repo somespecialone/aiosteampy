@@ -249,10 +249,8 @@ class MarketComponent(MarketPublicComponent):
         asset_id: int = ...,
         ident_code: str = ...,
     ) -> UserMarketListing | None: ...
-
     @overload
     async def get_user_listing(self, obj: Callable[[UserMarketListing], bool]) -> UserMarketListing | None: ...
-
     async def get_user_listing(
         self,
         obj: int | Callable[[UserMarketListing], bool] | None = None,
@@ -333,7 +331,6 @@ class MarketComponent(MarketPublicComponent):
         *,
         to_receive: int,
     ) -> int | None: ...
-
     @overload
     async def place_sell_listing(
         self,
@@ -342,7 +339,6 @@ class MarketComponent(MarketPublicComponent):
         *,
         price: int,
     ) -> int | None: ...
-
     @overload
     async def place_sell_listing(
         self,
@@ -351,7 +347,6 @@ class MarketComponent(MarketPublicComponent):
         *,
         to_receive: int,
     ) -> int | None: ...
-
     async def place_sell_listing(
         self,
         obj: EconItem | int,
@@ -461,7 +456,6 @@ class MarketComponent(MarketPublicComponent):
         quantity: int = ...,
         confirmation_id: int = ...,
     ) -> int: ...
-
     @overload
     async def place_buy_order(
         self,
@@ -472,7 +466,6 @@ class MarketComponent(MarketPublicComponent):
         quantity: int = ...,
         confirmation_id: int = ...,
     ) -> int: ...
-
     async def place_buy_order(
         self,
         obj: str | ItemDescription,
@@ -625,7 +618,6 @@ class MarketComponent(MarketPublicComponent):
 
     @overload
     async def buy_listing(self, obj: MarketListing, *, confirmation_id: int = ...) -> WalletInfo: ...
-
     @overload
     async def buy_listing(
         self,
@@ -637,7 +629,6 @@ class MarketComponent(MarketPublicComponent):
         fee: int = ...,
         confirmation_id: int = ...,
     ) -> WalletInfo: ...
-
     async def buy_listing(
         self,
         obj: int | MarketListing,

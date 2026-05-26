@@ -21,9 +21,14 @@ Manage Steam sessions, Guard, Market, trade offers and more.
 
 <!--header-end-->
 
-> [!IMPORTANT]
+> [!WARNING]
 > The project is heading toward `1.0.0` and there can be some changes until stable release
 > but library design as a whole with most API will stay.
+
+> [!IMPORTANT]
+> Beta `Steam Market` methods, models, and related functionality will **replace** old when `Steam`
+> migrate their website keeping `old` names whenever possible. 
+> No longer functional methods will be removed conveniently.
 
 ## Documentation
 

@@ -19,6 +19,8 @@ from .models import (
     ActivityEntry,
     ActivityType,
     BuyOrderTableEntry,
+    FacetListingPair,
+    FacetListingTag,
     ItemOrdersActivity,
     ItemOrdersHistogram,
     Listing,
@@ -1271,8 +1273,22 @@ class MarketPublicComponent(EconMixin):
 
         rj: dict = r.content
 
+        facets: list[dict[str, int | dict[str, str]]] = rj["facets"]
+
         return Listings(
-            [
+            facets=(
+                FacetListingPair(
+                    facet["listings"],
+                    FacetListingTag(
+                        category=facet["tag"]["category"],
+                        internal_name=facet["tag"]["internal_name"],
+                        localized_category_name=facet["tag"]["localized_category_name"],
+                        localized_tag_name=facet["tag"]["localized_tag_name"],
+                    ),
+                )
+                for facet in facets
+            ),
+            listings=[
                 Listing(
                     id=int(l["listingid"]),
                     item=ListingItem(

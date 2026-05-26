@@ -546,11 +546,29 @@ class Listing:
         )
 
 
+class FacetListingTag(NamedTuple):
+    category: str
+    internal_name: str
+    localized_category_name: str
+    localized_tag_name: str
+
+
+class FacetListingPair(NamedTuple):
+    """Facet listing pair."""
+
+    listings: int
+    """Number of available listings for ``tag``."""
+    tag: FacetListingTag
+    """Listings facet `tag(category)`."""
+
+
 class Listings(NamedTuple):
     """Modern(beta) `Steam Market` listings container."""
 
-    # facets: ...
+    facets: Iterable[FacetListingPair]  # lazy
+    """Listings `facet-to-available` pars."""
     listings: list[Listing]
+    """Parsed `listings` models."""
     more: bool
     """Whether there are more `listings` that can be fetched."""
     total_count: int

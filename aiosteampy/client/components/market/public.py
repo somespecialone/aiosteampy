@@ -1033,7 +1033,7 @@ class MarketPublicComponent(EconMixin):
 
         @wraps(func)
         def wrapper(self: "MarketPublicComponent", *args, **kwargs):
-            if self._transport.has_cookie(MARKET_URL, MODERN_MARKET_OPT_OUT_COOKIE):
+            if self._transport.has_cookie(URL(str(MARKET_URL)[:-1]), MODERN_MARKET_OPT_OUT_COOKIE):
                 raise RuntimeError("Modern market is opt out")
 
             return func(self, *args, **kwargs)
@@ -1262,7 +1262,7 @@ class MarketPublicComponent(EconMixin):
 
         r = await self._transport.request(
             "POST",
-            url / f"{bucket_group_id}",
+            url,
             params=params,
             json=payload,
             headers=headers,

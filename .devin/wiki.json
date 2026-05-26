@@ -72,6 +72,11 @@
       "parent": "Clients & Components"
     },
     {
+      "title": "Query building",
+      "purpose": "Clear and concise explanation of SearchQuery and ListingsQuery usage as query builders for MarketPublicComponent's modern_search and get_modern_listings methods.",
+      "parent": "Market component"
+    },
+    {
       "title": "Profile component",
       "purpose": "Brief documentation of ProfilePublicComponent and ProfileComponent, properties and methods, general functionality and responsibility.",
       "parent": "Clients & Components"

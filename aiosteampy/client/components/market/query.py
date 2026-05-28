@@ -1,5 +1,8 @@
+from base64 import b64encode
 from dataclasses import dataclass, field
-from typing import Literal, Self
+from typing import Literal, Self, overload
+
+import betterproto2
 
 from ....transport.types import _ScalarTypes
 from ...app import App
@@ -165,6 +168,16 @@ class SearchQuery(BaseQuery):
         self.filters.clear()
 
 
+# https://github.com/SteamTracking/Protobufs/blob/e36c4b3f887e5c22bd53cee70f0b3bcb0b348f5a/webui/common.proto#L3-L9
+@dataclass(eq=False, repr=False)
+class AssetPropertyFilter(betterproto2.Message):
+    property_id: "int" = betterproto2.field(1, betterproto2.TYPE_UINT32)
+    float_min: "float" = betterproto2.field(2, betterproto2.TYPE_FLOAT)
+    float_max: "float" = betterproto2.field(3, betterproto2.TYPE_FLOAT)
+    int_min: "int" = betterproto2.field(4, betterproto2.TYPE_INT64)
+    int_max: "int" = betterproto2.field(5, betterproto2.TYPE_INT64)
+
+
 @dataclass(slots=True)
 class ListingsQuery(BaseQuery):
     """
@@ -180,12 +193,18 @@ class ListingsQuery(BaseQuery):
     accessories: TFilters = field(default_factory=dict)
     """Map of ``app`` accessory filter facets and tags."""
 
+    properties: dict[int, dict[str, int | float]] = field(default_factory=dict)
+    """Map of ``app`` property filter facets and payload values."""
+
     def _build_accessories(self) -> TFilters:
         return {f"accessory_{f}": accs for f, accs in self.accessories.items()}
 
+    def _build_properties(self) -> dict[str, dict[str, int | float]]:
+        return {str(prop_id): {"property_id": prop_id, **prop_val} for prop_id, prop_val in self.properties.items()}
+
     def accessory(self, facet: str, *tags: str) -> Self:
         """
-        Add accessory ``facet`` with ``tags`` to `query`.
+        Add ``app`` specific accessory ``facet`` with ``tags`` to `query`.
 
         .. note:: 'accessory' keyword **must be excluded**.
 
@@ -199,6 +218,40 @@ class ListingsQuery(BaseQuery):
         self.accessories.setdefault(facet, []).extend(tags)
         return self
 
+    @overload
+    def property(self, id_: int, *, int_min: int, int_max: int) -> Self: ...
+    @overload
+    def property(self, id_: int, *, float_min: float, float_max: float) -> Self: ...
+    def property(
+        self,
+        id_: int,
+        *,
+        int_min: int | None = None,
+        int_max: int | None = None,
+        float_min: float | None = None,
+        float_max: float | None = None,
+    ) -> Self:
+        """
+        Add ``app`` specific property filter to `query`.
+
+        .. note:: `property_id` field will be automatically added to payload so can be omitted in ``property_``.
+
+        For example, to set ``CS2`` `wear rating` property filter ``id_`` must be `2`
+        and ``property_id`` need to be `{"float_min": 0, "float_max": 1}`.
+        """
+
+        if self.app is None:
+            raise ValueError("app is required to set property filter facets")
+
+        prop = {}
+        if int_min is not None:
+            prop["int_min"] = int_min
+            prop["int_max"] = int_max
+        else:
+            prop["float_min"] = float_min
+            prop["float_max"] = float_max
+        self.properties[id_] = prop
+
     def _sort_dir(self) -> int:
         return 0 if self.sort_dir == "asc" else 1
 
@@ -211,7 +264,7 @@ class ListingsQuery(BaseQuery):
         payload = self._payload(start, currency)
         payload["strItemName"] = bucket_group_id
         payload["accessoryFilters"] = self._build_accessories()
-        payload["propertyFilters"] = {}  # as in browser
+        payload["propertyFilters"] = self._build_properties()
         if self.sort_by is not None:
             sort = {"field": self._sort_by(), "direction": self._sort_dir()}
             if isinstance(self.sort_by, int):  # sorting by app defined property
@@ -227,6 +280,13 @@ class ListingsQuery(BaseQuery):
         params = self._params(currency)
         if self.app:
             params.extend((facet, acc) for facet, accs in self._build_accessories().items() for acc in accs)
+            params.extend(
+                (
+                    "assetproperty",
+                    b64encode(bytes(AssetPropertyFilter(**prop))).decode(),
+                )
+                for prop in self._build_properties().values()
+            )
 
         if self.sort_by is not None:
             params.append(("sort", self._sort_by()))

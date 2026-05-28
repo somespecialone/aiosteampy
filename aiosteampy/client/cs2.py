@@ -1,7 +1,7 @@
 """`CS2` app specific context."""
 
 import re
-from collections.abc import Iterable
+from collections.abc import Callable, Iterable
 from dataclasses import dataclass, field
 from enum import IntEnum, StrEnum
 from typing import TYPE_CHECKING, Literal, NamedTuple, Self
@@ -9,7 +9,7 @@ from typing import TYPE_CHECKING, Literal, NamedTuple, Self
 import betterproto2
 
 from .app import App
-from .components.market.query import ListingsQuery
+from .components.market.query import ListingsQuery, SearchQuery
 
 if TYPE_CHECKING:  # break circle import
     from .components.market import ListingItem, MarketListingItem
@@ -399,123 +399,149 @@ TWeapons = Literal[
 
 TStickerTypes = Literal["Player Autograph", "Team Logo", "Tournament"]
 
+TRarities = Literal[
+    "Consumer Grade",
+    "Industrial Grade",
+    "Mil-Spec Grade",
+    "Restricted",
+    "High Grade",
+    "Classified",
+    "Covert",
+    "Base Grade",
+    "Remarkable",
+    "Extraordinary",
+    "Exotic",
+    "Superior",
+    "Distinguished",
+    "Exceptional",
+    "Master",
+    "Contraband",
+]
+
 # localized: value
 TAGS_MAP = {
-    "AK-47": "weapon_ak47",
-    "AUG": "weapon_aug",
-    "AWP": "weapon_awp",
-    "Agent": "Type_CustomPlayer",
-    "Battle-Scarred": "WearCategory4",
-    "Bayonet": "weapon_bayonet",
-    "Bowie Knife": "weapon_knife_survival_bowie",
-    "Butterfly Knife": "weapon_knife_butterfly",
-    "CZ75-Auto": "weapon_cz75a",
-    "Charm": "CSGO_Tool_Keychain",
-    "Classic Knife": "weapon_knife_css",
-    "Collectible": "CSGO_Type_Collectible",
-    "Container": "CSGO_Type_WeaponCase",
-    "Customized": "customized",
-    "Desert Eagle": "weapon_deagle",
-    "Dual Berettas": "weapon_elite",
-    "Equipment": "CSGO_Type_Equipment",
-    "FAMAS": "weapon_famas",
-    "Factory New": "WearCategory0",
-    "Falchion Knife": "weapon_knife_falchion",
-    "Field-Tested": "WearCategory2",
-    "Five-SeveN": "weapon_fiveseven",
-    "Flip Knife": "weapon_knife_flip",
-    "G3SG1": "weapon_g3sg1",
-    "Galil AR": "weapon_galilar",
-    "Gift": "CSGO_Tool_GiftTag",
-    "Glock-18": "weapon_glock",
-    "Gloves": "Type_Hands",
-    "Graffiti": "CSGO_Type_Spray",
-    "Gut Knife": "weapon_knife_gut",
-    "Highlight": "highlight",
-    "Huntsman Knife": "weapon_knife_tactical",
-    "Karambit": "weapon_knife_karambit",
-    "Key": "CSGO_Tool_WeaponCase_KeyTag",
-    "Knife": "CSGO_Type_Knife",
-    "Kukri Knife": "weapon_knife_kukri",
-    "M249": "weapon_m249",
-    "M4A1-S": "weapon_m4a1_silencer",
-    "M4A4": "weapon_m4a1",
-    "M9 Bayonet": "weapon_knife_m9_bayonet",
-    "MAC-10": "weapon_mac10",
-    "MAG-7": "weapon_mag7",
-    "MP5-SD": "weapon_mp5sd",
-    "MP7": "weapon_mp7",
-    "MP9": "weapon_mp9",
-    "Machinegun": "CSGO_Type_Machinegun",
-    "Minimal Wear": "WearCategory1",
-    "Music Kit": "CSGO_Type_MusicKit",
-    "Navaja Knife": "weapon_knife_gypsy_jackknife",
-    "Negev": "weapon_negev",
-    "Nomad Knife": "weapon_knife_outdoor",
+    # Category/quality
     "Normal": "normal",
-    "Not Painted": "WearCategoryNA",
-    "Nova": "weapon_nova",
-    "P2000": "weapon_hkp2000",
-    "P250": "weapon_p250",
-    "P90": "weapon_p90",
-    "PP-Bizon": "weapon_bizon",
-    "Paracord Knife": "weapon_knife_cord",
-    "Pass": "CSGO_Type_Ticket",
-    "Patch": "CSGO_Tool_Patch",
-    "Pistol": "CSGO_Type_Pistol",
-    "R8 Revolver": "weapon_revolver",
-    "Rifle": "CSGO_Type_Rifle",
-    "SCAR-20": "weapon_scar20",
-    "SG 553": "weapon_sg556",
-    "SMG": "CSGO_Type_SMG",
-    "SSG 08": "weapon_ssg08",
-    "Sawed-Off": "weapon_sawedoff",
-    "Shadow Daggers": "weapon_knife_push",
-    "Shotgun": "CSGO_Type_Shotgun",
-    "Skeleton Knife": "weapon_knife_skeleton",
-    "Sniper Rifle": "CSGO_Type_SniperRifle",
     "Souvenir": "tournament",
     "StatTrak™": "strange",
-    "Sticker": "CSGO_Tool_Sticker",
-    "Stiletto Knife": "weapon_knife_stiletto",
-    "Survival Knife": "weapon_knife_canis",
-    "Tag": "CSGO_Tool_Name_TagTag",
-    "Talon Knife": "weapon_knife_widowmaker",
-    "Tec-9": "weapon_tec9",
-    "Tool": "CSGO_Type_Tool",
-    "UMP-45": "weapon_ump45",
-    "USP-S": "weapon_usp_silencer",
-    "Ursus Knife": "weapon_knife_ursus",
-    "Well-Worn": "WearCategory3",
-    "XM1014": "weapon_xm1014",
-    "Zeus x27": "weapon_taser",
+    "Highlight": "highlight",
     "★": "unusual",
     "★ StatTrak™": "unusual_strange",
+    "Customized": "customized",
+    # Quality/rarity
+    "Consumer Grade": "Rarity_Common_Weapon",
+    "Industrial Grade": "Rarity_Uncommon_Weapon",
+    "Mil-Spec Grade": "Rarity_Rare_Weapon",
+    "Restricted": "Rarity_Mythical_Weapon",
+    "High Grade": "Rarity_Rare",
+    "Classified": "Rarity_Legendary_Weapon",
+    "Covert": "Rarity_Ancient_Weapon",
+    "Base Grade": "Rarity_Common",
+    "Remarkable": "Rarity_Mythical",
+    "Extraordinary": "Rarity_Ancient",
+    "Exotic": "Rarity_Legendary",
+    "Superior": "Rarity_Legendary_Character",
+    "Distinguished": "Rarity_Rare_Character",
+    "Exceptional": "Rarity_Mythical_Character",
+    "Master": "Rarity_Ancient_Character",
+    "Contraband": "Rarity_Contraband",
+    # Exterior
+    "Field-Tested": "WearCategory2",
+    "Minimal Wear": "WearCategory1",
+    "Battle-Scarred": "WearCategory4",
+    "Well-Worn": "WearCategory3",
+    "Factory New": "WearCategory0",
+    "Not Painted": "WearCategoryNA",
+    # Type
+    "SMG": "CSGO_Type_SMG",
+    "Pistol": "CSGO_Type_Pistol",
+    "Rifle": "CSGO_Type_Rifle",
+    "Sniper Rifle": "CSGO_Type_SniperRifle",
+    "Shotgun": "CSGO_Type_Shotgun",
+    "Machinegun": "CSGO_Type_Machinegun",
+    "Charm": "CSGO_Tool_Keychain",
+    "Equipment": "CSGO_Type_Equipment",
+    "Knife": "CSGO_Type_Knife",
+    "Agent": "Type_CustomPlayer",
+    "Container": "CSGO_Type_WeaponCase",
+    "Sticker": "CSGO_Tool_Sticker",
+    "Gloves": "Type_Hands",
+    "Graffiti": "CSGO_Type_Spray",
+    "Music Kit": "CSGO_Type_MusicKit",
+    "Patch": "CSGO_Tool_Patch",
+    "Collectible": "CSGO_Type_Collectible",
+    "Pass": "CSGO_Type_Ticket",
+    "Key": "CSGO_Tool_WeaponCase_KeyTag",
+    "Gift": "CSGO_Tool_GiftTag",
+    "Tag": "CSGO_Tool_Name_TagTag",
+    "Tool": "CSGO_Type_Tool",
+    # Weapons
+    "MP9": "weapon_mp9",
+    "PP-Bizon": "weapon_bizon",
+    "SSG 08": "weapon_ssg08",
+    "P90": "weapon_p90",
+    "P250": "weapon_p250",
+    "SCAR-20": "weapon_scar20",
+    "Nova": "weapon_nova",
+    "MAC-10": "weapon_mac10",
+    "UMP-45": "weapon_ump45",
+    "Tec-9": "weapon_tec9",
+    "G3SG1": "weapon_g3sg1",
+    "MP5-SD": "weapon_mp5sd",
+    "MAG-7": "weapon_mag7",
+    "SG 553": "weapon_sg556",
+    "Sawed-Off": "weapon_sawedoff",
+    "MP7": "weapon_mp7",
+    "Dual Berettas": "weapon_elite",
+    "R8 Revolver": "weapon_revolver",
+    "FAMAS": "weapon_famas",
+    "AUG": "weapon_aug",
+    "Five-SeveN": "weapon_fiveseven",
+    "AK-47": "weapon_ak47",
+    "Galil AR": "weapon_galilar",
+    "M249": "weapon_m249",
+    "CZ75-Auto": "weapon_cz75a",
+    "XM1014": "weapon_xm1014",
+    "M4A1-S": "weapon_m4a1_silencer",
+    "Negev": "weapon_negev",
+    "Desert Eagle": "weapon_deagle",
+    "USP-S": "weapon_usp_silencer",
+    "Zeus x27": "weapon_taser",
+    "M4A4": "weapon_m4a1",
+    "Glock-18": "weapon_glock",
+    "AWP": "weapon_awp",
+    "P2000": "weapon_hkp2000",
+    "Kukri Knife": "weapon_knife_kukri",
+    "Shadow Daggers": "weapon_knife_push",
+    "Bowie Knife": "weapon_knife_survival_bowie",
+    "Falchion Knife": "weapon_knife_falchion",
+    "Survival Knife": "weapon_knife_canis",
+    "Huntsman Knife": "weapon_knife_tactical",
+    "Paracord Knife": "weapon_knife_cord",
+    "Navaja Knife": "weapon_knife_gypsy_jackknife",
+    "Gut Knife": "weapon_knife_gut",
+    "Nomad Knife": "weapon_knife_outdoor",
+    "Skeleton Knife": "weapon_knife_skeleton",
+    "Ursus Knife": "weapon_knife_ursus",
+    "Bayonet": "weapon_bayonet",
+    "Flip Knife": "weapon_knife_flip",
+    "Butterfly Knife": "weapon_knife_butterfly",
+    "Stiletto Knife": "weapon_knife_stiletto",
+    "Talon Knife": "weapon_knife_widowmaker",
+    "Classic Knife": "weapon_knife_css",
+    "M9 Bayonet": "weapon_knife_m9_bayonet",
+    "Karambit": "weapon_knife_karambit",
 }
 
 
-@dataclass(slots=True, kw_only=True)
-class CS2SearchQuery(ListingsQuery):
-    """
-    ``CS2`` specific query builder for `listings`,
-    uses `localized` names for methods and values.
-    Non-exhaustive, so does not contain every possible filter typed.
+class CS2QueryMixin:
+    __slots__ = ()
 
-    .. note:: This builder does not prevent a wrong filters combination,
-        so it is strongly advised to be vigilant.
-    """
-
-    # anyway app need to be passed in component methods
-    # better to be redesigned
-    app: App = field(default_factory=lambda: App.CS2)
+    filter: Callable[[str, str], None]
 
     def _add_filters(self, facet: str, values: Iterable[str]):
         for value in values:
             self.filter(facet, TAGS_MAP[value])
-
-    def _add_accessories(self, facet: str, values: Iterable[str]):
-        for value in values:
-            self.accessory(facet, value)
 
     def exterior(self, *values: TExteriors | ItemExterior) -> Self:
         """Add ``exterior`` filter."""
@@ -525,6 +551,27 @@ class CS2SearchQuery(ListingsQuery):
     def category(self, *values: TQualities) -> Self:
         """Add ``category`` filter."""
         self._add_filters("Quality", values)
+        return self
+
+
+@dataclass(slots=True, kw_only=True)
+class CS2SearchQuery(SearchQuery, CS2QueryMixin):
+    """
+    ``CS2`` specific query builder for market `search`,
+    uses `localized` names for methods and values.
+    Non-exhaustive, so does not contain every possible typed filter.
+
+    .. note:: This builder does not prevent a wrong filters combination,
+        so it is strongly advised to be vigilant.
+    """
+
+    # anyway app need to be passed in component methods
+    # better to be redesigned
+    app: App = field(default_factory=lambda: App.CS2)
+
+    def quality(self, *values: TRarities) -> Self:
+        """Add ``quality`` filter."""
+        self._add_filters("Rarity", values)
         return self
 
     def type(self, *values: TTypes) -> Self:
@@ -542,6 +589,34 @@ class CS2SearchQuery(ListingsQuery):
         self._add_filters("StickerCategory", values)
         return self
 
+
+@dataclass(slots=True, kw_only=True)
+class CS2ListingsQuery(ListingsQuery, CS2QueryMixin):
+    """
+    ``CS2`` specific query builder for `listings`,
+    uses `localized` names for methods and values.
+    Non-exhaustive, so does not contain every possible filter typed.
+
+    .. note:: This builder does not prevent a wrong filters combination,
+        so it is strongly advised to be vigilant.
+    """
+
+    # anyway app need to be passed in component methods
+    # better to be redesigned
+    app: App = field(default_factory=lambda: App.CS2)
+
+    sort_by: Literal["price", "pattern", "wear", None] = None
+
+    def _sort_property_id(self):
+        if self.sort_by == "pattern":
+            return 1
+        elif self.sort_by == "wear":
+            return 2
+
+    def _add_accessories(self, facet: str, values: Iterable[str]):
+        for value in values:
+            self.accessory(facet, value)
+
     def sticker(self, *values: str) -> Self:
         """Add attached ``sticker`` to item as filter. Value must be `sticker` full name(market hash name)."""
         self._add_accessories(TAGS_MAP["Sticker"], values)
@@ -557,7 +632,7 @@ class CS2SearchQuery(ListingsQuery):
         self.property(2, float_min=min_, float_max=max_)
         return self
 
-    def pattern(self, min_: int = 0, max_: int = 1000) -> Self:
+    def pattern(self, min_: int = 0, max_: int = 100_000) -> Self:
         """Set `pattern template (paint seed)` range as filter."""
         self.property(1, int_min=min_, int_max=max_)  # browser sends values as string, hah
         return self

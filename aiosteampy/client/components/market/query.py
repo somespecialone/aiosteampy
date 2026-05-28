@@ -258,6 +258,17 @@ class ListingsQuery(BaseQuery):
     def _sort_by(self) -> int:
         return 0 if str(self.sort_by) == "price" else 1
 
+    # for subclassing
+    def _sort_property_id(self) -> int | None:
+        """
+        Define app specific `propertyid` for sorting criteria.
+        Will be called if ``sort_by`` is not ``None``.
+        Must return ``int`` in case of custom property sorting,
+        and ``None`` of `price` or default (predefined) sorting.
+        """
+
+        return self.sort_by if isinstance(self.sort_by, int) else None
+
     def payload(self, bucket_group_id: str, start: int = 0, currency: Currency = Currency.USD) -> list[dict]:
         """Build `JSON payload` for market listings endpoint."""
 
@@ -267,8 +278,8 @@ class ListingsQuery(BaseQuery):
         payload["propertyFilters"] = self._build_properties()
         if self.sort_by is not None:
             sort = {"field": self._sort_by(), "direction": self._sort_dir()}
-            if isinstance(self.sort_by, int):  # sorting by app defined property
-                sort["assetpropertyid"] = self.sort_by
+            if sort_property_id := self._sort_property_id():  # sorting by app defined property
+                sort["assetpropertyid"] = sort_property_id
 
             payload["sort"] = sort
 
@@ -291,8 +302,8 @@ class ListingsQuery(BaseQuery):
         if self.sort_by is not None:
             params.append(("sort", self._sort_by()))
             params.append(("dir", self._sort_dir()))
-            if isinstance(self.sort_by, int):
-                params.append(("propertyid", self.sort_by))
+            if sort_property_id := self._sort_property_id():
+                params.append(("propertyid", sort_property_id))
 
         return params
 

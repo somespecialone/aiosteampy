@@ -1151,8 +1151,12 @@ class MarketPublicComponent(EconMixin):
         headers = {
             "Referer": str(SEARCH_URL % params),
             "x-valve-request-type": "routeAction",
-            "x-valve-action-type": "ZFJAHYDA:SearchMarketListings",  # route id:route action type
         }
+        # route id:route action type
+        if query.descriptions:
+            headers["x-valve-action-type"] = "ZFJAHYDA:SearchItemDescriptions"
+        else:
+            headers["x-valve-action-type"] = "ZFJAHYDA:SearchMarketListings"
 
         r = await self._transport.request(
             "POST",

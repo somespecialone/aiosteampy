@@ -22,6 +22,8 @@ SEARCH_SORTING_MAP: dict[SearchSorting, int] = {
     "price": 3,
 }
 
+Sentinel = object()
+
 
 # Only for SearchQuery and ListingsQuery structure/shared functionality inheriting
 @dataclass(slots=True, kw_only=True)
@@ -44,6 +46,17 @@ class BaseQuery:
 
     filters: TFilters = field(default_factory=dict)
     """Map of ``app`` filter facets and tags."""
+
+    # for convenience
+    def price(self, min_: int | None = Sentinel, max_: int | None = Sentinel) -> Self:
+        """Set ``price`` range as filter."""
+
+        if min_ is not Sentinel:
+            self.price_min = min_
+        if max_ is not Sentinel:
+            self.price_max = max_
+
+        return self
 
     def filter(self, facet: str, *tags: str) -> Self:
         """

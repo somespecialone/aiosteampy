@@ -33,6 +33,7 @@ class AssetPropertyId(IntEnum):
     ITEM_CERTIFICATE = 6  # now we know what this is
     """Inspect key of item."""
     FINISH_CATALOG = 7
+    """Paint index of item."""
 
     @classmethod
     def get(cls, value: int) -> Self | None:
@@ -225,6 +226,9 @@ class ItemContext:
     pattern_template: int | None
     name_tag: str | None
 
+    finish: int | None
+    """`Finish catalog(paint index)` of item. Define `Phase` on `Doppler` skins."""
+
     _inspect_data: CEconItemPreviewDataBlock | None = None
 
     @property
@@ -288,6 +292,7 @@ class ItemContext:
         wear_rating = None
         pattern = None
         name_tag = None
+        finish = None
         for prop in item.properties:
             match AssetPropertyId.get(prop.id):
                 case AssetPropertyId.ITEM_CERTIFICATE:
@@ -298,8 +303,19 @@ class ItemContext:
                     pattern = int(prop.value)
                 case AssetPropertyId.NAME_TAG:
                     name_tag = prop.value
+                case AssetPropertyId.FINISH_CATALOG:
+                    finish = int(prop.value)
 
-        return cls(descr_ctx, stickers, charm, inspect_id, wear_rating, pattern, name_tag)
+        return cls(
+            description_ctx=descr_ctx,
+            stickers=stickers,
+            charm=charm,
+            certificate=inspect_id,
+            wear_rating=wear_rating,
+            pattern_template=pattern,
+            name_tag=name_tag,
+            finish=finish,
+        )
 
 
 TExteriors = Literal["Factory New", "Minimal Wear", "Field-Tested", "Well-Worn", "Battle-Scarred", "Not Painted"]
@@ -605,13 +621,15 @@ class CS2ListingsQuery(ListingsQuery, CS2QueryMixin):
     # better to be redesigned
     app: App = field(default_factory=lambda: App.CS2)
 
-    sort_by: Literal["price", "pattern", "wear", None] = None
+    sort_by: Literal["price", "pattern", "wear", "finish", None] = None
 
     def _sort_property_id(self):
         if self.sort_by == "pattern":
-            return 1
+            return AssetPropertyId.PATTERN_TEMPLATE
         elif self.sort_by == "wear":
-            return 2
+            return AssetPropertyId.WEAR_RATING
+        elif self.sort_by == "finish":
+            return AssetPropertyId.FINISH_CATALOG
 
     def _add_accessories(self, facet: str, values: Iterable[str]):
         for value in values:
@@ -629,10 +647,16 @@ class CS2ListingsQuery(ListingsQuery, CS2QueryMixin):
 
     def wear_rating(self, min_: float = 0, max_: float = 1) -> Self:
         """Set `wear rating (ala floatvalue)` range as filter."""
-        self.property(2, float_min=min_, float_max=max_)
+        self.property(AssetPropertyId.WEAR_RATING, float_min=min_, float_max=max_)
         return self
 
     def pattern(self, min_: int = 0, max_: int = 100_000) -> Self:
         """Set `pattern template (paint seed)` range as filter."""
-        self.property(1, int_min=min_, int_max=max_)  # browser sends values as string, hah
+        # browser sends values as string, hah
+        self.property(AssetPropertyId.PATTERN_TEMPLATE, int_min=min_, int_max=max_)
+        return self
+
+    def finish(self, min_: int = 0, max_: int = 1000) -> Self:
+        """Set `finish catalog (paint index)` range as filter."""
+        self.property(AssetPropertyId.FINISH_CATALOG, int_min=min_, int_max=max_)
         return self

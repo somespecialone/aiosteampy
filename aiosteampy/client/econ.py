@@ -115,7 +115,7 @@ class ItemDescription(BaseEntityWithIdentCode):
     name: str
     market_name: str
     market_hash_name: str
-    market_bucket_group: MarketBucketGroup
+    market_bucket_group: MarketBucketGroup | None = None
 
     type: str | None = None
 
@@ -312,9 +312,13 @@ class EconMixin:
             name=data["name"],
             market_name=data["market_name"],
             market_hash_name=data["market_hash_name"],
-            market_bucket_group=MarketBucketGroup(
-                data["market_bucket_group_id"],
-                data["market_bucket_group_name"],
+            market_bucket_group=(
+                MarketBucketGroup(
+                    data["market_bucket_group_id"],
+                    data["market_bucket_group_name"],
+                )
+                if "market_bucket_group_id" in data
+                else None
             ),
             name_color=data.get("name_color") or None,  # ignore " "
             background_color=data.get("name_color") or None,

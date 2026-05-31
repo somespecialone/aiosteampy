@@ -11,3 +11,6 @@ class InsufficientBalance(MarketError):
 
 class ListingRemoved(MarketError):
     """Listing has been removed."""
+
+class AlreadyPurchased(MarketError):
+    """You have already purchased this listing."""

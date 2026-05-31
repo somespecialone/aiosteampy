@@ -153,22 +153,29 @@ class MarketComponent(MarketPublicComponent):
 
     @classmethod
     def _parse_buy_orders(cls, orders: list[dict], item_descriptions_map: ItemDescriptionsMap) -> list[BuyOrder]:
-        return [
-            BuyOrder(
-                id=int(o_data["buy_orderid"]),
-                price=int(o_data["price"]),
-                item_description=item_descriptions_map[
-                    create_ident_code(
-                        o_data["description"]["instanceid"],
-                        o_data["description"]["classid"],
-                        o_data["description"]["appid"],
-                    )
-                ],
-                quantity=int(o_data["quantity"]),
-                quantity_remaining=int(o_data["quantity_remaining"]),
+        buy_orders = []
+        for o_data in orders:
+            descr_data = o_data.get("description")
+            if not descr_data:  # ignore orders with invalid outdated descriptions
+                continue
+
+            buy_orders.append(
+                BuyOrder(
+                    id=int(o_data["buy_orderid"]),
+                    price=int(o_data["price"]),
+                    item_description=item_descriptions_map[
+                        create_ident_code(
+                            descr_data["instanceid"],
+                            descr_data["classid"],
+                            descr_data["appid"],
+                        )
+                    ],
+                    quantity=int(o_data["quantity"]),
+                    quantity_remaining=int(o_data["quantity_remaining"]),
+                )
             )
-            for o_data in orders
-        ]
+
+        return buy_orders
 
     async def get_user_listings(
         self,

@@ -738,6 +738,8 @@ class MarketComponent(MarketPublicComponent):
                     error_data: dict = e.json()
                     if "somebody else has already purchased it" in error_data["message"]:
                         raise ListingRemoved from e
+                    elif "You've already purchased this item" in error_data["message"]:
+                        raise AlreadyPurchased from e
                     else:
                         raise InsufficientBalance from e
                 else:

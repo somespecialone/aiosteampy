@@ -1083,17 +1083,29 @@ class MarketPublicComponent(EconMixin):
         raise NotImplementedError()
 
     @_beta_market_enabled
-    async def get_orderbook(self, app: App, bucket_id: str) -> OrderBook:
+    async def get_orderbook(self, app: App, bucket_id: str, etag: str | None = None) -> OrderBook:
         """
         Get orders information for ``bucket_id``.
         ``bucket_id`` is previously known as ``market_hash_name``.
+
         Examples: CS2 `M249 | Humidor (Factory New)`, Rust `Heat Seeker Mp5`.
 
-        .. note:: Price values will be returned in **available regional currencies (dependent on IP)**.
+        .. note::
+            * This request is rate limited by `Steam`.
+            * Price values will be returned in **available regional currencies (dependent on IP)**.
+
+        :param app: app of market item.
+        :param bucket_id: dedicated market group bucket.
+        :param etag: `ETag` http caching header of previous response.
+        :raises TransportError: ordinary reasons.
+        :raises TooManyRequests: rate limit has been hit.
+        :raises ResourceNotModified: 304 status code if ``etag`` provided.
         """
 
         params = {"q": "Load", "qp": f'[{app.id}, "{bucket_id}"]'}  # faster than json.dumps
         headers = {"Referer": str(SEARCH_URL % params), "x-valve-request-type": "queryAction"}
+        if etag:
+            headers["if-none-match"] = etag
         r = await self._transport.request(
             "GET",
             MARKET_URL / "orderbook",
@@ -1115,9 +1127,12 @@ class MarketPublicComponent(EconMixin):
             min_sell_order=data["amtMinSellOrder"],
             tota_buy_orders=data["cBuyOrders"],
             total_sell_orders=data["cSellOrders"],
+            buy_orders_raw=buys,
+            sell_orders_raw=sells,
             # lazy generators as there are many entries, so no need to iterate over them again
             buy_orders=((buys[i], buys[i + 1]) for i in range(0, len(buys), 2)),
             sell_orders=((sells[i], sells[i + 1]) for i in range(0, len(sells), 2)),
+            etag=r.headers["ETag"],
         )
 
     @overload

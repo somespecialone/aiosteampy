@@ -22,6 +22,7 @@ from .models import (
     MarketSearchItem,
     PriceHistoryEntry,
     UserMarketListing,
+    OrderBook,
 )
 from .public import MarketPublicComponent
 from .query import ListingsQuery, SearchQuery

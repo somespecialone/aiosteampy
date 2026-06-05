@@ -42,6 +42,7 @@ from .components.market import (
     MarketListing,
     MarketListingItem,
     MarketListingStatus,
+    OrderBook,
     SearchQuery,
     UserMarketListing,
 )

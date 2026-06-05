@@ -473,10 +473,17 @@ class OrderBook(NamedTuple):
     total_sell_orders: int
     """Total number of `sell orders/listings`."""
 
+    buy_orders_raw: list[int]
+    """Raw data list with `buy orders` pairs."""
+    sell_orders_raw: list[int]
+    """Raw data list with `sell orders` pairs."""
     buy_orders: Iterable[tuple[int, int]]
     """Buy orders in `price/amount` pairs."""
     sell_orders: Iterable[tuple[int, int]]
     """Sell orders in `price/amount` pairs."""
+
+    etag: str
+    """`ETag` header value of response."""
 
 
 class ListingPricing(NamedTuple):
@@ -509,6 +516,7 @@ class ListingItemAccessory(NamedTuple):
     description: ItemDescription
     parent_relationship_properties: tuple[AssetProperty, ...]
     standalone_properties: tuple[AssetProperty, ...]
+
     # nested: ...  # nested accessories, I don't think that this works now so will wait
 
     @property
@@ -548,7 +556,8 @@ class Listing:
         """Detail view market URL."""
         return str(
             LISTINGS_URL
-            / f"{self.item.description.app.id}/{self.item.description.market_bucket_group.id}?detail={self.id}"
+            / f"{self.item.description.app.id}/{self.item.description.market_bucket_group.id}"
+            % {"detail": self.id}
         )
 
 

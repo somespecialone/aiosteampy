@@ -123,7 +123,11 @@ class DescriptionContext:
                 case DescriptionDescriptionName.Exterior:  # safe to get from descriptions in any case
                     exterior = ItemExterior.from_description(d.value)
                 case DescriptionDescriptionName.StattrakScore:
-                    stattrak_score = int(d.value.split(": ")[1])  # let's hope that this option is lang safe
+                    split = d.value.split(": ")  # let's hope that this option is lang safe
+                    if len(split) < 2:
+                        stattrak_score = 0
+                    else:
+                        stattrak_score = int(split[1])
 
         return cls(stickers, charm, collection, exterior, stattrak_score)
 
@@ -224,10 +228,12 @@ class ItemContext:
     wear_rating: float | None
     """Paint wear rating, known as `float` or `floatvalue`."""
     pattern_template: int | None
+    """`Paint seed` ala `pattern`."""
+    charm_template: int | None
     name_tag: str | None
 
     finish: int | None
-    """`Finish catalog(paint index)` of item. Define `Phase` on `Doppler` skins."""
+    """`Paint index` of item. Define `Phase` on `Doppler` skins."""
 
     _inspect_data: CEconItemPreviewDataBlock | None = None
 
@@ -291,6 +297,7 @@ class ItemContext:
         inspect_id = None
         wear_rating = None
         pattern = None
+        charm_template = None
         name_tag = None
         finish = None
         for prop in item.properties:
@@ -305,6 +312,8 @@ class ItemContext:
                     name_tag = prop.value
                 case AssetPropertyId.FINISH_CATALOG:
                     finish = int(prop.value)
+                case AssetPropertyId.CHARM_TEMPLATE:
+                    charm_template = int(prop.value)
 
         return cls(
             description_ctx=descr_ctx,
@@ -313,6 +322,7 @@ class ItemContext:
             certificate=inspect_id,
             wear_rating=wear_rating,
             pattern_template=pattern,
+            charm_template=charm_template,
             name_tag=name_tag,
             finish=finish,
         )
@@ -621,7 +631,7 @@ class CS2ListingsQuery(ListingsQuery, CS2QueryMixin):
     # better to be redesigned
     app: App = field(default_factory=lambda: App.CS2)
 
-    sort_by: Literal["price", "pattern", "wear", "finish", None] = None
+    sort_by: Literal["price", "pattern", "wear", "finish", "charm pattern", None] = None
 
     def _sort_property_id(self):
         if self.sort_by == "pattern":
@@ -630,6 +640,8 @@ class CS2ListingsQuery(ListingsQuery, CS2QueryMixin):
             return AssetPropertyId.WEAR_RATING
         elif self.sort_by == "finish":
             return AssetPropertyId.FINISH_CATALOG
+        elif self.sort_by == "charm pattern":
+            return AssetPropertyId.CHARM_TEMPLATE
 
     def _add_accessories(self, facet: str, values: Iterable[str]):
         for value in values:
@@ -647,16 +659,22 @@ class CS2ListingsQuery(ListingsQuery, CS2QueryMixin):
 
     def wear_rating(self, min_: float = 0, max_: float = 1) -> Self:
         """Set `wear rating (ala floatvalue)` range as filter."""
-        self.property(AssetPropertyId.WEAR_RATING, float_min=min_, float_max=max_)
+        self.property(AssetPropertyId.WEAR_RATING, min_, max_)
         return self
 
-    def pattern(self, min_: int = 0, max_: int = 100_000) -> Self:
-        """Set `pattern template (paint seed)` range as filter."""
+    def pattern(self, min_: int = 0, max_: int = 1000) -> Self:
+        """Set `pattern template (paint seed)` range as filter. Only for `non-keychain` skins."""
         # browser sends values as string, hah
-        self.property(AssetPropertyId.PATTERN_TEMPLATE, int_min=min_, int_max=max_)
+        self.property(AssetPropertyId.PATTERN_TEMPLATE, min_, max_)
+        return self
+
+    def charm_template(self, min_: int = 0, max_: int = 100_000) -> Self:
+        """Set `charm template (pattern)` range as filter. Only for `Keychains`."""
+        # browser sends values as string, hah
+        self.property(AssetPropertyId.CHARM_TEMPLATE, min_, max_)
         return self
 
     def finish(self, min_: int = 0, max_: int = 1000) -> Self:
-        """Set `finish catalog (paint index)` range as filter."""
-        self.property(AssetPropertyId.FINISH_CATALOG, int_min=min_, int_max=max_)
+        """Set `finish catalog (paint index)` range as filter. Only for `Doppler` paints."""
+        self.property(AssetPropertyId.FINISH_CATALOG, min_, max_)
         return self

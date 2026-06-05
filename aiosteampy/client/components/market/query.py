@@ -232,18 +232,10 @@ class ListingsQuery(BaseQuery):
         return self
 
     @overload
-    def property(self, id_: int, *, int_min: int, int_max: int) -> Self: ...
+    def property(self, id_: int, min_: int, max_: int) -> Self: ...
     @overload
-    def property(self, id_: int, *, float_min: float, float_max: float) -> Self: ...
-    def property(
-        self,
-        id_: int,
-        *,
-        int_min: int | None = None,
-        int_max: int | None = None,
-        float_min: float | None = None,
-        float_max: float | None = None,
-    ) -> Self:
+    def property(self, id_: int, min_: float, max_: float) -> Self: ...
+    def property(self, id_: int, min_: int | float | None = None, max_: int | float | None = None) -> Self:
         """
         Add ``app`` specific property filter to `query`.
 
@@ -257,12 +249,10 @@ class ListingsQuery(BaseQuery):
             raise ValueError("app is required to set property filter facets")
 
         prop = {}
-        if int_min is not None:
-            prop["int_min"] = int_min
-            prop["int_max"] = int_max
-        else:
-            prop["float_min"] = float_min
-            prop["float_max"] = float_max
+
+        key_type_prefix = type(min_).__name__
+        prop[f"{key_type_prefix}_min"] = min_
+        prop[f"{key_type_prefix}_max"] = max_
         self.properties[id_] = prop
 
     def _sort_dir(self) -> int:

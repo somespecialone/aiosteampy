@@ -5,7 +5,7 @@
 [![Made in Ukraine](https://img.shields.io/badge/made_in-ukraine-ffd700.svg?labelColor=0057b7)](https://stand-with-ukraine.pp.ua)
 [![steam](https://shields.io/badge/steam-1b2838?logo=steam)](https://store.steampowered.com/)
 [![license](https://img.shields.io/github/license/somespecialone/aiosteampy)](https://github.com/somespecialone/aiosteampy/blob/main/LICENSE)
-[![Poetry](https://img.shields.io/endpoint?url=https://python-poetry.org/badge/v0.json)](https://python-poetry.org/)
+[![uv](https://img.shields.io/endpoint?url=https://raw.githubusercontent.com/astral-sh/uv/main/assets/badge/v0.json)](https://github.com/astral-sh/uv)
 [![Ruff](https://img.shields.io/endpoint?url=https://raw.githubusercontent.com/astral-sh/ruff/main/assets/badge/v2.json)](https://github.com/astral-sh/ruff)
 [![Snyk Badge](https://img.shields.io/badge/Snyk-4C4A73?logo=snyk&logoColor=fff&style=flat)](https://security.snyk.io/package/pip/aiosteampy)
 [![pypi](https://img.shields.io/pypi/v/aiosteampy)](https://pypi.org/project/aiosteampy)
@@ -27,7 +27,7 @@ Manage Steam sessions, Guard, Market, trade offers and more.
 
 > [!IMPORTANT]
 > Beta `Steam Market` methods, models, and related functionality will **replace** old when `Steam`
-> migrate their website keeping `old` names whenever possible. 
+> migrate their website keeping `old` names whenever possible.
 > No longer functional methods will be removed conveniently.
 
 ## Documentation
@@ -194,7 +194,7 @@ asyncio.run(enable_two_fa())
 ### Client
 
 `SteamClient` composes all `Steam` domains implementations:
-`Market`, `Trade Offers`, `Inventory`, `Profile`, `Wallet` and more. Each domain is 
+`Market`, `Trade Offers`, `Inventory`, `Profile`, `Wallet` and more. Each domain is
 responsible for related functionality. For example, `Market` domain contain methods
 allow to retrieve and buy listings from `Steam Market`, place buy and sell orders.
 `Trade Offers` provides methods to send, accept or deny offers and so on.
@@ -302,7 +302,7 @@ asyncio.run(get_histogram())
 
 > Feedback, suggestions, and bug reports are welcome!
 
-If you have any question regarding a project, don't hesitate to ask one in 
+If you have any question regarding a project, don't hesitate to ask one in
 [Q&A](https://github.com/somespecialone/aiosteampy/discussions/categories/q-a).
 
 Before creating a pull request, please try to **keep project style and code quality**

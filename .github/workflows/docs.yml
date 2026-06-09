@@ -17,22 +17,17 @@ jobs:
         with:
           fetch-depth: 0
       - uses: actions/setup-python@v6
-        with:
-          python-version: 3.x
 
-      - name: Install & setup Poetry
-        uses: snok/install-poetry@v1
-        with:
-          virtualenvs-create: true
-          virtualenvs-in-project: true
+      - name: Install uv
+        uses: astral-sh/setup-uv@fac544c07dec837d0ccb6301d7b5580bf5edae39
 
       - name: Install dependencies
-        run: poetry sync --only docs
+        run: uv sync --group docs
 
       - name: Build docs
-        run: poetry run mkdocs build
+        run: uv run mkdocs build
 
-      - uses: actions/upload-pages-artifact@v4
+      - uses: actions/upload-pages-artifact@v5
         with:
           path: site
 
@@ -49,4 +44,4 @@ jobs:
     steps:
       - name: Deploy to GitHub Pages
         id: deployment
-        uses: actions/deploy-pages@v4
+        uses: actions/deploy-pages@v5

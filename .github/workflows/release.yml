@@ -14,16 +14,12 @@ jobs:
     steps:
       - uses: actions/checkout@v6
       - uses: actions/setup-python@v6
-        with:
-          python-version: 3.x
 
-      - name: Install & setup Poetry
-        uses: snok/install-poetry@v1
-        with:
-          virtualenvs-create: false
+      - name: Install uv
+        uses: astral-sh/setup-uv@fac544c07dec837d0ccb6301d7b5580bf5edae39
 
       - name: Build distribution package
-        run: poetry build
+        run: uv build
 
       - name: Upload distribution package artifacts
         uses: actions/upload-artifact@v7

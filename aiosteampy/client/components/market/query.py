@@ -254,6 +254,7 @@ class ListingsQuery(BaseQuery):
         prop[f"{key_type_prefix}_min"] = min_
         prop[f"{key_type_prefix}_max"] = max_
         self.properties[id_] = prop
+        return self
 
     def _sort_dir(self) -> int:
         return 0 if self.sort_dir == "asc" else 1
@@ -278,7 +279,14 @@ class ListingsQuery(BaseQuery):
         payload = self._payload(start, currency)
         payload["strItemName"] = bucket_group_id
         payload["accessoryFilters"] = self._build_accessories()
+
         payload["propertyFilters"] = self._build_properties()
+        # int_ props need to be sent as strings for search to work, lol
+        for prop_id, prop_val in payload["propertyFilters"].items():
+            if "int_min" in prop_val:
+                prop_val["int_min"] = str(prop_val["int_min"])
+                prop_val["int_max"] = str(prop_val["int_max"])
+
         if self.sort_by is not None:
             sort = {"field": self._sort_by(), "direction": self._sort_dir()}
             if sort_property_id := self._sort_property_id():  # sorting by app defined property

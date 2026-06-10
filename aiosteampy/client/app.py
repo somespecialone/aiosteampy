@@ -110,6 +110,9 @@ class App:
 
         cls.__members__[app._id] = app
 
+    def __getnewargs__(self):  # pickling
+        return ((self._id, self._name, self._icon_hash),)
+
 
 App.CS2 = App(730, "Counter-Strike 2", "8dbc71957312bbd3baea65848b545be9eae2a355")
 

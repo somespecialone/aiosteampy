@@ -8,7 +8,7 @@ from typing import Any, overload
 
 from yarl import URL
 
-from ....exceptions import EResultError
+from ....exceptions import EResultError, SteamError
 from ....transport import BaseSteamTransport, Cookie, format_http_date, parse_http_date
 from ....webapi.client import COMMUNITY_ORIGIN
 from ...app import ADD_NEW_MEMBERS, App
@@ -1136,11 +1136,17 @@ class MarketPublicComponent(EconMixin):
         )
 
     @overload
-    async def modern_search(self, query: SearchQuery, *, page: int = ...) -> ModernSearchResults: ...
+    async def modern_search(self, app_or_query: App | SearchQuery, *, page: int = ...) -> ModernSearchResults: ...
     @overload
-    async def modern_search(self, query: SearchQuery, *, start: int = ...) -> ModernSearchResults: ...
+    async def modern_search(self, app_or_query: App | SearchQuery, *, start: int = ...) -> ModernSearchResults: ...
     @_beta_market_enabled
-    async def modern_search(self, query: SearchQuery, *, page: int = 0, start: int = 0) -> ModernSearchResults:
+    async def modern_search(
+        self,
+        app_or_query: App | SearchQuery,
+        *,
+        page: int = 0,
+        start: int = 0,
+    ) -> ModernSearchResults:
         """
         Get search results from `Steam Market`.
 
@@ -1148,11 +1154,12 @@ class MarketPublicComponent(EconMixin):
             * This request is rate limited by `Steam`.
             * Price values will be returned in **available regional currencies (dependent on IP)**.
 
-        :param query: prepared builder with desired ``query``.
+        :param app_or_query: `Steam` app of requested results or prepared builder with desired ``query``.
         :param page: number of ``page`` to be requested. **Starts from 0**.
         :param start: results window offset index. Mutually exclusive with ``page``.
         :raises TransportError: ordinary reasons.
         :raises TooManyRequests: rate limit has been hit.
+        :raises SteamError: empty/malformed response.
         """
 
         if page and start:
@@ -1160,6 +1167,11 @@ class MarketPublicComponent(EconMixin):
 
         if page:
             start = MODERN_SEARCH_LIMIT * page
+
+        if isinstance(app_or_query, App):
+            query = SearchQuery(app=app_or_query)
+        else:
+            query = app_or_query
 
         payload, params = query.build(start, self._state.currency)
 
@@ -1223,8 +1235,7 @@ class MarketPublicComponent(EconMixin):
     async def get_modern_listings(
         self,
         bucket_group_id: str,
-        app: App,
-        query: ListingsQuery | None = ...,
+        app_or_query: App | ListingsQuery,
         *,
         page: int = ...,
     ) -> Listings: ...
@@ -1232,8 +1243,7 @@ class MarketPublicComponent(EconMixin):
     async def get_modern_listings(
         self,
         bucket_group_id: str,
-        app: App,
-        query: ListingsQuery | None = ...,
+        app_or_query: App | ListingsQuery,
         *,
         start: int = ...,
     ) -> Listings: ...
@@ -1241,8 +1251,7 @@ class MarketPublicComponent(EconMixin):
     async def get_modern_listings(
         self,
         bucket_group_id: str,
-        app: App,
-        query: ListingsQuery | None = None,
+        app_or_query: App | ListingsQuery,
         *,
         page: int = 0,
         start: int = 0,
@@ -1257,22 +1266,27 @@ class MarketPublicComponent(EconMixin):
         .. seealso:: https://github.com/somespecialone/steam-market-ids - repo storage with `bucket group ids`.
 
         :param bucket_group_id: id of `bucket group` (like G123E456...).
-        :param app: `Steam` app of requested listings.
-        :param query: prepared builder with desired ``query``.
+        :param app_or_query: `Steam` app of requested listings or prepared builder with desired ``query``.
         :param page: number of ``page`` to be requested. **Starts from 0**.
         :param start: results window offset index. Mutually exclusive with ``page``.
         :raises TransportError: ordinary reasons.
         :raises TooManyRequests: rate limit has been hit.
+        :raises SteamError: empty/malformed response.
         """
 
         if page and start:
             raise ValueError("Page and start args are mutually exclusive")
 
+        if isinstance(app_or_query, App):
+            app = app_or_query
+            query = ListingsQuery(app=app)
+        else:
+            query = app_or_query
+            app = query.app
+
         if page:
             start = MODERN_LISTINGS_LIMIT * page
 
-        query = query or ListingsQuery()
-        query.app = app
         payload, params = query.build(bucket_group_id, start, self._state.currency)
 
         url = LISTINGS_URL / f"{app.id}/{bucket_group_id}"
@@ -1293,6 +1307,9 @@ class MarketPublicComponent(EconMixin):
         )
 
         rj: dict = r.content
+
+        if not rj:
+            raise SteamError("Empty response")
 
         facets: list[dict[str, int | dict[str, str]]] = rj["facets"]
 

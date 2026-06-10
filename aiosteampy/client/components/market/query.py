@@ -1,5 +1,6 @@
 from base64 import b64encode
-from dataclasses import dataclass, field
+from copy import deepcopy
+from dataclasses import dataclass, field, fields
 from typing import Literal, Self, overload
 
 import betterproto2
@@ -46,6 +47,33 @@ class BaseQuery:
 
     filters: TFilters = field(default_factory=dict)
     """Map of ``app`` filter facets and tags."""
+
+    @staticmethod
+    def _merge_filters(left: TFilters, right: TFilters) -> TFilters:
+        merged = deepcopy(left)
+        for facet, tags in right.items():
+            merged.setdefault(facet, []).extend(tags)
+        return merged
+
+    def merge(self, other: Self) -> Self:
+        """
+        Return a `new query` with `deeply merged` state.
+        Fields of ``other`` will override fields of ``self`` if they are not ``None``.
+        """
+
+        values = {f.name: deepcopy(getattr(self, f.name)) for f in fields(self)}
+
+        changes = {}
+        for f in fields(other):
+            value = getattr(other, f.name)
+            if value is not None:
+                changes[f.name] = deepcopy(value)
+
+        if filters := changes.pop("filters", None):
+            values["filters"] = self._merge_filters(values["filters"], filters)
+
+        values.update(changes)
+        return type(self)(**values)
 
     # for convenience
     def price(self, min_: int | None = Sentinel, max_: int | None = Sentinel) -> Self:
@@ -191,6 +219,9 @@ class AssetPropertyFilter(betterproto2.Message):
     int_max: "int" = betterproto2.field(5, betterproto2.TYPE_INT64)
 
 
+TProps = dict[int, dict[str, int | float]]
+
+
 @dataclass(slots=True)
 class ListingsQuery(BaseQuery):
     """
@@ -206,8 +237,24 @@ class ListingsQuery(BaseQuery):
     accessories: TFilters = field(default_factory=dict)
     """Map of ``app`` accessory filter facets and tags."""
 
-    properties: dict[int, dict[str, int | float]] = field(default_factory=dict)
+    properties: TProps = field(default_factory=dict)
     """Map of ``app`` property filter facets and payload values."""
+
+    @staticmethod
+    def _merge_properties(left: TProps, right: TProps):
+        """Modify ``left``."""
+
+        for prop_id, prop in right.items():
+            left.setdefault(prop_id, {}).update(prop)
+
+    def merge(self, other):
+        merged = super(ListingsQuery, self).merge(other)
+        if self.accessories:
+            merged.accessories = self._merge_filters(other.accessories, self.accessories)
+
+        self.properties and self._merge_properties(merged.properties, self.properties)
+
+        return merged
 
     def _build_accessories(self) -> TFilters:
         return {f"accessory_{f}": accs for f, accs in self.accessories.items()}

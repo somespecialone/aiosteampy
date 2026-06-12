@@ -468,7 +468,7 @@ class OrderBook(NamedTuple):
     """Maximal price across all `buy orders`."""
     min_sell_order: int
     """Minimal price across all `sell orders/listings`."""
-    tota_buy_orders: int
+    total_buy_orders: int
     """Total number of `buy orders`."""
     total_sell_orders: int
     """Total number of `sell orders/listings`."""

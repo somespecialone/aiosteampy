@@ -1125,7 +1125,7 @@ class MarketPublicComponent(EconMixin):
             currency=Currency(data["eCurrency"]),
             max_buy_order=data["amtMaxBuyOrder"],
             min_sell_order=data["amtMinSellOrder"],
-            tota_buy_orders=data["cBuyOrders"],
+            total_buy_orders=data["cBuyOrders"],
             total_sell_orders=data["cSellOrders"],
             buy_orders_raw=buys,
             sell_orders_raw=sells,

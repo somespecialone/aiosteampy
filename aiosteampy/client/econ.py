@@ -174,7 +174,7 @@ class ItemDescription(BaseEntityWithIdentCode):
     def _set_restrictions_end_time(self):
         if self.market_tradable_restriction or self.market_marketable_restriction:
             # find tradable after description
-            sep = "Tradable/Marketable After "
+            sep = "Tradable After: "
             if (t_a_descr := next(filter(lambda d: sep in d.value, self.owner_descriptions), None)) is not None:
                 date_string = t_a_descr.value.split(sep)[1]
                 self.hold_until = datetime.strptime(date_string, TRADABLE_AFTER_DATE_FORMAT)

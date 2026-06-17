@@ -160,30 +160,37 @@ class ItemDescription(BaseEntityWithIdentCode):
 
     # currency: int  # ?
     sealed: bool
-    """If item under `Trade Protection` at the current moment."""
+    """If item under `Trade Protection` or `listed on the Steam Community Market` at the current moment."""
+    listed: bool = field(init=False, default=False)
+    """Whether item is listed on the `Steam Community Market` and cannot be consumed or modified while listed."""
 
     _cs2_ctx: "CS2DescriptionContext | None" = field(init=False, default=None)  # cached
 
     def __post_init__(self):
         super(ItemDescription, self).__post_init__()
-        self.owner_descriptions and self._set_restrictions_end_time()
+        self.owner_descriptions and self._parse_description_properties()
 
     def _set_ident_code(self):
         self.id = create_ident_code(self.instance_id, self.class_id, self.app.id)
 
-    def _set_restrictions_end_time(self):
-        if self.market_tradable_restriction or self.market_marketable_restriction:
+    def _parse_description_properties(self):
+        if (self.market_tradable_restriction or self.market_marketable_restriction) and not self.marketable:
             # find tradable after description
             sep = "Tradable/Marketable After "
             if (t_a_descr := next(filter(lambda d: sep in d.value, self.owner_descriptions), None)) is not None:
-                date_string = t_a_descr.value.split(sep)[1]
+                date_string = t_a_descr.value.split(sep, 1)[1]
                 self.hold_until = datetime.strptime(date_string, TRADABLE_AFTER_DATE_FORMAT)
 
         elif self.sealed:
-            sep = "This item is trade-protected and cannot be consumed, modified, or transferred until "
-            if (t_a_descr := next(filter(lambda d: sep in d.value, self.owner_descriptions), None)) is not None:
-                date_string = t_a_descr.value.split(sep)[1]
-                self.protected_until = datetime.strptime(date_string, TRADABLE_AFTER_DATE_FORMAT)
+            trade_protection = "This item is trade-protected and cannot be consumed, modified, or transferred until "
+            for d in self.owner_descriptions:
+                if d.value.startswith(trade_protection):
+                    date_string = d.value.split(trade_protection, 1)[1]
+                    self.protected_until = datetime.strptime(date_string, TRADABLE_AFTER_DATE_FORMAT)
+                    break
+                if d.value.startswith("⇆ This item is listed on the Steam Community"):
+                    self.listed = True
+                    break
 
     @property
     def cs2(self) -> "CS2DescriptionContext | None":

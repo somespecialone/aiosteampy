@@ -1219,7 +1219,7 @@ class MarketPublicComponent(EconMixin):
 
     # awaits same fate as ListingItemAccessory (replace econ method)
     @classmethod
-    def _create_accessory_property(cls, data: dict) -> ListingItemAccessory:
+    def _create_modern_market_accessory(cls, data: dict) -> ListingItemAccessory:
         """Create accessory property for modern(beta) market response (with description)."""
 
         parent_props = tuple(cls._create_property(pd) for pd in data.get("parent_relationship_properties", ()))
@@ -1336,7 +1336,7 @@ class MarketPublicComponent(EconMixin):
                         description=self._create_item_descr(l["description"]),
                         properties=tuple(self._create_property(p) for p in l["asset"]["asset_properties"]),
                         accessories=tuple(
-                            self._create_accessory_property(a) for a in l["asset"]["accessory_properties"]
+                            self._create_modern_market_accessory(a) for a in l["asset"]["asset_accessories"]
                         ),
                     ),
                     currency=Currency(l["eCurrency"]),

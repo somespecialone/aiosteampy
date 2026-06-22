@@ -659,7 +659,7 @@ class CS2ListingsQuery(ListingsQuery, CS2QueryMixin):
 
     def wear_rating(self, min_: float = 0, max_: float = 1) -> Self:
         """Set `wear rating (ala floatvalue)` range as filter."""
-        self.property(AssetPropertyId.WEAR_RATING, min_, max_)
+        self.property(AssetPropertyId.WEAR_RATING, float(min_), float(max_))
         return self
 
     def pattern(self, min_: int = 0, max_: int = 1000) -> Self:

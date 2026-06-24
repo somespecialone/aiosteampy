@@ -4,7 +4,7 @@ import re
 from collections.abc import Callable, Iterable
 from dataclasses import dataclass, field
 from enum import IntEnum, StrEnum
-from typing import TYPE_CHECKING, Literal, NamedTuple, Self
+from typing import TYPE_CHECKING, Literal, NamedTuple, Self, overload
 
 import betterproto2
 
@@ -559,6 +559,8 @@ TAGS_MAP = {
     "Karambit": "weapon_knife_karambit",
 }
 
+TAccessoryChoice = Literal["$none$", "$any$"]
+
 
 class CS2QueryMixin:
     __slots__ = ()
@@ -647,12 +649,12 @@ class CS2ListingsQuery(ListingsQuery, CS2QueryMixin):
         for value in values:
             self.accessory(facet, value)
 
-    def sticker(self, *values: str) -> Self:
+    def sticker(self, *values: TAccessoryChoice | str) -> Self:
         """Add attached ``sticker`` to item as filter. Value must be `sticker` full name(market hash name)."""
         self._add_accessories(TAGS_MAP["Sticker"], values)
         return self
 
-    def charm(self, *values: str) -> Self:
+    def charm(self, *values: TAccessoryChoice | str) -> Self:
         """Add attached ``charm`` to item as filter. Value must be `keychain` full name(market hash name)."""
         self._add_accessories(TAGS_MAP["Charm"], values)
         return self

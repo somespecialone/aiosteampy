@@ -108,7 +108,7 @@ class InventoryPublicComponent(EconMixin):
             "l": self._state.language,
             "count": count,
             "raw_asset_properties": 1,  # as browser + save some network traffic
-            "preserve_bbcode": 1,  # ?
+            "preserve_bbcode": 1,  # preserve date format in owner descriptions
         }
         if start_asset_id:
             params["start_assetid"] = start_asset_id

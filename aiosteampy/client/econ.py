@@ -188,7 +188,8 @@ class ItemDescription(BaseEntityWithIdentCode):
 
     def _set_locked(self):
         if locked_descr := next(
-            d for d in self.owner_descriptions if d.type == "bbcode" and d.value.endswith("[/date]")
+            (d for d in self.owner_descriptions if d.type == "bbcode" and d.value.endswith("[/date]")),
+            None,
         ):
             self.unlock_at = datetime.fromtimestamp(
                 int(LOCKED_DATE_RE.search(locked_descr.value).group(1)),

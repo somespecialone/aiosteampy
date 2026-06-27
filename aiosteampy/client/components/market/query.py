@@ -90,10 +90,8 @@ class BaseQuery:
         """
         Add ``facet`` with ``tags`` to `query`.
 
-        .. note:: App id, 'category' and 'tag' keywords **must be excluded**.
-
         For example, to set ``CS2`` `StatTrak` quality ``facet`` need to be 'Quality'
-        and tag 'strange'.
+        with 'strange' tag.
         """
 
         if self.app is None:
@@ -101,9 +99,6 @@ class BaseQuery:
 
         self.filters.setdefault(facet, []).extend(tags)
         return self
-
-    def _build_filters(self) -> TFilters:
-        return {f"category_{self.app.id}_{f}": [f"tag_{t}" for t in tags] for f, tags in self.filters.items()}
 
     def _payload(self, start: int, currency: Currency) -> dict:
         price = {"eCurrency": currency}
@@ -115,7 +110,7 @@ class BaseQuery:
         # guess we do not oblige to keep original order
         payload = {
             "accessoryFilters": {},  # as browser
-            "filters": self._build_filters(),
+            "filters": self.filters,
             "price": price,
             "start": start,
         }
@@ -137,7 +132,7 @@ class BaseQuery:
             params.append(("price_max", self.price_max))
 
         if self.app:
-            params.extend((facet, tag) for facet, tags in self._build_filters().items() for tag in tags)
+            params.extend((f"category_{facet}", tag) for facet, tags in self.filters.items() for tag in tags)
             params.append(("appid", self.app.id))
 
         self.query and params.append(("q", self.query))
@@ -164,6 +159,11 @@ class SearchQuery(BaseQuery):
 
     def _sort_dir(self) -> int:
         return 1 if self.sort_dir == "asc" else 2
+
+    def sort(self, order: SortDir = "asc", field_: SearchSorting = None) -> Self:
+        self.sort_dir = order
+        self.sort_by = field_
+        return self
 
     def payload(self, start: int = 0, currency: Currency = Currency.USD) -> list[dict]:
         """Build `JSON payload` for market search endpoint."""
@@ -308,6 +308,11 @@ class ListingsQuery(BaseQuery):
 
     def _sort_by(self) -> int:
         return 0 if str(self.sort_by) == "price" else 1
+
+    def sort(self, order: SortDir = "asc", field_: ListingsSorting = None) -> Self:
+        self.sort_dir = order
+        self.sort_by = field_
+        return self
 
     # for subclassing
     def _sort_property_id(self) -> int | None:

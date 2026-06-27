@@ -4,12 +4,12 @@ import re
 from collections.abc import Callable, Iterable
 from dataclasses import dataclass, field
 from enum import IntEnum, StrEnum
-from typing import TYPE_CHECKING, Literal, NamedTuple, Self, overload
+from typing import TYPE_CHECKING, Literal, NamedTuple, Self
 
 import betterproto2
 
 from .app import App
-from .components.market.query import ListingsQuery, SearchQuery
+from .components.market.query import ListingsQuery, SearchQuery, SortDir
 
 if TYPE_CHECKING:  # break circle import
     from .components.market import ListingItem, MarketListingItem
@@ -618,6 +618,9 @@ class CS2SearchQuery(SearchQuery, CS2QueryMixin):
         return self
 
 
+ListingsSorting = Literal["price", "pattern", "wear", "finish", "charm pattern", None]
+
+
 @dataclass(slots=True, kw_only=True)
 class CS2ListingsQuery(ListingsQuery, CS2QueryMixin):
     """
@@ -633,7 +636,7 @@ class CS2ListingsQuery(ListingsQuery, CS2QueryMixin):
     # better to be redesigned
     app: App = field(default_factory=lambda: App.CS2)
 
-    sort_by: Literal["price", "pattern", "wear", "finish", "charm pattern", None] = None
+    sort_by: ListingsSorting = None
 
     def _sort_property_id(self):
         if self.sort_by == "pattern":
@@ -644,6 +647,11 @@ class CS2ListingsQuery(ListingsQuery, CS2QueryMixin):
             return AssetPropertyId.FINISH_CATALOG
         elif self.sort_by == "charm pattern":
             return AssetPropertyId.CHARM_TEMPLATE
+
+    def sort(self, order: SortDir = "asc", field_: ListingsSorting = None) -> Self:
+        self.sort_dir = order
+        self.sort_by = field_
+        return self
 
     def _add_accessories(self, facet: str, values: Iterable[str]):
         for value in values:

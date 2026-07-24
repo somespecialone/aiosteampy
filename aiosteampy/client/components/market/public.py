@@ -65,6 +65,10 @@ CUSTOM_API_HEADERS = {"X-Prototype-Version": "1.7", "X-Requested-With": "XMLHttp
 
 MODERN_MARKET_OPT_OUT_COOKIE = "bMarketOptOut"
 
+# Valve loves misguiding names
+SEARCH_ACTION_ROUTE_ID = "8cnlIgBs66uLKD68o1fzpLlHFSHv52c4l9_ohRpMLzk:"
+SEARCH_MARKET_ROUTE_ID = "hqTDeI5ivFCB0Wv5PoSzcv3T0xSiAA-lh744pmngd9M:"
+
 
 class MarketPublicComponent(EconMixin):
     """Component with public `Steam Market` methods. Available without authentication."""
@@ -1181,9 +1185,9 @@ class MarketPublicComponent(EconMixin):
         }
         # route id:route action type
         if query.descriptions:
-            headers["x-valve-action-type"] = "ZFJAHYDA:SearchItemDescriptions"
+            headers["x-valve-action-type"] = SEARCH_MARKET_ROUTE_ID + "SearchItemDescriptions"
         else:
-            headers["x-valve-action-type"] = "ZFJAHYDA:SearchMarketListings"
+            headers["x-valve-action-type"] = SEARCH_MARKET_ROUTE_ID + "SearchMarketListings"
 
         r = await self._transport.request(
             "POST",
@@ -1294,7 +1298,7 @@ class MarketPublicComponent(EconMixin):
         headers = {
             "Referer": str(url % params),
             "x-valve-request-type": "routeAction",
-            "x-valve-action-type": "4OPT6VBA:Search",  # route id:route action type
+            "x-valve-action-type": SEARCH_ACTION_ROUTE_ID + "Search",  # route id:route action type
         }
 
         r = await self._transport.request(

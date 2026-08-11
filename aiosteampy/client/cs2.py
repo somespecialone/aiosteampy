@@ -117,7 +117,7 @@ class DescriptionContext:
                     stickers = tuple(ItemAccessoryMeta(t, s) for s, t in CS2_APPLICABLE_DATA_RE.findall(d.value))
                 case DescriptionDescriptionName.Charm:
                     search = CS2_APPLICABLE_DATA_RE.search(d.value)
-                    charm = ItemAccessoryMeta(name=search.group(1), icon=search.group(2))
+                    charm = ItemAccessoryMeta(name=search.group(2), icon=search.group(1))
                 case DescriptionDescriptionName.Collection:
                     collection = d.value
                 case DescriptionDescriptionName.Exterior:  # safe to get from descriptions in any case

@@ -70,6 +70,21 @@ SEARCH_ACTION_ROUTE_ID = "8cnlIgBs66uLKD68o1fzpLlHFSHv52c4l9_ohRpMLzk:"
 SEARCH_MARKET_ROUTE_ID = "hqTDeI5ivFCB0Wv5PoSzcv3T0xSiAA-lh744pmngd9M:"
 
 
+def unwrap_data_envelope(rj: dict) -> dict:
+    """
+    Unwrap an extra ``{"data": {...}}`` envelope that `Steam` started to add to some
+    modern(beta) market responses (observed on the `orderbook` endpoint since August 2026).
+    The envelope moves the whole payload, including the "success" field, one level deeper,
+    making ``EResultError.check_data`` fail with `0 - INVALID` on a valid response.
+    Responses without the envelope are returned unchanged.
+    """
+
+    if "success" not in rj and isinstance(rj.get("data"), dict) and "success" in rj["data"]:
+        return rj["data"]
+
+    return rj
+
+
 class MarketPublicComponent(EconMixin):
     """Component with public `Steam Market` methods. Available without authentication."""
 
@@ -1075,7 +1090,7 @@ class MarketPublicComponent(EconMixin):
             headers=headers,
             response_mode="json",
         )
-        rj: dict = r.content
+        rj: dict = unwrap_data_envelope(r.content)
 
         EResultError.check_data(rj)
 
@@ -1117,7 +1132,7 @@ class MarketPublicComponent(EconMixin):
             headers=headers,
             response_mode="json",
         )
-        rj: dict = r.content
+        rj: dict = unwrap_data_envelope(r.content)
 
         EResultError.check_data(rj)
 

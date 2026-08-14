@@ -1121,7 +1121,7 @@ class MarketPublicComponent(EconMixin):
 
         EResultError.check_data(rj)
 
-        data = rj["data"]
+        data = rj["data"]["data"]  # nice
 
         buys: list[int] = data["rgCompactBuyOrders"]
         sells: list[int] = data["rgCompactSellOrders"]

@@ -47,7 +47,7 @@ from .models import (
     SellOrderTableEntry,
 )
 from .query import ListingsQuery, SearchQuery, SearchSorting, SortDir
-from .urls import LISTINGS_URL, MARKET_URL, SEARCH_RENDER_URL, SEARCH_URL
+from .urls import LISTINGS_URL, MARKET_URL, SEARCH_RENDER_URL, SEARCH_URL, MARKET_ACTIONS_URL
 from .utils import extract_icon_hash_from_app_icon_link
 
 ITEM_ORDER_HIST_PRICE_RE = re.compile(r"[^\d\s]*([\d,]+(?:\.\d+)?)[^\d\s]*")  # Author: ChatGPT
@@ -64,10 +64,6 @@ MODERN_LISTINGS_LIMIT = 20
 CUSTOM_API_HEADERS = {"X-Prototype-Version": "1.7", "X-Requested-With": "XMLHttpRequest"}
 
 MODERN_MARKET_OPT_OUT_COOKIE = "bMarketOptOut"
-
-# Valve loves misguiding names
-SEARCH_ACTION_ROUTE_ID = "8cnlIgBs66uLKD68o1fzpLlHFSHv52c4l9_ohRpMLzk:"
-SEARCH_MARKET_ROUTE_ID = "hqTDeI5ivFCB0Wv5PoSzcv3T0xSiAA-lh744pmngd9M:"
 
 
 class MarketPublicComponent(EconMixin):
@@ -1156,7 +1152,7 @@ class MarketPublicComponent(EconMixin):
 
         .. note::
             * This request is rate limited by `Steam`.
-            * Price values will be returned in **available regional currencies (dependent on IP)**.
+            * Price values will be returned in **available regional currencies (IP dependent)**.
 
         :param app_or_query: `Steam` app of requested results or prepared builder with desired ``query``.
         :param page: number of ``page`` to be requested. **Starts from 0**.
@@ -1177,31 +1173,24 @@ class MarketPublicComponent(EconMixin):
         else:
             query = app_or_query
 
-        payload, params = query.build(start, self._state.currency)
+        qp, ref_params = query.build(start, self._state.currency)
 
-        headers = {
-            "Referer": str(SEARCH_URL % params),
-            "x-valve-request-type": "routeAction",
-        }
-        # route id:route action type
-        if query.descriptions:
-            headers["x-valve-action-type"] = SEARCH_MARKET_ROUTE_ID + "SearchItemDescriptions"
-        else:
-            headers["x-valve-action-type"] = SEARCH_MARKET_ROUTE_ID + "SearchMarketListings"
+        params = {"q": "Search", "qp": qp}
+        headers = {"Referer": str(SEARCH_URL % ref_params), "x-valve-request-type": "queryAction"}
 
         r = await self._transport.request(
-            "POST",
-            SEARCH_URL,
+            "GET",
+            MARKET_ACTIONS_URL,
             params=params,
-            json=payload,
             headers=headers,
             response_mode="json",
         )
 
         rj: dict = r.content
 
-        total = rj["total_count"]
-        results: list[dict] = rj["results"]
+        data = rj["data"]
+        total = data["total_count"]
+        results: list[dict] = data["results"]
 
         return ModernSearchResults(
             items=[
@@ -1291,21 +1280,18 @@ class MarketPublicComponent(EconMixin):
         if page:
             start = MODERN_LISTINGS_LIMIT * page
 
-        payload, params = query.build(bucket_group_id, start, self._state.currency)
+        qp, ref_params = query.build(bucket_group_id, start, self._state.currency)
 
-        url = LISTINGS_URL / f"{app.id}/{bucket_group_id}"
-
+        params = {"q": "QueryListingsForItem", "qp": qp}
         headers = {
-            "Referer": str(url % params),
-            "x-valve-request-type": "routeAction",
-            "x-valve-action-type": SEARCH_ACTION_ROUTE_ID + "Search",  # route id:route action type
+            "Referer": str((LISTINGS_URL / f"{app.id}/{bucket_group_id}") % ref_params),
+            "x-valve-request-type": "queryAction",
         }
 
         r = await self._transport.request(
-            "POST",
-            url,
+            "GET",
+            MARKET_ACTIONS_URL,
             params=params,
-            json=payload,
             headers=headers,
             response_mode="json",
         )
@@ -1315,7 +1301,8 @@ class MarketPublicComponent(EconMixin):
         if not rj:
             raise SteamError("Empty response")
 
-        facets: list[dict[str, int | dict[str, str]]] = rj["facets"]
+        data = rj["data"]
+        facets: list[dict[str, int | dict[str, str]]] = data["facets"]
 
         return Listings(
             facets=(
@@ -1358,8 +1345,8 @@ class MarketPublicComponent(EconMixin):
                     ),
                     appearances=tuple(a["url"] for a in l["enhanced_appearances"]),
                 )
-                for l in rj["listings"]
+                for l in data["listings"]
             ],
-            more=rj["more"],
-            total_count=rj["total_count"],
+            more=data["more"],
+            total_count=data["total_count"],
         )

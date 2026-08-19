@@ -1,6 +1,6 @@
 import json
 import re
-from collections.abc import AsyncGenerator, Callable, Mapping, Sequence
+from collections.abc import AsyncGenerator, Callable, Iterable, Mapping, Sequence
 from datetime import datetime
 from functools import wraps
 from math import ceil
@@ -1135,6 +1135,21 @@ class MarketPublicComponent(EconMixin):
             etag=r.headers["ETag"],
         )
 
+    @classmethod
+    def _crate_modern_search_result_items(cls, results: list[dict]) -> tuple[ModernSearchItem, ...]:
+        return tuple(
+            ModernSearchItem(
+                cls._create_item_descr(i["asset_description"]),
+                buy_orders=i["cBuyOrders"],
+                sell_orders=i["cSellOrders"],
+                currency=Currency(i["eCurrency"]),
+                min_price=cls._parse_price_with_currency(i["strMinSellSubtotal"]),
+                publisher_fee=i["unPublisherFee"],
+                steam_fee=i["unSteamFee"],
+            )
+            for i in results
+        )
+
     @overload
     async def modern_search(self, app_or_query: App | SearchQuery, *, page: int = ...) -> ModernSearchResults: ...
     @overload
@@ -1175,7 +1190,7 @@ class MarketPublicComponent(EconMixin):
 
         qp, ref_params = query.build(start, self._state.currency)
 
-        params = {"q": "Search", "qp": qp}
+        params = {"q": "SearchDescriptions" if query.descriptions else "Search", "qp": qp}
         headers = {"Referer": str(SEARCH_URL % ref_params), "x-valve-request-type": "queryAction"}
 
         r = await self._transport.request(
@@ -1189,22 +1204,22 @@ class MarketPublicComponent(EconMixin):
         rj: dict = r.content
 
         data = rj["data"]
-        total = data["total_count"]
-        results: list[dict] = data["results"]
+        if not data:
+            return ModernSearchResults()
 
+        total = data["total_count"]
+
+        if query.descriptions:
+            items = ()
+            listings = self._create_modern_listings(data["listings"])
+        else:
+            items = self._crate_modern_search_result_items(data["results"])
+            listings = ()
+
+        # TODO listings with description search
         return ModernSearchResults(
-            items=[
-                ModernSearchItem(
-                    self._create_item_descr(i["asset_description"]),
-                    buy_orders=i["cBuyOrders"],
-                    sell_orders=i["cSellOrders"],
-                    currency=Currency(i["eCurrency"]),
-                    min_price=self._parse_price_with_currency(i["strMinSellSubtotal"]),
-                    publisher_fee=i["unPublisherFee"],
-                    steam_fee=i["unSteamFee"],
-                )
-                for i in results
-            ],
+            items=items,
+            listings=listings,
             total_count=total,
             total_pages=ceil(total / MODERN_SEARCH_LIMIT),
             more_pages=(total - (start + MODERN_SEARCH_LIMIT)) > 0,
@@ -1222,6 +1237,57 @@ class MarketPublicComponent(EconMixin):
             description=cls._create_item_descr(data["description"]),
             parent_relationship_properties=parent_props,
             standalone_properties=standalone_props,
+        )
+
+    @classmethod
+    def _create_modern_listings(cls, data: list[dict]) -> tuple[Listing, ...]:
+        return tuple(
+            Listing(
+                id=int(l["listingid"]),
+                item=ListingItem(
+                    context_id=int(l["asset"]["contextid"]),
+                    asset_id=int(l["asset"]["assetid"]),
+                    amount=l["asset"]["amount"],
+                    description=cls._create_item_descr(l["description"]),
+                    properties=tuple(cls._create_property(p) for p in l["asset"]["asset_properties"]),
+                    accessories=tuple(cls._create_modern_market_accessory(a) for a in l["asset"]["asset_accessories"]),
+                ),
+                currency=Currency(l["eCurrency"]),
+                pricing=ListingPricing(
+                    price=l["unPrice"],
+                    fee=l["unFee"],
+                    fee_steam=l["unSteamFee"],
+                    fee_publisher=l["unPublisherFee"],
+                ),
+                per_unit_pricing=ListingPricing(
+                    price=l["unPricePerUnit"],
+                    fee=l["unFeePerUnit"],
+                    fee_steam=l["unSteamFeePerUnit"],
+                    fee_publisher=l["unPublisherFeePerUnit"],
+                )
+                if "unPricePerUnit" in l
+                else None,
+                appearances=tuple(a["url"] for a in l["enhanced_appearances"]),
+            )
+            for l in data
+        )
+
+    @classmethod
+    def _create_facets_iterable(cls, facets: list[dict[str, int | dict[str, str]]]) -> Iterable[FacetListingPair]:
+        if not facets:
+            return ()
+
+        return (
+            FacetListingPair(
+                facet["listings"],
+                FacetListingTag(
+                    category=facet["tag"]["category"],
+                    internal_name=facet["tag"]["internal_name"],
+                    localized_category_name=facet["tag"]["localized_category_name"],
+                    localized_tag_name=facet["tag"]["localized_tag_name"],
+                ),
+            )
+            for facet in facets
         )
 
     @overload
@@ -1302,51 +1368,14 @@ class MarketPublicComponent(EconMixin):
             raise SteamError("Empty response")
 
         data = rj["data"]
-        facets: list[dict[str, int | dict[str, str]]] = data["facets"]
+        if not data:
+            return Listings()
+
+        facets: list[dict] = data["facets"]  # detach object
 
         return Listings(
-            facets=(
-                FacetListingPair(
-                    facet["listings"],
-                    FacetListingTag(
-                        category=facet["tag"]["category"],
-                        internal_name=facet["tag"]["internal_name"],
-                        localized_category_name=facet["tag"]["localized_category_name"],
-                        localized_tag_name=facet["tag"]["localized_tag_name"],
-                    ),
-                )
-                for facet in facets
-            ),
-            listings=[
-                Listing(
-                    id=int(l["listingid"]),
-                    item=ListingItem(
-                        context_id=int(l["asset"]["contextid"]),
-                        asset_id=int(l["asset"]["assetid"]),
-                        amount=l["asset"]["amount"],
-                        description=self._create_item_descr(l["description"]),
-                        properties=tuple(self._create_property(p) for p in l["asset"]["asset_properties"]),
-                        accessories=tuple(
-                            self._create_modern_market_accessory(a) for a in l["asset"]["asset_accessories"]
-                        ),
-                    ),
-                    currency=Currency(l["eCurrency"]),
-                    pricing=ListingPricing(
-                        price=l["unPrice"],
-                        fee=l["unFee"],
-                        fee_steam=l["unSteamFee"],
-                        fee_publisher=l["unPublisherFee"],
-                    ),
-                    per_unit_pricing=ListingPricing(
-                        price=l["unPricePerUnit"],
-                        fee=l["unFeePerUnit"],
-                        fee_steam=l["unSteamFeePerUnit"],
-                        fee_publisher=l["unPublisherFeePerUnit"],
-                    ),
-                    appearances=tuple(a["url"] for a in l["enhanced_appearances"]),
-                )
-                for l in data["listings"]
-            ],
+            facets=self._create_facets_iterable(facets),
+            listings=self._create_modern_listings(data["listings"]),
             more=data["more"],
             total_count=data["total_count"],
         )

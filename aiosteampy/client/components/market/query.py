@@ -158,6 +158,8 @@ class SearchQuery(BaseQuery):
     def __post_init__(self):
         if self.app is None and not self.query:
             raise ValueError("Either app or query is required")
+        if self.descriptions and not self.query:
+            raise ValueError("Query must be provided to search in descriptions")
 
     def _sort_dir(self) -> int:
         return 1 if self.sort_dir == "asc" else 2

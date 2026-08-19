@@ -1,4 +1,4 @@
-from collections.abc import Iterable
+from collections.abc import Iterable, Sequence
 from dataclasses import dataclass
 from datetime import datetime
 from enum import IntEnum, StrEnum
@@ -447,15 +447,17 @@ class ModernSearchResults(NamedTuple):
     """Modern(beta) `Steam Market` search results container."""
 
     # facets: list
-    items: list[ModernSearchItem]
+    items: Sequence[ModernSearchItem] = ()
     """Search result entries."""
+    listings: Sequence["Listing"] = ()
+    """Optional parsed `listings` models if search include `descriptions`."""
     # grouping: int
     # start: int
-    total_count: int
+    total_count: int = 0
     """Total count of `search results` across all `pages`."""
-    total_pages: int
+    total_pages: int = 0
     """Total number of `pages`."""
-    more_pages: bool
+    more_pages: bool = False
     """Whether there is still more `pages` that can be fetched."""
 
 
@@ -473,9 +475,9 @@ class OrderBook(NamedTuple):
     total_sell_orders: int
     """Total number of `sell orders/listings`."""
 
-    buy_orders_raw: list[int]
+    buy_orders_raw: Sequence[int]
     """Raw data list with `buy orders` pairs."""
-    sell_orders_raw: list[int]
+    sell_orders_raw: Sequence[int]
     """Raw data list with `sell orders` pairs."""
     buy_orders: Iterable[tuple[int, int]]
     """Buy orders in `price/amount` pairs."""
@@ -514,8 +516,8 @@ class ListingItemAccessory(NamedTuple):
     """
 
     description: ItemDescription
-    parent_relationship_properties: tuple[AssetProperty, ...]
-    standalone_properties: tuple[AssetProperty, ...]
+    parent_relationship_properties: Sequence[AssetProperty]
+    standalone_properties: Sequence[AssetProperty]
 
     # nested: ...  # nested accessories, I don't think that this works now so will wait
 
@@ -530,7 +532,7 @@ class ListingItem(EconItem):
     """Represents `Steam Market` listing item."""
 
     owner: None = None
-    accessories: tuple[ListingItemAccessory, ...] = ()
+    accessories: Sequence[ListingItemAccessory] = ()
 
 
 @dataclass(slots=True)
@@ -546,9 +548,9 @@ class Listing:
     """``Currency`` of `prices & fees` values."""
     pricing: ListingPricing
     """Listing `prices & fees`."""
-    per_unit_pricing: ListingPricing
+    per_unit_pricing: ListingPricing | None
     """Listing per unit `prices & fees`."""
-    appearances: tuple[str, ...]
+    appearances: Sequence[str]
     """Enhanced appearance(detailed screenshot of particular `item`) URLs."""
 
     @property
@@ -580,11 +582,11 @@ class FacetListingPair(NamedTuple):
 class Listings(NamedTuple):
     """Modern(beta) `Steam Market` listings container."""
 
-    facets: Iterable[FacetListingPair]  # lazy
+    facets: Iterable[FacetListingPair] = ()  # lazy
     """Listings `facet-to-available` pars."""
-    listings: list[Listing]
+    listings: Sequence[Listing] = ()
     """Parsed `listings` models."""
-    more: bool
+    more: bool = False
     """Whether there are more `listings` that can be fetched."""
-    total_count: int
+    total_count: int = 0
     """Total count of `listings` across all `pages`."""

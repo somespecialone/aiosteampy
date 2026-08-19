@@ -48,7 +48,7 @@ class ItemTag(NamedTuple):
     category: str
     internal_name: str
     localized_category_name: str
-    localized_tag_name: str
+    localized_tag_name: str | None
     color: str | None  # hexadecimal
 
 
@@ -325,8 +325,8 @@ class EconMixin:
             ItemTag(
                 t_data["category"],
                 t_data["internal_name"],
-                t_data["localized_category_name"],
-                t_data["localized_tag_name"],
+                t_data.get("localized_category_name") or t_data["category_name"],
+                t_data.get("localized_tag_name"),
                 t_data.get("color"),
             )
             for t_data in tags
@@ -350,7 +350,7 @@ class EconMixin:
         return ItemDescription(
             class_id=int(data["classid"]),
             instance_id=int(data.get("instanceid", 0)),  # 0 for search descrs
-            app=App(data["appid"]),
+            app=App(int(data["appid"])),
             name=data["name"],
             market_name=data["market_name"],
             market_hash_name=data["market_hash_name"],

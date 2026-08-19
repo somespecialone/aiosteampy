@@ -1,8 +1,9 @@
 """Components with functionality responsible for user inventory handling."""
 
-from collections.abc import AsyncGenerator
+from collections.abc import Callable, Sequence, AsyncIterator
 from contextlib import contextmanager, suppress
-from typing import Callable, NamedTuple, overload
+from typing import NamedTuple, overload
+from yarl import URL
 
 from ...constants import SteamURL
 from ...exceptions import EResultError, SteamError, Unauthenticated
@@ -19,6 +20,8 @@ from ..econ import (
     create_ident_code,
 )
 from ..state import PublicSteamState, SteamState
+from .trade import make_trade_url
+from .trade.trade import TRADE_NEW_URL
 
 # Steam current limit
 INV_COUNT = 2000
@@ -29,7 +32,7 @@ INVENTORY_URL = SteamURL.COMMUNITY / "inventory"
 class Inventory(NamedTuple):
     """Container of inventory data."""
 
-    items: list[EconItem]
+    items: Sequence[EconItem]
     """Inventory items."""
     total: int
     """Total count of *items in inventory*."""
@@ -52,7 +55,7 @@ class InventoryPublicComponent(EconMixin):
         data: dict[str, list[dict]],
         owner_id: SteamID,
         item_descriptions_map: ItemDescriptionsMap,
-    ) -> list[EconItem]:
+    ) -> tuple[EconItem, ...]:
         for d_data in data["descriptions"]:
             key = create_ident_code(d_data["instanceid"], d_data["classid"], d_data["appid"])
             if key not in item_descriptions_map:
@@ -64,7 +67,7 @@ class InventoryPublicComponent(EconMixin):
             properties_map[properties_data["assetid"]] = cls._parse_asset_properties(properties_data)
             accessories_map[properties_data["assetid"]] = cls._parse_asset_accessories(properties_data)
 
-        return [
+        return tuple(
             EconItem(
                 context_id=int(a_data["contextid"]),
                 asset_id=int(a_data["assetid"]),
@@ -77,7 +80,7 @@ class InventoryPublicComponent(EconMixin):
                 accessories=accessories_map.get(a_data["assetid"], ()),
             )
             for a_data in data["assets"]
-        ]
+        )
 
     async def get_user_inventory(
         self,
@@ -97,7 +100,7 @@ class InventoryPublicComponent(EconMixin):
         :param app_ctx: ``AppContext`` of requested inventory.
         :param start_asset_id: for partial inventory fetch.
         :param count: page size.
-        :return: list of ``EconItem``, total count of items in inventory, `last asset id` of the list.
+        :return: Container with sequence of ``EconItem``, total count of items in inventory, `last asset id` of the list.
         :raises SteamError: inventory is private.
         :raises EResultError: ordinary reasons.
         :raises TransportError: ordinary reasons.
@@ -150,7 +153,7 @@ class InventoryPublicComponent(EconMixin):
         *,
         start_asset_id: int | None = None,
         count: int = INV_COUNT,
-    ) -> AsyncGenerator[list[EconItem], None]:
+    ) -> AsyncIterator[Sequence[EconItem]]:
         """
         Get async iterator of user inventory pages.
 
@@ -158,7 +161,7 @@ class InventoryPublicComponent(EconMixin):
         :param app_ctx: ``AppContext`` of requested inventory.
         :param start_asset_id: for partial inventory fetch.
         :param count: page size.
-        :return: ``AsyncGenerator`` that yields list of ``EconItem``.
+        :return: ``AsyncIterator`` that yields sequence of ``EconItem``.
         :raises SteamError: inventory is private.
         :raises EResultError: ordinary reasons.
         :raises TransportError: ordinary reasons.
@@ -241,6 +244,15 @@ def private_inventory_ctx():
             raise e
 
 
+class TradeInventory(NamedTuple):
+    """Container of inventory data fetched trough `trade url`."""
+
+    items: Sequence[EconItem] = ()
+    """Inventory items."""
+
+    more: bool = False
+
+
 class InventoryComponent(InventoryPublicComponent):
     """Component responsible for working with current user inventory."""
 
@@ -291,22 +303,20 @@ class InventoryComponent(InventoryPublicComponent):
         *,
         start_asset_id: int | None = None,
         count: int = INV_COUNT,
-    ) -> AsyncGenerator[list[EconItem], None]:
+    ) -> AsyncIterator[Sequence[EconItem]]:
         """
         Get async iterator of current authenticated user inventory pages.
 
         :param app_ctx: ``AppContext`` of requested inventory.
         :param start_asset_id: for partial inventory fetch.
         :param count: page size.
-        :return: ``AsyncGenerator`` that yields list of ``EconItem``, total count of items in inventory,
-            `last asset id` of the list.
+        :return: ``AsyncIterator`` that yields sequence of ``EconItem``, total count of items in inventory,
+            `last asset id` of the sequence.
         :raises SteamError: inventory is private.
         :raises EResultError: ordinary reasons.
         :raises TransportError: ordinary reasons.
         :raises Unauthenticated: auth cookies or token are missing, expired, or invalid.
         """
-
-        _item_descriptions_map = {}  # shared descriptions instances across calls
 
         with private_inventory_ctx():
             async for items in self.user_inventory(
@@ -343,3 +353,158 @@ class InventoryComponent(InventoryPublicComponent):
 
         with private_inventory_ctx():
             return await self.get_user_item(self._session.steam_id, app_ctx, obj)
+
+    @classmethod
+    def _parse_trade_inventory(
+        cls,
+        data: dict[str, dict[str, dict[str, dict | list[dict]]]],
+        owner_id: SteamID,
+        item_descriptions_map: ItemDescriptionsMap,
+        app_ctx: AppContext,
+    ) -> tuple[EconItem, ...]:
+        for _, d_data in data["rgDescriptions"].items():
+            key = create_ident_code(d_data["instanceid"], d_data["classid"], d_data["appid"])
+            if key not in item_descriptions_map:
+                item_descriptions_map[key] = cls._create_item_descr(d_data)
+
+        properties_map: dict[str, tuple[AssetProperty, ...]] = {}
+        for prop_parent_asset_id, properties_data in data["rgAssetProperties"].items():
+            properties_map[prop_parent_asset_id] = tuple(cls._create_property(p_data) for p_data in properties_data)
+
+        accessories_map: dict[str, tuple[AssetAccessory, ...]] = {}
+        for acc_parent_asset_id, accessories_data in data["rgAssetAccessories"].items():
+            accessories_map[acc_parent_asset_id] = tuple(
+                cls._create_accessory(acc_data) for acc_data in accessories_data
+            )
+
+        return tuple(
+            EconItem(
+                # pos: int
+                # hide_in_china: int(bool)
+                context_id=int(app_ctx.context_id),
+                asset_id=int(asset_id),
+                owner=owner_id,
+                amount=int(a_data["amount"]),
+                description=item_descriptions_map[
+                    create_ident_code(
+                        a_data["instanceid"],
+                        a_data["classid"],
+                        app_ctx.app.id,
+                    )
+                ],
+                properties=properties_map.get(asset_id, ()),
+                accessories=accessories_map.get(asset_id, ()),
+            )
+            for asset_id, a_data in data["rgInventory"].items()
+        )
+
+    async def get_partner_inventory(
+        self,
+        obj: str | URL | tuple[SteamID, str],
+        app_ctx: AppContext,
+        *,
+        start: int = 0,
+        page: int = 0,
+        _item_descriptions_map: ItemDescriptionsMap | None = None,
+    ) -> TradeInventory:
+        """
+        Get `partner` inventory (`Their inventory`) trough `Steam Trade Offers`.
+
+        .. note:: Pagination can be achieved by passing ``start`` arg.
+
+        :param obj: `trade url` or partner ``SteamID` and `trade token`.
+        :param app_ctx: ``AppContext`` of requested inventory.
+        :param start: partial inventory fetch.
+        :param page: number of ``page`` to be requested. **Starts from 0**.
+        :return: Container with sequence of ``EconItem``, boolean if there is more items to fetch.
+        :raises EResultError: ordinary reasons.
+        :raises TransportError: ordinary reasons.
+        """
+
+        if page and start:
+            raise ValueError("Page and start args are mutually exclusive")
+
+        if page:
+            start = INV_COUNT * page
+
+        if isinstance(obj, (str, URL)):
+            trade_url = URL(obj)
+            partner = SteamID(trade_url.query["partner"])
+        else:
+            trade_url = make_trade_url(*obj)
+            partner = obj[0]
+
+        headers = {"Referer": str(trade_url)}
+        params = {
+            "sessionid": self._session.session_id,
+            "partner": partner,
+            "appid": app_ctx.app.id,
+            "contextid": app_ctx.context_id,
+        }
+        if start:
+            params["start"] = start
+
+        r = await self._transport.request(
+            "GET",
+            TRADE_NEW_URL / "partnerinventory/",
+            params=params,
+            headers=headers,
+            response_mode="json",
+        )
+
+        rj: dict = r.content
+
+        EResultError.check_data(rj)
+
+        if not rj.get("rgInventory") or not rj.get("rgDescriptions"):
+            return TradeInventory()
+
+        _item_descriptions_map = {} if _item_descriptions_map is None else _item_descriptions_map
+
+        return TradeInventory(
+            self._parse_trade_inventory(
+                rj,
+                partner,
+                _item_descriptions_map,
+                app_ctx,
+            ),
+            rj["more"],
+        )
+
+    async def partner_inventory(
+        self,
+        obj: str | URL | tuple[SteamID, str],
+        app_ctx: AppContext,
+        *,
+        start: int = 0,
+        page: int = 0,
+    ) -> AsyncIterator[Sequence[EconItem]]:
+        """
+        Get async iterator of `partner` inventory pages.
+
+        :param obj: `trade url` or partner ``SteamID` and `trade token`.
+        :param app_ctx: ``AppContext`` of requested inventory.
+        :param start: partial inventory fetch.
+        :param page: number of ``page`` to be requested. **Starts from 0**.
+        :return: ``AsyncIterator`` that yields sequence of ``EconItem``.
+        :raises EResultError: ordinary reasons.
+        :raises TransportError: ordinary reasons.
+        """
+
+        _item_descriptions_map = {}  # shared descriptions instances across calls
+
+        more_items = True
+        while more_items:
+            inventory = await self.get_partner_inventory(
+                obj,
+                app_ctx,
+                start=start,
+                page=page,
+                _item_descriptions_map=_item_descriptions_map,
+            )
+            more_items = inventory.more
+
+            yield inventory.items
+
+
+# TODO get available inventories

@@ -37,6 +37,10 @@ TRADE_URL = SteamURL.COMMUNITY / "tradeoffer"
 TRADE_NEW_URL = TRADE_URL / "new/"
 
 
+def make_trade_url(partner: SteamID, token: str) -> URL:
+    return TRADE_NEW_URL % {"partner": partner.account_id, "token": token}
+
+
 class TradeComponent(EconMixin):
     """Handle trade-related actions."""
 
@@ -73,7 +77,7 @@ class TradeComponent(EconMixin):
     def url(self) -> URL | None:
         """Trade `url` of current user."""
         if self._state.trade_token:
-            return TRADE_NEW_URL % {"partner": self._session.steam_id.account_id, "token": self._state.trade_token}
+            return make_trade_url(self._session.steam_id, self._state.trade_token)
 
     async def generate_new_token(self) -> str:
         """Generates new `trade url` alongside `token`. Will update ``state.trade_token``."""

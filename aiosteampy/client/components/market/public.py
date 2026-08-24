@@ -52,6 +52,7 @@ from .utils import extract_icon_hash_from_app_icon_link
 
 ITEM_ORDER_HIST_PRICE_RE = re.compile(r"[^\d\s]*([\d,]+(?:\.\d+)?)[^\d\s]*")  # Author: ChatGPT
 ITEM_NAME_ID_RE = re.compile(r"Market_LoadOrderSpread\(\s?(\d+)\s?\)")
+BUCKET_GROUP_ID_RE = re.compile(r"/listings/\d+/([^/?]+)")
 PRICE_HISTORY_RE = re.compile(r"var line1=(.+?);")
 PRICE_ENTRY_TIME_FORMAT = "%b %d %Y %H: %z"
 
@@ -626,6 +627,41 @@ class MarketPublicComponent(EconMixin):
         res = int(search.group(1)) if search is not None else search
         if not res:
             raise ValueError(f"Failed to find item name id")
+
+        return res
+
+    @overload
+    async def get_bucket_group_id(self, obj: ItemDescription) -> str: ...
+    @overload
+    async def get_bucket_group_id(self, obj: str, app: App) -> str: ...
+    async def get_bucket_group_id(self, obj: str | ItemDescription, app: App | None = None) -> str:
+        """
+        Get `bucket group id` for Modern Market items.
+
+        :param obj: `market hash name` of item or ``ItemDescription``.
+        :param app: `Steam` app.
+        :return: `bucket group id`.
+        :raises TooManyRequests: rate limit has been hit.
+        :raises ValueError: failed to find `bucket group id` in redirect location.
+        :raises TransportError: ordinary reasons.
+        """
+        if isinstance(obj, ItemDescription):
+            url = obj.market_url
+        else:
+            url = MARKET_URL / f"listings/{app.id}/{obj}"
+
+        r = await self._transport.request(
+            "GET",
+            url,
+            headers={"Referer": COMMUNITY_ORIGIN},
+            response_mode="meta",
+        )
+
+        location = r.headers.get("location")
+        search = BUCKET_GROUP_ID_RE.search(location) if location else None
+        res = search.group(1) if search is not None else search
+        if not res:
+            raise ValueError("Failed to find bucket group id")
 
         return res
 

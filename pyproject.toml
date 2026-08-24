@@ -1,6 +1,6 @@
 [project]
 name = "aiosteampy"
-version = "1.0.0b8"
+version = "1.0.0b15"
 description = "Manage Steam sessions, Guard, Market, trade offers and more."
 readme = "README.md"
 license = "MIT"
@@ -26,7 +26,7 @@ requires-python = ">=3.12"
 dependencies = [
     "aiohttp (>=3.12,<4.0)",
     "rsa (>=4.8,<5.0) ; python_version >= '3.12' and python_version < '4'",
-    "betterproto2 (==0.10.*) ; python_version >= '3.12' and python_version < '4'"
+    "betterproto2 (==0.10.*) ; python_version >= '3.12' and python_version < '4'",
 ]
 
 [project.optional-dependencies]
@@ -52,10 +52,7 @@ docs = [
     "mkdocs-include-markdown-plugin (>=7.2.0,<8.0.0)",
     "mkdocs-open-in-new-tab (>=1.0.8,<2.0.0)",
 ]
-test = [
-    "pytest (>=9.0.3,<10.0.0)",
-    "pytest-asyncio (>=1.3.0,<2.0.0)"
-]
+test = ["pytest (>=9.0.3,<10.0.0)", "pytest-asyncio (>=1.3.0,<2.0.0)"]
 
 [tool.ruff]
 line-length = 120

@@ -27,7 +27,8 @@ class EResultError(SteamError):
     def check_data(cls, data: dict):
         """Check if ``data`` contains error response from `Steam` API and raise ``EResultError`` if needed."""
 
-        if (res := EResult(data.get("success", 0))) is not EResult.OK:
+        # at the top level or in "data" object
+        if (res := EResult(data.get("success", 0) or data.get("data", {}).get("success", 0))) is not EResult.OK:
             raise cls(res, data.get("message"), data)
 
     @classmethod

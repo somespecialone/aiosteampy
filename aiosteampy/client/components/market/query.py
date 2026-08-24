@@ -1,3 +1,4 @@
+import json
 from base64 import b64encode
 from copy import deepcopy
 from dataclasses import dataclass, field, fields
@@ -90,10 +91,8 @@ class BaseQuery:
         """
         Add ``facet`` with ``tags`` to `query`.
 
-        .. note:: App id, 'category' and 'tag' keywords **must be excluded**.
-
         For example, to set ``CS2`` `StatTrak` quality ``facet`` need to be 'Quality'
-        and tag 'strange'.
+        with 'strange' tag.
         """
 
         if self.app is None:
@@ -101,9 +100,6 @@ class BaseQuery:
 
         self.filters.setdefault(facet, []).extend(tags)
         return self
-
-    def _build_filters(self) -> TFilters:
-        return {f"category_{self.app.id}_{f}": [f"tag_{t}" for t in tags] for f, tags in self.filters.items()}
 
     def _payload(self, start: int, currency: Currency) -> dict:
         price = {"eCurrency": currency}
@@ -115,7 +111,7 @@ class BaseQuery:
         # guess we do not oblige to keep original order
         payload = {
             "accessoryFilters": {},  # as browser
-            "filters": self._build_filters(),
+            "filters": self.filters,
             "price": price,
             "start": start,
         }
@@ -137,10 +133,11 @@ class BaseQuery:
             params.append(("price_max", self.price_max))
 
         if self.app:
-            params.extend((facet, tag) for facet, tags in self._build_filters().items() for tag in tags)
+            params.extend((f"category_{facet}", tag) for facet, tags in self.filters.items() for tag in tags)
             params.append(("appid", self.app.id))
 
-        self.query and params.append(("q", self.query))
+        if self.query:
+            params.append(("q", self.query))
 
         return params
 
@@ -161,11 +158,18 @@ class SearchQuery(BaseQuery):
     def __post_init__(self):
         if self.app is None and not self.query:
             raise ValueError("Either app or query is required")
+        if self.descriptions and not self.query:
+            raise ValueError("Query must be provided to search in descriptions")
 
     def _sort_dir(self) -> int:
         return 1 if self.sort_dir == "asc" else 2
 
-    def payload(self, start: int = 0, currency: Currency = Currency.USD) -> list[dict]:
+    def sort(self, order: SortDir = "asc", field_: SearchSorting = None) -> Self:
+        self.sort_dir = order
+        self.sort_by = field_
+        return self
+
+    def payload(self, start: int = 0, currency: Currency = Currency.USD) -> str:
         """Build `JSON payload` for market search endpoint."""
 
         # guess we do not oblige to keep original order
@@ -176,10 +180,10 @@ class SearchQuery(BaseQuery):
             payload["sort"] = SEARCH_SORTING_MAP[self.sort_by]
             payload["direction"] = self._sort_dir()
 
-        return [payload]
+        return json.dumps([payload])
 
     def params(self, currency: Currency = Currency.USD) -> list[tuple[str, _ScalarTypes]]:
-        """Build `url query params` for market search endpoint."""
+        """Build `url query params` for user-faced market search endpoint."""
 
         # same thing regarding order
         params = self._params(currency)
@@ -187,7 +191,8 @@ class SearchQuery(BaseQuery):
             params.append(("sort", self.sort_by))
             params.append(("dir", self._sort_dir()))
 
-        self.descriptions and params.append(("descriptions", "1"))
+        if self.descriptions:
+            params.append(("descriptions", "1"))
 
         return params
 
@@ -195,8 +200,8 @@ class SearchQuery(BaseQuery):
         self,
         start: int = 0,
         currency: Currency = Currency.USD,
-    ) -> tuple[list[dict], list[tuple[str, _ScalarTypes]]]:
-        """Build `JSON payload` and `url query params` for market search endpoint."""
+    ) -> tuple[str, list[tuple[str, _ScalarTypes]]]:
+        """Build `JSON payload` and `url query params`."""
         return self.payload(start, currency), self.params(currency)
 
     def clear(self):
@@ -309,6 +314,11 @@ class ListingsQuery(BaseQuery):
     def _sort_by(self) -> int:
         return 0 if str(self.sort_by) == "price" else 1
 
+    def sort(self, order: SortDir = "asc", field_: ListingsSorting = None) -> Self:
+        self.sort_dir = order
+        self.sort_by = field_
+        return self
+
     # for subclassing
     def _sort_property_id(self) -> int | None:
         """
@@ -320,7 +330,7 @@ class ListingsQuery(BaseQuery):
 
         return self.sort_by if isinstance(self.sort_by, int) else None
 
-    def payload(self, bucket_group_id: str, start: int = 0, currency: Currency = Currency.USD) -> list[dict]:
+    def payload(self, bucket_group_id: str, start: int = 0, currency: Currency = Currency.USD) -> str:
         """Build `JSON payload` for market listings endpoint."""
 
         payload = self._payload(start, currency)
@@ -341,10 +351,10 @@ class ListingsQuery(BaseQuery):
 
             payload["sort"] = sort
 
-        return [payload]
+        return json.dumps([payload])
 
     def params(self, currency: Currency = Currency.USD) -> list[tuple[str, _ScalarTypes]]:
-        """Build `url query params` for market listings endpoint."""
+        """Build `url query params` for user-faced market listings endpoint."""
 
         params = self._params(currency)
         if self.app:
@@ -370,6 +380,6 @@ class ListingsQuery(BaseQuery):
         bucket_group_id: str,
         start: int = 0,
         currency: Currency = Currency.USD,
-    ) -> tuple[list[dict], list[tuple[str, _ScalarTypes]]]:
-        """Build `JSON payload` and `url query params` for market listings endpoint."""
+    ) -> tuple[str, list[tuple[str, _ScalarTypes]]]:
+        """Build `JSON payload` and `url query params`."""
         return self.payload(bucket_group_id, start, currency), self.params(currency)

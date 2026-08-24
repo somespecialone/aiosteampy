@@ -1,9 +1,11 @@
 """`Steam Economy` related models and functionality."""
 
+import re
 from collections.abc import Iterable
 from dataclasses import dataclass, field
-from datetime import datetime
-from typing import TYPE_CHECKING, NamedTuple
+from datetime import datetime, timezone
+from enum import IntEnum
+from typing import TYPE_CHECKING, NamedTuple, Self
 
 from yarl import URL
 
@@ -16,6 +18,8 @@ if TYPE_CHECKING:  # optional app item context
     from .cs2 import ItemContext as CS2ItemContext
 
 TRADABLE_AFTER_DATE_FORMAT = "%b %d, %Y (%H:%M:%S) %Z"
+
+LOCKED_DATE_RE = re.compile(r"\[date](\d+)\[/date]")
 
 
 def create_ident_code(*ids, sep=":"):
@@ -44,7 +48,7 @@ class ItemTag(NamedTuple):
     category: str
     internal_name: str
     localized_category_name: str
-    localized_tag_name: str
+    localized_tag_name: str | None
     color: str | None  # hexadecimal
 
 
@@ -92,6 +96,18 @@ class MarketBucketGroup(NamedTuple):
     """Group unique `identifier`."""
     name: str
     """Group `name`."""
+
+
+class SealedType(IntEnum):
+    TRADE_PROTECTED = 0
+    LISTED_ON_MARKET = 1
+
+    @classmethod
+    def get(cls, value: int) -> Self | None:
+        try:
+            return cls(value)
+        except ValueError:
+            return None
 
 
 @dataclass(slots=True, kw_only=True)
@@ -152,38 +168,33 @@ class ItemDescription(BaseEntityWithIdentCode):
     marketable: bool
     """If item can be sold on market at the current moment."""
 
-    # helper fields
-    hold_until: datetime | None = field(init=False, default=None)
-    """`Steam Market` hold end time."""
-    protected_until: datetime | None = field(init=False, default=None)
-    """`Trade Protection` protection end time."""
+    sealed_type: SealedType | None = None
 
-    # currency: int  # ?
-    sealed: bool
-    """If item under `Trade Protection` at the current moment."""
+    unlock_at: datetime | None = field(init=False, default=None)
+    """When item will be unlocked for transfer, modification or consumption."""
 
     _cs2_ctx: "CS2DescriptionContext | None" = field(init=False, default=None)  # cached
 
     def __post_init__(self):
         super(ItemDescription, self).__post_init__()
-        self.owner_descriptions and self._set_restrictions_end_time()
+        if self.sealed or (
+            (self.market_tradable_restriction or self.market_marketable_restriction)
+            and (not self.marketable or not self.tradable)
+        ):
+            self._set_locked()
 
     def _set_ident_code(self):
         self.id = create_ident_code(self.instance_id, self.class_id, self.app.id)
 
-    def _set_restrictions_end_time(self):
-        if self.market_tradable_restriction or self.market_marketable_restriction:
-            # find tradable after description
-            sep = "Tradable/Marketable After "
-            if (t_a_descr := next(filter(lambda d: sep in d.value, self.owner_descriptions), None)) is not None:
-                date_string = t_a_descr.value.split(sep)[1]
-                self.hold_until = datetime.strptime(date_string, TRADABLE_AFTER_DATE_FORMAT)
-
-        elif self.sealed:
-            sep = "This item is trade-protected and cannot be consumed, modified, or transferred until "
-            if (t_a_descr := next(filter(lambda d: sep in d.value, self.owner_descriptions), None)) is not None:
-                date_string = t_a_descr.value.split(sep)[1]
-                self.protected_until = datetime.strptime(date_string, TRADABLE_AFTER_DATE_FORMAT)
+    def _set_locked(self):
+        if locked_descr := next(
+            (d for d in self.owner_descriptions if d.type == "bbcode" and d.value.endswith("[/date]")),
+            None,
+        ):
+            self.unlock_at = datetime.fromtimestamp(
+                int(LOCKED_DATE_RE.search(locked_descr.value).group(1)),
+                tz=timezone.utc,
+            )
 
     @property
     def cs2(self) -> "CS2DescriptionContext | None":
@@ -214,6 +225,37 @@ class ItemDescription(BaseEntityWithIdentCode):
     def market_url(self) -> URL:
         """URL of item page on `Steam Market`."""
         return SteamURL.COMMUNITY / f"market/listings/{self.app.id}/{self.market_hash_name}"
+
+    @property
+    def modern_market_url(self) -> URL | None:
+        """URL of item page on modern(beta) `Steam Market`."""
+        if self.market_bucket_group:
+            return SteamURL.COMMUNITY / f"market/listings/{self.app.id}/{self.market_bucket_group.id}"
+
+    @property
+    def sealed(self) -> bool:
+        """If item under `Trade Protection` or `listed on the Steam Community Market` at the current moment."""
+        return self.sealed_type is not None
+
+    @property
+    def trade_protected(self) -> bool:
+        """Whether item is under `Trade Protection` and cannot be consumed, modified, or transferred until it expires."""
+        return self.sealed_type is SealedType.TRADE_PROTECTED
+
+    @property
+    def listed(self) -> bool:
+        """Whether item is listed on the `Steam Community Market` and cannot be consumed or modified while listed."""
+        return self.sealed_type is SealedType.LISTED_ON_MARKET
+
+    @property
+    def locked(self) -> bool:
+        """
+        Whether item is locked and cannot be consumed, modified, or transferred.
+        Thus includes `Trade Protection`,`listed` status and market restriction
+        (item was purchased on the `Steam Community Market` not so long).
+        """
+
+        return self.sealed or (not self.marketable and not self.tradable)
 
 
 @dataclass(slots=True, kw_only=True)
@@ -283,8 +325,8 @@ class EconMixin:
             ItemTag(
                 t_data["category"],
                 t_data["internal_name"],
-                t_data["localized_category_name"],
-                t_data["localized_tag_name"],
+                t_data.get("localized_category_name") or t_data["category_name"],
+                t_data.get("localized_tag_name"),
                 t_data.get("color"),
             )
             for t_data in tags
@@ -308,7 +350,7 @@ class EconMixin:
         return ItemDescription(
             class_id=int(data["classid"]),
             instance_id=int(data.get("instanceid", 0)),  # 0 for search descrs
-            app=App(data["appid"]),
+            app=App(int(data["appid"])),
             name=data["name"],
             market_name=data["market_name"],
             market_hash_name=data["market_hash_name"],
@@ -339,7 +381,7 @@ class EconMixin:
             descriptions=cls._parse_item_descr_entries(data.get("descriptions", ())),
             owner_descriptions=(cls._parse_item_descr_entries(data.get("owner_descriptions", ()))),
             fraud_warnings=tuple(data.get("fraudwarnings", ())),
-            sealed=bool(data.get("sealed", False)),
+            sealed_type=SealedType.get(data.get("sealed_type")),
         )
 
     @staticmethod

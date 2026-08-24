@@ -9,7 +9,7 @@ from typing import TYPE_CHECKING, Literal, NamedTuple, Self
 import betterproto2
 
 from .app import App
-from .components.market.query import ListingsQuery, SearchQuery
+from .components.market.query import ListingsQuery, SearchQuery, SortDir
 
 if TYPE_CHECKING:  # break circle import
     from .components.market import ListingItem, MarketListingItem
@@ -117,7 +117,7 @@ class DescriptionContext:
                     stickers = tuple(ItemAccessoryMeta(t, s) for s, t in CS2_APPLICABLE_DATA_RE.findall(d.value))
                 case DescriptionDescriptionName.Charm:
                     search = CS2_APPLICABLE_DATA_RE.search(d.value)
-                    charm = ItemAccessoryMeta(name=search.group(1), icon=search.group(2))
+                    charm = ItemAccessoryMeta(name=search.group(2), icon=search.group(1))
                 case DescriptionDescriptionName.Collection:
                     collection = d.value
                 case DescriptionDescriptionName.Exterior:  # safe to get from descriptions in any case
@@ -559,6 +559,8 @@ TAGS_MAP = {
     "Karambit": "weapon_knife_karambit",
 }
 
+TAccessoryChoice = Literal["$none$", "$any$"]
+
 
 class CS2QueryMixin:
     __slots__ = ()
@@ -616,6 +618,9 @@ class CS2SearchQuery(SearchQuery, CS2QueryMixin):
         return self
 
 
+ListingsSorting = Literal["price", "pattern", "wear", "finish", "charm pattern", None]
+
+
 @dataclass(slots=True, kw_only=True)
 class CS2ListingsQuery(ListingsQuery, CS2QueryMixin):
     """
@@ -631,7 +636,7 @@ class CS2ListingsQuery(ListingsQuery, CS2QueryMixin):
     # better to be redesigned
     app: App = field(default_factory=lambda: App.CS2)
 
-    sort_by: Literal["price", "pattern", "wear", "finish", "charm pattern", None] = None
+    sort_by: ListingsSorting = None
 
     def _sort_property_id(self):
         if self.sort_by == "pattern":
@@ -643,23 +648,28 @@ class CS2ListingsQuery(ListingsQuery, CS2QueryMixin):
         elif self.sort_by == "charm pattern":
             return AssetPropertyId.CHARM_TEMPLATE
 
+    def sort(self, order: SortDir = "asc", field_: ListingsSorting = None) -> Self:
+        self.sort_dir = order
+        self.sort_by = field_
+        return self
+
     def _add_accessories(self, facet: str, values: Iterable[str]):
         for value in values:
             self.accessory(facet, value)
 
-    def sticker(self, *values: str) -> Self:
+    def sticker(self, *values: TAccessoryChoice | str) -> Self:
         """Add attached ``sticker`` to item as filter. Value must be `sticker` full name(market hash name)."""
         self._add_accessories(TAGS_MAP["Sticker"], values)
         return self
 
-    def charm(self, *values: str) -> Self:
+    def charm(self, *values: TAccessoryChoice | str) -> Self:
         """Add attached ``charm`` to item as filter. Value must be `keychain` full name(market hash name)."""
         self._add_accessories(TAGS_MAP["Charm"], values)
         return self
 
     def wear_rating(self, min_: float = 0, max_: float = 1) -> Self:
         """Set `wear rating (ala floatvalue)` range as filter."""
-        self.property(AssetPropertyId.WEAR_RATING, min_, max_)
+        self.property(AssetPropertyId.WEAR_RATING, float(min_), float(max_))
         return self
 
     def pattern(self, min_: int = 0, max_: int = 1000) -> Self:

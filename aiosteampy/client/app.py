@@ -134,8 +134,10 @@ class AppContext:
     # predefined app+context combinations
     CS2: ClassVar["AppContext"]
     """Default `CS2` inventory."""
-    CS2_PROTECTED: ClassVar["AppContext"]
+    CS2_PROTECTED: ClassVar["AppContext"]  # alias for backward compatibility, to remove in future
     """`CS2` inventory with *trade protected* items."""
+    CS2_SEALED: ClassVar["AppContext"]
+    """`CS2` inventory with *sealed* items."""
 
     DOTA2: ClassVar["AppContext"]
     """Default `Dota 2` inventory."""
@@ -213,6 +215,7 @@ class AppContext:
 
 AppContext.CS2 = AppContext(App.CS2, 2)
 AppContext.CS2_PROTECTED = AppContext(App.CS2, 16)
+AppContext.CS2_SEALED = AppContext.CS2_PROTECTED
 
 AppContext.DOTA2 = AppContext(App.DOTA2, 2)
 AppContext.H1Z1 = AppContext(App.H1Z1, 2)
@@ -230,6 +233,7 @@ AppContext.__members__.update(
         for ctx in [
             AppContext.CS2,
             AppContext.CS2_PROTECTED,
+            AppContext.CS2_SEALED,
             AppContext.DOTA2,
             AppContext.H1Z1,
             AppContext.RUST,

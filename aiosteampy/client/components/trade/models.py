@@ -1,3 +1,4 @@
+from collections.abc import Iterable
 from dataclasses import dataclass
 from datetime import datetime
 from enum import IntEnum
@@ -162,6 +163,17 @@ class TradeOffers(NamedTuple):
     """Offers received by `queriers user` from others."""
     cursor: int
     """Next cursor to paginate over results."""
+
+    # convenient helpers
+    @property
+    def to_confirm(self) -> Iterable[TradeOffer]:
+        """Sent offers awaiting for confirmation."""
+        return (t for t in self.sent if t.status is TradeOfferStatus.CREATED_NEEDS_CONFIRMATION)
+
+    @property
+    def to_accept(self) -> Iterable[TradeOffer]:
+        """Received offers awaiting for acceptance."""
+        return (t for t in self.received if t.status is TradeOfferStatus.ACTIVE)
 
 
 class TradeOffersSummary(NamedTuple):

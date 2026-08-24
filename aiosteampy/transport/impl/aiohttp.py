@@ -46,10 +46,9 @@ class AiohttpTransport(BaseSteamTransport):
             connector = ProxyConnector.from_url(proxy)
             proxy = None
 
+        headers = {"accept-language": "en-US,en;q=0.9"}
         if user_agent := ctx.get("user_agent"):
-            headers = {"User-Agent": f"{user_agent}(AioHTTP/{AIOHTTP_VERSION})"}
-        else:
-            headers = None
+            headers["User-Agent"] = f"{user_agent}(AioHTTP/{AIOHTTP_VERSION})"
 
         self._session = ClientSession(proxy=proxy, connector=connector, headers=headers, **session_kwargs)
 

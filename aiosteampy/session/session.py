@@ -1,8 +1,8 @@
 import asyncio
-from collections.abc import Awaitable
+from collections.abc import Awaitable, Callable
 from datetime import datetime
 from functools import wraps
-from typing import Any, Callable, Self
+from typing import Any, Self, overload
 
 from yarl import URL
 
@@ -392,12 +392,33 @@ class SteamSession:
         if EAuthSessionGuardType.k_EAuthSessionGuardType_None not in allowed_guard_types:  # confirmation required
             raise GuardConfirmationRequired(resp.allowed_confirmations, allowed_guard_types)
 
+    @overload
     async def login_with_credentials(
         self,
         account_name: str,
         password: str,
         device_steam_guard_code: str | Callable[[], str],
         *,
+        persistence: bool = ...,
+        device_friendly_name: str = ...,
+    ): ...
+    @overload
+    async def login_with_credentials(
+        self,
+        account_name: str,
+        password: str,
+        *,
+        shared_secret: str | bytes,
+        persistence: bool = ...,
+        device_friendly_name: str = ...,
+    ): ...
+    async def login_with_credentials(
+        self,
+        account_name: str,
+        password: str,
+        device_steam_guard_code: str | Callable[[], str] | None = None,
+        *,
+        shared_secret: str | bytes | None = None,
         persistence: bool = True,
         device_friendly_name: str = LIB_ID,
     ):
@@ -411,6 +432,7 @@ class SteamSession:
             Can be generated using ``TwoFactorSigner`` or copied from the `Steam mobile app`.
             A ``callable`` factory is preferred as the `device code` will be
             generated as close to the submission moment as possible.
+        :param shared_secret: encoded or bytes of shared secret string.
         :param persistence: should `session` be persistent.
         :param device_friendly_name: name of the device used for authentication.
             Should be unique, identifiable, and human readable. Used when managing account sessions.
@@ -430,8 +452,16 @@ class SteamSession:
             )
         except GuardConfirmationRequired as e:
             if e.device_code:
-                if callable(device_steam_guard_code):  # callback or factory
+                if shared_secret is not None:
+                    from ..guard import SharedSecret
+
+                    shared_secret = SharedSecret(shared_secret)
+                    device_steam_guard_code = shared_secret.generate_auth_code()
+
+                elif callable(device_steam_guard_code):  # callback or factory
                     device_steam_guard_code = device_steam_guard_code()
+
+                assert device_steam_guard_code
 
                 await self.submit_auth_code(device_steam_guard_code)
             else:

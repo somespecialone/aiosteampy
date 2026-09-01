@@ -39,7 +39,7 @@ def mobile_platform[F: Callable[..., Any]](func: F) -> F:
             raise ValueError("This method is only supported for session with mobile app platform type")
         return func(self, *args, **kwargs)
 
-    return wrapper
+    return wrapper  # type: ignore
 
 
 def refresh_token_required[F: Callable[..., Any]](func: F) -> F:
@@ -49,7 +49,7 @@ def refresh_token_required[F: Callable[..., Any]](func: F) -> F:
             raise RuntimeError("Refresh token is not set")
         return func(self, *args, **kwargs)
 
-    return wrapper
+    return wrapper  # type: ignore
 
 
 class SteamSession:
@@ -265,7 +265,7 @@ class SteamSession:
             cookie = Cookie(
                 REFRESH_TOKEN_COOKIE,
                 token.cookie_value,
-                SteamURL.LOGIN_URL.host,
+                SteamURL.LOGIN_URL.host,  # type: ignore
                 SteamURL.LOGIN_URL.path,
                 expires=token.expires_at,  # token expire value instead of 400 days from browser
             )
@@ -525,7 +525,7 @@ class SteamSession:
 
                 # if we start with qr we come here without id
                 if not self._steam_id:
-                    self._steam_id = self._refresh_token.subject
+                    self._steam_id = self._refresh_token.subject  # type: ignore
 
                 return
 
@@ -556,10 +556,14 @@ class SteamSession:
 
         try:
             await asyncio.wait_for(self._poll_status(), timeout)
+            assert self._access_token and self._refresh_token
+
         except asyncio.TimeoutError:
             raise LoginError(f"Timeout ({timeout}s) has been exceeded") from None
-
-        self._set_state()  # clear state as unneeded
+        finally:
+            # we don't know for sure if state has been consumed by steam
+            # so better to clear it
+            self._set_state()
 
         return self._access_token, self._refresh_token
 
@@ -583,6 +587,8 @@ class SteamSession:
     async def _finalize_login(self) -> list[Cookie]:
         """Finalize `Steam` websites login process. Obtain and return web auth cookies."""
 
+        assert self._refresh_token
+
         data = {
             "nonce": self._refresh_token.raw,
             "sessionid": self._session_id,
@@ -596,7 +602,7 @@ class SteamSession:
             headers={**API_HEADERS, **BROWSER_HEADERS},
             response_mode="json",
         )
-        rj: dict = r.content
+        rj: dict = r.content  # type: ignore
         if rj and (error_msg := rj.get("error")):
             raise LoginError(f"Get error response when performing login finalization", error_msg)
         if not rj or not rj.get("transfer_info") or not rj.get("steamID"):
@@ -620,7 +626,9 @@ class SteamSession:
 
         # compare stored and received refresh token and rewrite just in case
         refresh_token_cookie = self.transport.get_cookie_value(SteamURL.LOGIN_URL, REFRESH_TOKEN_COOKIE)
-        if refresh_token_cookie != self.refresh_token.cookie_value:
+        assert refresh_token_cookie
+
+        if refresh_token_cookie != self._refresh_token.cookie_value:
             self._set_refresh_token(SteamJWT.from_cookie_value(refresh_token_cookie))
         else:
             self._set_refresh_token(self._refresh_token)  # rewrite cookie with expiration
@@ -635,6 +643,8 @@ class SteamSession:
 
             # access token cookie flow
             cookie = self.transport.get_cookie(url, ACCESS_TOKEN_COOKIE)
+            assert cookie
+
             token = SteamJWT.from_cookie_value(cookie.value)
 
             # replace expiration date of cookie (~5 years) with token expiration
@@ -652,10 +662,12 @@ class SteamSession:
     def _set_session_id_cookie(self, domain: URL) -> Cookie:
         """Set session id cookie."""
 
+        assert self._session_id
+
         cookie = Cookie(
             SESSION_ID_COOKIE,
             self._session_id,
-            domain.host,
+            domain.host,  # type: ignore
             domain.path,
         )
 
@@ -666,10 +678,12 @@ class SteamSession:
     def _set_access_token_cookie(self, domain: URL) -> Cookie:
         """Set access token cookie."""
 
+        assert self._access_token
+
         cookie = Cookie(
             ACCESS_TOKEN_COOKIE,
             self._access_token.cookie_value,
-            domain.host,
+            domain.host,  # type: ignore
             domain.path,
             expires=self._access_token.expires_at,
         )
@@ -708,6 +722,7 @@ class SteamSession:
 
             return cookies
 
+    # TODO return false, likely login flow changed
     @property
     def cookies_are_valid(self) -> bool:
         """Check whether auth web cookies are valid (set and not expired)."""
@@ -748,7 +763,11 @@ class SteamSession:
         await self._service.webapi.transport.request("GET", location, redirects=False, response_mode="meta")
 
         cookie = self._service.webapi.transport.get_cookie(location.with_path("/"), ACCESS_TOKEN_COOKIE)
+        assert cookie
+
         self._set_access_token(SteamJWT.from_cookie_value(cookie.value))
+
+        assert self._access_token
 
         return self._access_token
 
@@ -760,8 +779,10 @@ class SteamSession:
         Existed tokens will be overwritten.
         """
 
+        assert self._refresh_token
+
         res = await self._service.generate_access_token_for_app(
-            self.refresh_token.raw,
+            self._refresh_token.raw,
             self._steam_id,
             renew_refresh_token,
         )
@@ -769,6 +790,8 @@ class SteamSession:
         self._set_access_token(res.access_token)
         if res.refresh_token and res.refresh_token != self._refresh_token.raw:
             self._set_refresh_token(res.refresh_token)
+
+        assert self._access_token
 
         return self._access_token
 

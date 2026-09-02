@@ -20,7 +20,7 @@ class EconServiceClient(SteamWebApiServiceBase):
         language: str | None = None,
         get_descriptions: bool = True,
     ) -> JsonResponse:
-        params = {"tradeofferid": trade_offer_id, "get_descriptions": int(get_descriptions)}
+        params: dict[str, str | int] = {"tradeofferid": trade_offer_id, "get_descriptions": int(get_descriptions)}
         if language is not None:
             params["language"] = language
         return self._urlencoded("GetTradeOffer", params=params, auth=True)
@@ -36,7 +36,7 @@ class EconServiceClient(SteamWebApiServiceBase):
         cursor: int = 0,
         language: str | None = None,
     ) -> JsonResponse:
-        params = {
+        params: dict[str, int | str] = {
             "active_only": int(active_only),
             "get_sent_offers": int(get_sent_offers),
             "get_received_offers": int(get_received_offers),
@@ -63,7 +63,7 @@ class EconServiceClient(SteamWebApiServiceBase):
         return self._urlencoded("GetTradeOffersSummary", params=params, auth=True)
 
     def get_trade_status(self, trade_id: int, language: str | None = None) -> JsonResponse:
-        params = {"tradeid": trade_id, "get_descriptions": 1}
+        params: dict[str, str | int] = {"tradeid": trade_id, "get_descriptions": 1}
         if language is not None:
             params["language"] = language
 
@@ -80,7 +80,7 @@ class EconServiceClient(SteamWebApiServiceBase):
         include_total: bool = True,
         language: str | None = None,
     ) -> JsonResponse:
-        params = {
+        params: dict[str, str | int] = {
             "max_trades": max_trades,
             "get_descriptions": int(get_descriptions),
             "include_total": int(include_total),

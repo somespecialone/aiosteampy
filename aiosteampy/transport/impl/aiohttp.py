@@ -100,8 +100,11 @@ class AiohttpTransport(BaseSteamTransport):
 
     def has_cookie(self, url, name):
         key = (url.host, url.path[1:] if url.path == "/" else url.path)
-        if key in self._session.cookie_jar._cookies:  # avoid creating def morsel
-            return name in self._session.cookie_jar._cookies[key]
+        # avoid creating def morsel
+        if key in self._session.cookie_jar._cookies:  # type: ignore
+            return name in self._session.cookie_jar._cookies[key]  # type: ignore
+        else:
+            return False
 
     def close(self):
         return self._session.close()

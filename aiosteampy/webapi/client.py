@@ -17,6 +17,7 @@ from ..transport import (
     Query,
     ResponseMode,
     TransportResponseError,
+    TransportResponse,
 )
 
 HttpMethod = Literal["GET", "POST"]
@@ -72,8 +73,8 @@ class SteamWebAPIClient:
 
         if self.is_mobile:
             # mobile user agent is "okhttp/4.9.2" just in case we need it
-            self._transport.add_cookie(Cookie("mobileClientVersion", "777777 3.10.3", SteamURL.WEB_API.host))
-            self._transport.add_cookie(Cookie("mobileClient", "android", SteamURL.WEB_API.host))
+            self._transport.add_cookie(Cookie("mobileClientVersion", "777777 3.10.3", SteamURL.WEB_API.host))  # type: ignore
+            self._transport.add_cookie(Cookie("mobileClient", "android", SteamURL.WEB_API.host))  # type: ignore
 
     @property
     def transport(self) -> BaseSteamTransport:
@@ -174,21 +175,22 @@ class SteamWebAPIClient:
         if protobuf is not None:
             if response_mode != "meta":
                 response_mode = "bytes"
-            protobuf = b64encode(bytes(protobuf)).decode()
+            protobuf = b64encode(bytes(protobuf))
             if get_method:
-                params.append(("input_protobuf_encoded", protobuf))
+                assert type(params) is list
+                params.append(("input_protobuf_encoded", protobuf.decode()))
             else:  # POST
                 if data is not None:  # send with multipart
-                    data = {**data, "input_protobuf_encoded": protobuf}
+                    data = {**data, "input_protobuf_encoded": protobuf.decode()}
                 else:
                     urlencoded = self._to_scalars(urlencoded)
-                    urlencoded.append(("input_protobuf_encoded", protobuf))
+                    urlencoded.append(("input_protobuf_encoded", protobuf.decode()))
 
         headers = {**(headers or {}), **API_HEADERS}
         if self.is_web:
             headers |= BROWSER_HEADERS
 
-        r = await self._transport.request(
+        r: TransportResponse = await self._transport.request(
             http_method,
             SteamURL.WEB_API / f"{interface}/{method}/v{version}",
             params=params,
@@ -198,11 +200,11 @@ class SteamWebAPIClient:
             redirects=False,
             raise_for_status=True,
             response_mode=response_mode,
-        )
+        )  # type: ignore
 
         if r.status < 200 or r.status >= 300:  # redirect means error
             raise TransportResponseError.from_response(r)
 
         EResultError.check_headers(r.headers, r.content)
 
-        return r.content
+        return r.content  # type: ignore

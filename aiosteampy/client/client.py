@@ -38,7 +38,7 @@ def set_language_cookie(transport: BaseSteamTransport, lang: Language):
             Cookie(
                 LANG_COOKIE,
                 lang.value,
-                domain.host,
+                domain.host,  # type: ignore
                 domain.path,
             )
         )
@@ -208,7 +208,7 @@ class SteamClient:
         self._session = session
 
         if not _ignore_invalid and not session.cookies_are_valid:
-            raise Unauthenticated
+            raise Unauthenticated("Did you forget to call obtain_cookies?")
         if (not shared_secret and identity_secret) or (shared_secret and not identity_secret):
             raise ValueError("Both shared and identity secrets must be provided")
 
@@ -219,7 +219,7 @@ class SteamClient:
             signer = TwoFactorSigner(
                 self._session.steam_id,
                 shared_secret=shared_secret,
-                identity_secret=identity_secret,
+                identity_secret=identity_secret,  # type: ignore
                 webapi=self._session.webapi,
                 time_offset=time_offset,
             )
@@ -317,6 +317,8 @@ class SteamClient:
         # backup option
         # POST https://store.steampowered.com/account/savelanguagepreferences json={primary_language, sessionid}
 
+        assert self._session.session_id
+
         await self._session.transport.request(
             "POST",
             SteamURL.COMMUNITY / "actions/SetLanguage",
@@ -371,7 +373,7 @@ class SteamClient:
         }
         url = SteamURL.COMMUNITY / "dev/requestkey"
         r = await self._session.transport.request("POST", url, data=data, response_mode="json")
-        rj: dict = r.content
+        rj: dict = r.content  # type: ignore
 
         if EResult(rj.get("success")) is EResult.PENDING and rj.get("requires_confirmation"):
             if self._conf is None:
@@ -382,7 +384,7 @@ class SteamClient:
 
         EResultError.check_data(rj)
         self._state._web_api_key = rj["api_key"]
-        return self._state.web_api_key
+        return self._state.web_api_key  # type: ignore
 
     async def setup(self):
         """
@@ -395,10 +397,11 @@ class SteamClient:
         """
 
         async with asyncio.TaskGroup() as tg:
-            tg.create_task(self._profile.setup())  # can be made safely alongside other profile actions
-            tg.create_task(self._profile.make_public())
+            # can be made safely alongside other profile actions
+            tg.create_task(self._profile.setup())  # type: ignore
+            tg.create_task(self._profile.make_public())  # type: ignore
             tg.create_task(self.set_language(Language.ENGLISH))
-            tg.create_task(self._trade.acknowledge_rules())
+            tg.create_task(self._trade.acknowledge_rules())  # type: ignore
 
     def __repr__(self):
         return (

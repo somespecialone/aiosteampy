@@ -1,5 +1,7 @@
 """Client for interacting with `ITwoFactorService`."""
 
+from collections.abc import Sequence
+
 from ...exceptions import EResultError
 from ..protobufs.twofactor import *
 from ._base import SteamWebApiServiceBase
@@ -31,7 +33,7 @@ class TwoFactorServiceClient(SteamWebApiServiceBase):
         authenticator_type: int = 1,
         authenticator_time: int = 0,
         serial_number: int = 0,
-        http_headers: list[str] = (),
+        http_headers: Sequence[str] = (),
     ) -> CTwoFactorAddAuthenticatorResponse:
         msg = CTwoFactorAddAuthenticatorRequest(
             steamid=steamid,
@@ -39,7 +41,7 @@ class TwoFactorServiceClient(SteamWebApiServiceBase):
             serial_number=serial_number,
             authenticator_type=authenticator_type,
             device_identifier=device_identifier,
-            http_headers=http_headers,
+            http_headers=list(http_headers),
             version=version,
         )
         r = await self._proto("AddAuthenticator", msg, auth=True)
@@ -52,14 +54,14 @@ class TwoFactorServiceClient(SteamWebApiServiceBase):
         activation_code: str,
         authenticator_time: int,
         validate_sms_code: bool = False,
-        http_headers: list[str] = (),
+        http_headers: Sequence[str] = (),
     ) -> CTwoFactorFinalizeAddAuthenticatorResponse:
         msg = CTwoFactorFinalizeAddAuthenticatorRequest(
             steamid=steamid,
             authenticator_code=authenticator_code,
             authenticator_time=authenticator_time,
             activation_code=activation_code,
-            http_headers=http_headers,
+            http_headers=list(http_headers),
             validate_sms_code=validate_sms_code,
         )
         r = await self._proto("FinalizeAddAuthenticator", msg, auth=True)
@@ -86,7 +88,7 @@ class TwoFactorServiceClient(SteamWebApiServiceBase):
             r = await self._proto("RemoveAuthenticator", msg, auth=True)
         except EResultError as err:
             e = err
-            r = err.data
+            r: bytes = err.data  # type: ignore
 
         return CTwoFactorRemoveAuthenticatorResponse.parse(r), e
 

@@ -107,7 +107,7 @@ class BaseSteamTransport(metaclass=ABCMeta):
         data: FormPayload | None,
         json: JsonPayload | None,
         multipart: MultipartPayload | None,
-        headers: Headers,
+        headers: Headers | None,
         redirects: bool,
         response_mode: ResponseMode,
     ) -> TransportResponse:
@@ -182,7 +182,7 @@ class BaseSteamTransport(metaclass=ABCMeta):
         data: FormPayload | None = None,
         json: JsonPayload | None = None,
         multipart: MultipartPayload | None = None,
-        headers: Headers = None,
+        headers: Headers | None = None,
         redirects: bool = False,
         raise_for_status: bool = True,
         response_mode: ResponseMode = "text",

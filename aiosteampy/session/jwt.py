@@ -50,14 +50,19 @@ class SteamJWT:
     """When expires."""
 
     def __post_init__(self):
-        self.subject = SteamID(self.claims["sub"])
+        sub = self.claims.get("sub")
+        exp = self.claims.get("exp")
+        if any(f is None for f in (sub, exp, self.claims.get("aud"), self.claims.get("iat"))):
+            raise ValueError("Malformed or invalid Steam JWT")
+
+        self.subject = SteamID(sub)  # type: ignore
 
         if "mobile" in self.audiences:
             self.platform = Platform.MOBILE
         else:  # web by default
             self.platform = Platform.WEB
 
-        self.expires_at = datetime.fromtimestamp(self.claims["exp"], UTC)
+        self.expires_at = datetime.fromtimestamp(exp, UTC)  # type: ignore
 
         if self.for_client:
             import warnings
@@ -67,7 +72,7 @@ class SteamJWT:
     @property
     def audiences(self) -> list[str]:
         """List of audiences (e.g. 'web:store')."""
-        return self.claims["aud"]
+        return self.claims["aud"]  # type: ignore
 
     @property
     def expired(self) -> bool:
@@ -77,12 +82,13 @@ class SteamJWT:
     @property
     def issued_at(self) -> datetime:
         """When was issued."""
-        return datetime.fromtimestamp(self.claims["iat"], UTC)
+        return datetime.fromtimestamp(self.claims["iat"], UTC)  # type: ignore
 
     @property
     def cookie_value(self) -> str:
         """Encoded token as cookie value for `Steam`."""
-        return self.claims["sub"] + COOKIE_SEP + self.raw  # steam id 64 || encoded token
+        # steam id 64 || encoded token
+        return self.claims["sub"] + COOKIE_SEP + self.raw  # type: ignore
 
     @staticmethod
     def _restore_padding(segment: str) -> str:

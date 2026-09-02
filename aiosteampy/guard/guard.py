@@ -4,7 +4,7 @@ from typing import Self
 
 from yarl import URL
 
-from ..constants import EResult
+from ..constants import LIB_ID, EResult
 from ..exceptions import EmailConfirmationRequired, EResultError, Unauthenticated
 from ..session import SteamSession, generate_session_id, parse_qr_challenge_url
 from ..session.session import QRChallengeUrl
@@ -72,7 +72,7 @@ class SteamGuard:
         if not session.is_mobile:
             raise ValueError("Session must be mobile")
         if session.access_token is None:
-            raise Unauthenticated
+            raise Unauthenticated("Did you forget to call obtain_cookies?")
         if (not shared_secret and identity_secret) or (shared_secret and not identity_secret):
             raise ValueError("Both shared and identity secrets must be provided")
 
@@ -86,7 +86,7 @@ class SteamGuard:
             signer = TwoFactorSigner(
                 session.steam_id,
                 shared_secret=shared_secret,
-                identity_secret=identity_secret,
+                identity_secret=identity_secret,  # type: ignore
                 webapi=session.webapi,
                 time_offset=time_offset,
             )
@@ -124,6 +124,7 @@ class SteamGuard:
         """TwoFactor service client."""
         return self._2fa
 
+    # Do we still need this?
     @property
     def phone_service(self) -> PhoneServiceClient:
         """Phone service client."""
@@ -191,7 +192,7 @@ class SteamGuard:
         session: SteamSession,
         *,
         persistence: bool = True,
-        device_friendly_name: str | None = None,
+        device_friendly_name: str = LIB_ID,
     ):
         """
         Approve other ``SteamSession``.
@@ -314,7 +315,8 @@ class SteamGuard:
                 # we generate codes respecting server time, do we need to pass here our time?
                 authenticator_time=int(time.time()),
                 activation_code=activation_code,
-                validate_sms_code=self._2fa_resp.confirm_type == 1,  # if SMS were required
+                # if SMS were required
+                validate_sms_code=self._2fa_resp.confirm_type == 1,  # type: ignore
             )
 
         except Exception as e:
@@ -411,21 +413,23 @@ class SteamGuard:
     def export_mafile(self) -> MaFile:
         """Export `Steam Guard` account as `Steam Desktop Authenticator` file (maFile)."""
 
+        assert self._session.access_token and self._session.refresh_token
+
         account = self.export_account().serialize()
         return MaFile(
             shared_secret=account["shared_secret"],
             serial_number=str(account["serial_number"]),
             revocation_code=account["revocation_code"],
             uri=account["uri"],
-            server_time=self._2fa_resp.server_time,
+            server_time=self._2fa_resp.server_time,  # type: ignore
             account_name=account["account_name"],
             token_gid=account["token_gid"],
             identity_secret=account["identity_secret"],
             secret_1=account["secret_1"],
-            status=self._2fa_resp.status,
+            status=self._2fa_resp.status,  # type: ignore
             device_id=account["device_id"],
-            phone_number_hint=self._2fa_resp.phone_number_hint,
-            confirm_type=self._2fa_resp.confirm_type,
+            phone_number_hint=self._2fa_resp.phone_number_hint,  # type: ignore
+            confirm_type=self._2fa_resp.confirm_type,  # type: ignore
             fully_enrolled=self._2fa_finalized,
             Session={
                 "SteamID": account["steam_id"],
@@ -491,7 +495,7 @@ class SteamGuard:
 
         session._session_id = mafile["Session"]["SessionID"]
 
-        if session.access_token.expired:
+        if session.access_token.expired:  # type: ignore
             await session.refresh_access_token()
             await session.obtain_cookies()
         elif not session.cookies_are_valid:

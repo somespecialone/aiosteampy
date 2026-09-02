@@ -1252,7 +1252,6 @@ class MarketPublicComponent(EconMixin):
             items = self._crate_modern_search_result_items(data["results"])
             listings = ()
 
-        # TODO listings with description search
         return ModernSearchResults(
             items=items,
             listings=listings,

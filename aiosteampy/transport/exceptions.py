@@ -6,7 +6,7 @@ from yarl import URL
 
 from ..exceptions import RateLimitExceeded, Unauthenticated
 from .resp import TransportResponse
-from .types import Headers, JsonPayload
+from .types import Headers, JsonPayload, Content
 from .utils import parse_http_date
 
 
@@ -31,7 +31,7 @@ class TransportResponseError(TransportError):
         status: int,
         headers: Headers,
         reason: str | None = None,
-        content: bytes | None = None,
+        content: Content = None,
     ):
         self.url = url
         self.status = status
@@ -41,14 +41,6 @@ class TransportResponseError(TransportError):
 
     def __str__(self):
         return f" [{self.status}{f' | {self.reason}' if self.reason else ''}]"
-
-    def json(self) -> JsonPayload:
-        """Parse content of response as `JSON`."""
-        return json.loads(self.text()) if self.content else None
-
-    def text(self) -> str | None:
-        """Decode content of response as `string`."""
-        return self.content.decode() if self.content else None
 
     @classmethod
     def from_response(cls, resp: TransportResponse) -> Self:
@@ -68,12 +60,12 @@ class ResourceNotModified(TransportResponseError):
     @property
     def last_modified(self) -> datetime:
         """Last modified time of the resource."""
-        return parse_http_date(self.headers["Last-Modified"])
+        return parse_http_date(self.headers["Last-Modified"])  # type: ignore
 
     @property
     def expires(self) -> datetime:
         """Expiration time of the resource."""
-        return parse_http_date(self.headers["Expires"])
+        return parse_http_date(self.headers["Expires"])  # type: ignore
 
     def __str__(self):
         return f"Resource not modified. Last modified: {self.last_modified.isoformat()}, Expires: {self.expires.isoformat()}."

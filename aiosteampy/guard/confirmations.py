@@ -6,7 +6,7 @@ from dataclasses import dataclass
 from datetime import datetime
 from enum import IntEnum
 from itertools import batched
-from typing import TYPE_CHECKING, Literal, Self, overload
+from typing import TYPE_CHECKING, Literal, overload
 
 from ..constants import SteamURL
 from ..exceptions import Unauthenticated
@@ -55,7 +55,7 @@ class ConfirmationType(IntEnum):
     REQUEST_REFUND = 13
 
     @classmethod
-    def get(cls, v: int) -> Self:
+    def get(cls, v: int) -> "ConfirmationType":
         try:
             return cls(v)
         except ValueError:
@@ -101,7 +101,11 @@ class Confirmation:
         if self.type is ConfirmationType.MARKET_LISTING and value:
             from ..client.econ import create_ident_code  # will import all client module :(
 
-            data: dict = json.loads(ITEM_INFO_RE.search(value).group(1))
+            search = ITEM_INFO_RE.search(value)
+            if search is None:
+                raise ValueError("Provided details data is malformed or invalid")
+
+            data: dict = json.loads(search.group(1))
             self._ident_code = create_ident_code(data["id"], data["contextid"], data["appid"])
 
     @property
@@ -174,7 +178,7 @@ class SteamConfirmations:
             params=params,
             response_mode="json",
         )
-        rj: dict = r.content
+        rj: dict = r.content  # type: ignore
 
         EResultError.check_data(rj)
 
@@ -205,7 +209,7 @@ class SteamConfirmations:
         params = self._create_confirmation_params("getlist")
 
         r = await self._session.transport.request("GET", GET_ALL_URL, params=params, response_mode="json")
-        rj: dict = r.content
+        rj: dict = r.content  # type: ignore
 
         if rj.get("needauth"):
             raise Unauthenticated
@@ -296,7 +300,7 @@ class SteamConfirmations:
         params["ck"] = conf.nonce
 
         r = await self._session.transport.request("GET", SEND_URL, params=params, response_mode="json")
-        rj: dict = r.content
+        rj: dict = r.content  # type: ignore
 
         EResultError.check_data(rj)
 
@@ -328,7 +332,7 @@ class SteamConfirmations:
             form_data.append(("ck[]", conf.nonce))
 
         r = await self._session.transport.request("POST", SEND_MULTI_URL, data=form_data, response_mode="json")
-        rj: dict = r.content
+        rj: dict = r.content  # type: ignore
 
         EResultError.check_data(rj)
 
@@ -353,7 +357,8 @@ class SteamConfirmations:
 
         # Is there some limit on confs count?
         confs = await self.get_all()
-        confs and await self.accept_multiple(confs)
+        if confs:
+            await self.accept_multiple(confs)
         return confs
 
     async def deny_all(self) -> list[Confirmation]:
@@ -368,7 +373,8 @@ class SteamConfirmations:
         """
 
         confs = await self.get_all()
-        confs and await self.deny_multiple(confs)
+        if confs:
+            await self.deny_multiple(confs)
         return confs
 
     # helper methods for components

@@ -48,15 +48,17 @@ class HeadersProxy(Mapping[str, str]):
     def __getitem__(self, key):
         if item := self._hdrs.__getitem__(key):
             return item.decode()  # whole proxy only for this
+        else:
+            raise KeyError(key)
 
-    def __contains__(self, key: str):
+    def __contains__(self, key):
         return self._hdrs.__contains__(key)
 
     def __len__(self):
         return self._hdrs.__len__()
 
     def __iter__(self):
-        return self._hdrs.__iter__()
+        return (k.decode() for k, _ in self._hdrs.__iter__())
 
     def __str__(self):
         return str(self._hdrs)
@@ -94,7 +96,7 @@ class WreqTransport(BaseSteamTransport):
             emulation=emulation,
             proxies=proxies,
             cookie_store=True,
-            **client_kwargs,
+            **client_kwargs,  # type: ignore
         )
 
         self._proxy = proxy
@@ -144,6 +146,8 @@ class WreqTransport(BaseSteamTransport):
             domain = c.domain
             path = c.path or "/"
 
+        assert domain
+
         return Cookie(
             c.name,
             c.value,
@@ -156,24 +160,24 @@ class WreqTransport(BaseSteamTransport):
         )
 
     def get_cookie(self, url, name):
-        if c := self._client.cookie_jar.get(name, str(url)):
+        if c := self._client.cookie_jar.get(name, str(url)):  # type: ignore
             return self._c_from_wreq_c(c, url)
 
     def add_cookie(self, cookie):
-        self._client.cookie_jar.add(self._wreq_c_from_c(cookie), "https://" + cookie.domain + cookie.path)
+        self._client.cookie_jar.add(self._wreq_c_from_c(cookie), "https://" + cookie.domain + cookie.path)  # type: ignore
 
     def remove_cookie(self, url, name):
-        self._client.cookie_jar.remove(name, str(url))
+        self._client.cookie_jar.remove(name, str(url))  # type: ignore
 
     def get_cookies(self):
-        return tuple(self._c_from_wreq_c(c) for c in self._client.cookie_jar.get_all())
+        return tuple(self._c_from_wreq_c(c) for c in self._client.cookie_jar.get_all())  # type: ignore
 
     async def close(self):
         self._client.close()
 
     async def _request(self, method, url, *, params, data, json, multipart, headers, redirects, response_mode):
         if multipart is not None:
-            multipart = Multipart(*(MultipartPart(k, val) for k, val in multipart.items()))
+            multipart = Multipart(*(MultipartPart(k, str(val)) for k, val in multipart.items()))
 
         method = HTTP_METHOD_MAP[method]
 
@@ -181,12 +185,12 @@ class WreqTransport(BaseSteamTransport):
             r = await self._client.request(
                 method,
                 str(url),
-                query=params,
-                headers=headers,
-                form=data,
+                query=params,  # type: ignore
+                headers=headers,  # type: ignore
+                form=data,  # type: ignore
                 json=json,
-                multipart=multipart,
-                redirect=None if redirects else NO_REDIRECT_POLICY,
+                multipart=multipart,  # type: ignore
+                redirect=None if redirects else NO_REDIRECT_POLICY,  # type: ignore
             )
 
         except ProxyConnectionError as e:

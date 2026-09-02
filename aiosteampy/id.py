@@ -276,4 +276,4 @@ class SteamID(int):
         except (ValueError, TypeError):
             return int(self) == value
 
-    __bool__ = valid.fget
+    __bool__ = valid.fget  # type: ignore

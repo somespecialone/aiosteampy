@@ -1,6 +1,6 @@
 """Client for interacting with `ISteamNotificationService`."""
 
-from collections.abc import Awaitable
+from collections.abc import Awaitable, Sequence
 
 from ..protobufs.notification import *
 from ._base import SteamWebApiServiceBase
@@ -39,7 +39,7 @@ class NotificationServiceClient(SteamWebApiServiceBase):
 
     def mark_notifications_read(
         self,
-        notification_ids: list[int] = (),
+        notification_ids: Sequence[int] = (),
         timestamp: int = 0,
         notification_type: ESteamNotificationType = ESteamNotificationType.k_ESteamNotificationType_Invalid,
         mark_all_read: bool = False,
@@ -47,7 +47,7 @@ class NotificationServiceClient(SteamWebApiServiceBase):
         msg = CSteamNotificationMarkNotificationsReadNotification(
             timestamp=timestamp,
             notification_type=notification_type,
-            notification_ids=notification_ids,
+            notification_ids=list(notification_ids),
             mark_all_read=mark_all_read,
         )
         return self._proto("MarkNotificationsRead", msg, auth=True, response_mode="meta")

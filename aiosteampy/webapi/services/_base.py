@@ -1,5 +1,5 @@
 from collections.abc import Awaitable
-from typing import ClassVar, Literal
+from typing import ClassVar, Literal, overload
 
 import betterproto2
 
@@ -22,6 +22,28 @@ class SteamWebApiServiceBase:
         """`Steam Web API` client."""
         return self._api
 
+    @overload
+    def _proto(  # type: ignore
+        self,
+        method: str,
+        msg: betterproto2.Message | bytes = ...,
+        version: int = ...,
+        http_method: HttpMethod = ...,
+        response_mode: Literal["bytes"] = ...,
+        auth: bool = ...,
+    ) -> Awaitable[bytes]: ...
+
+    @overload
+    def _proto(
+        self,
+        method: str,
+        msg: betterproto2.Message | bytes = ...,
+        version: int = ...,
+        http_method: HttpMethod = ...,
+        response_mode: Literal["meta"] = ...,
+        auth: bool = ...,
+    ) -> Awaitable[None]: ...
+
     # Can't type return proto message :(
     def _proto(
         self,
@@ -41,7 +63,7 @@ class SteamWebApiServiceBase:
             protobuf=msg,
             response_mode=response_mode,
             auth=auth,
-        )
+        )  # type: ignore
 
     def _urlencoded(
         self,
@@ -63,4 +85,4 @@ class SteamWebApiServiceBase:
             params=params,
             response_mode=response_mode,
             auth=auth,
-        )
+        )  # type: ignore

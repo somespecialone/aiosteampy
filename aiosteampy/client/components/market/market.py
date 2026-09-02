@@ -531,11 +531,12 @@ class MarketComponent(MarketPublicComponent):
             )
         except TransportResponseError as e:
             if e.status == 406:  # need confirmation
-                rj = e.json()
+                assert type(e.content) is bytes
+                rj: dict = json.loads(e.content.decode())
             else:
                 raise e
         else:
-            rj: dict = r.content
+            rj: dict = r.content  # type: ignore
 
         if rj.get("need_confirmation"):
             confirmation_id = int(rj["confirmation"]["confirmation_id"])
@@ -585,11 +586,12 @@ class MarketComponent(MarketPublicComponent):
             )
         except TransportResponseError as e:
             if e.status == 406:  # also need confirmation
-                rj = e.json()
+                assert type(e.content) is bytes
+                rj: dict = json.loads(e.content.decode())
             else:
                 raise e
         else:
-            rj: dict = r.content
+            rj: dict = r.content  # type: ignore
 
         if rj.get("need_confirmation"):
             return BuyOrderStatus(need_confirmation=True)
@@ -731,11 +733,12 @@ class MarketComponent(MarketPublicComponent):
                 response_mode="json",
             )
         except TransportResponseError as e:
+            assert type(e.content) is bytes
             if e.status == 406:  # need confirmation
-                rj = e.json()
+                rj: dict = json.loads(e.content.decode())
             elif e.status == 502:
                 if e.content:
-                    error_data: dict = e.json()
+                    error_data: dict = json.loads(e.content.decode())
                     if "somebody else has already purchased it" in error_data["message"]:
                         raise ListingRemoved from e
                     elif "You've already purchased this item" in error_data["message"]:
@@ -747,7 +750,7 @@ class MarketComponent(MarketPublicComponent):
             else:
                 raise e
         else:
-            rj: dict = r.content
+            rj: dict = r.content  # type: ignore
 
         if rj.get("need_confirmation"):
             confirmation_id = int(rj["confirmation"]["confirmation_id"])

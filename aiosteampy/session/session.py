@@ -518,6 +518,9 @@ class SteamSession:
             loop = asyncio.get_running_loop()
             start = loop.time()
             status = await self._get_status()
+            if status.new_client_id:
+                self._client_id = status.new_client_id
+
             if status.refresh_token:
                 self._account_name = status.account_name
                 self._set_refresh_token(status.refresh_token)

@@ -327,7 +327,7 @@ class MarketPublicComponent(EconMixin):
         return PriceOverview(
             lowest_price=self._parse_price_with_currency(rj["lowest_price"]),
             volume=self._parse_quantity(rj["volume"]),
-            median_price=self._parse_price_with_currency(rj["lowest_price"]),
+            median_price=self._parse_price_with_currency(rj["median_price"]),
             last_modified=parse_http_date(r.headers["Last-Modified"]),
         )
 

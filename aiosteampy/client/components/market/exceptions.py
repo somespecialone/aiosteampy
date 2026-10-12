@@ -14,3 +14,6 @@ class ListingRemoved(MarketError):
 
 class AlreadyPurchased(MarketError):
     """You have already purchased this listing."""
+
+class InventoryFull(MarketError):
+    """Inventory space is full and cannot accept more items."""

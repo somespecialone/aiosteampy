@@ -23,7 +23,7 @@ from ...state import SteamState, WalletInfo
 if TYPE_CHECKING:  # decouple components from guard
     from ....guard import SteamConfirmations
 
-from .exceptions import InsufficientBalance, ListingRemoved, AlreadyPurchased
+from .exceptions import InsufficientBalance, ListingRemoved, AlreadyPurchased, InventoryFull
 from .models import (
     BuyOrder,
     BuyOrderStatus,
@@ -743,6 +743,8 @@ class MarketComponent(MarketPublicComponent):
                         raise ListingRemoved from e
                     elif "You've already purchased this item" in error_data["message"]:
                         raise AlreadyPurchased from e
+                    elif "Your inventory may be full" in error_data["message"]:
+                        raise InventoryFull from e
                     else:
                         raise InsufficientBalance from e
                 else:

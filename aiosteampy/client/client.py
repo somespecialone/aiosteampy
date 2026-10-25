@@ -9,6 +9,7 @@ from ..webapi import SteamWebAPIClient
 from .components.inventory import InventoryComponent, InventoryPublicComponent
 from .components.market import MarketComponent, MarketPublicComponent
 from .components.notifications import NotificationsComponent
+from .components.player import PlayerComponent
 from .components.profile import ProfileComponent, ProfilePublicComponent
 from .components.trade import TradeComponent
 from .components.wallet import WalletComponent
@@ -155,6 +156,7 @@ class SteamClient:
         "_conf",
         "_state",
         "_market",
+        "_player",
         "_profile",
         "_inventory",
         "_trade",
@@ -239,6 +241,7 @@ class SteamClient:
             fee_base=fee_base,
         )
         self._market = MarketComponent(self._session, self._state, self._conf)
+        self._player = PlayerComponent(self._session)
         self._profile = ProfileComponent(self._session, self._state)
         self._inventory = InventoryComponent(self._session, self._state)
         self._trade = TradeComponent(self._session, self._state, self._conf)
@@ -276,6 +279,11 @@ class SteamClient:
     def market(self) -> MarketComponent:
         """`Steam Market`."""
         return self._market
+
+    @property
+    def player(self) -> PlayerComponent:
+        """Player-related functionality."""
+        return self._player
 
     @property
     def profile(self) -> ProfileComponent:

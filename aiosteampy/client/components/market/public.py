@@ -57,7 +57,6 @@ from .utils import extract_icon_hash_from_app_icon_link
 
 ITEM_ORDER_HIST_PRICE_RE = re.compile(r"[^\d\s]*([\d,]+(?:\.\d+)?)[^\d\s]*")  # Author: ChatGPT
 ITEM_NAME_ID_RE = re.compile(r"Market_LoadOrderSpread\(\s?(\d+)\s?\)")
-BUCKET_GROUP_ID_RE = re.compile(r"/listings/\d+/([^/?]+)")
 PRICE_HISTORY_RE = re.compile(r"var line1=(.+?);")
 PRICE_ENTRY_TIME_FORMAT = "%b %d %Y %H: %z"
 SSR_LOADER_DATA_RE = re.compile(r"window\.SSR\.loaderData = (\[.+\]);")
@@ -1408,25 +1407,27 @@ class MarketPublicComponent(EconMixin):
 
         if isinstance(obj, ItemDescription):
             url = obj.market_url
+            app_id = obj.app_id
         else:
             assert app
-            url = MARKET_URL / f"listings/{app.id}/{obj}"
+            url = LISTINGS_URL / f"{app.id}/{obj}"
+            app_id = app.id
+
+        pattern = re.compile(rf"listings/{app_id}/(G[A-Z0-9]+)")
 
         r = await self._transport.request(
             "GET",
             url,
             headers={"Referer": COMMUNITY_ORIGIN},
-            response_mode="meta",
-            redirects=False,
+            response_mode="text",
+            redirects=True,
         )
 
-        location = r.headers.get("location")
-        search = BUCKET_GROUP_ID_RE.search(location) if location else None
-        res = search.group(1) if search is not None else search
-        if not res:
-            raise ValueError("Failed to find bucket group id")
+        search = pattern.search(str(r.url)) or pattern.search(r.content)
+        if search:
+            return search.group(1)
 
-        return res
+        raise ValueError("Failed to find bucket group id")
 
     @_beta_market_enabled  # type: ignore
     async def _get_bucket_group_page(self, bucket_group_id: str, app_or_query: App | ListingsQuery) -> str:

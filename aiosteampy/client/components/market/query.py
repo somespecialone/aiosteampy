@@ -217,11 +217,11 @@ class SearchQuery(BaseQuery):
 # https://github.com/SteamTracking/Protobufs/blob/e36c4b3f887e5c22bd53cee70f0b3bcb0b348f5a/webui/common.proto#L3-L9
 @dataclass(eq=False, repr=False)
 class AssetPropertyFilter(betterproto2.Message):
-    property_id: "int" = betterproto2.field(1, betterproto2.TYPE_UINT32)
-    float_min: "float" = betterproto2.field(2, betterproto2.TYPE_FLOAT)
-    float_max: "float" = betterproto2.field(3, betterproto2.TYPE_FLOAT)
-    int_min: "int" = betterproto2.field(4, betterproto2.TYPE_INT64)
-    int_max: "int" = betterproto2.field(5, betterproto2.TYPE_INT64)
+    property_id: "int | None" = betterproto2.field(1, betterproto2.TYPE_UINT32, optional=True)
+    float_min: "float | None" = betterproto2.field(2, betterproto2.TYPE_FLOAT, optional=True)
+    float_max: "float | None" = betterproto2.field(3, betterproto2.TYPE_FLOAT, optional=True)
+    int_min: "int | None" = betterproto2.field(4, betterproto2.TYPE_INT64, optional=True)
+    int_max: "int | None" = betterproto2.field(5, betterproto2.TYPE_INT64, optional=True)
 
 
 TProps = dict[int, dict[str, int | float]]
